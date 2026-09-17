@@ -1,0 +1,39 @@
+# Fixture provenance and expected construct coverage (human-readable).
+# Parsed by tests via PyYAML.
+
+fixtures:
+  - id: vscode_readme_snippet
+    path: vscode_readme_snippet.md
+    source: microsoft/vscode README constructs (representative, offline)
+    expect:
+      min_headings: 3
+      min_images: 1
+      min_links: 2
+      min_code_blocks: 1
+      has_raw_html_tags: [img, video]
+      has_horizontal_rule: true
+
+  - id: kubernetes_readme_snippet
+    path: kubernetes_readme_snippet.md
+    source: kubernetes/kubernetes README constructs (representative, offline)
+    expect:
+      min_headings: 2
+      min_images: 2
+      min_links: 2
+      min_code_blocks: 1
+      has_reference_links: true
+      has_raw_html_tags: [p, img]
+      has_horizontal_rule: true
+
+unsupported_examples:
+  - name: gfm_table
+    markdown: |
+      | a | b |
+      | --- | --- |
+      | 1 | 2 |
+    note: Tables are intentionally unsupported by markdown_to_html.
+  - name: task_list
+    markdown: |
+      - [ ] todo
+      - [x] done
+    note: Task lists are not normalized; treated as plain list text at best.

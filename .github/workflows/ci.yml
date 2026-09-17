@@ -1,0 +1,39 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install test deps
+        run: pip install -r requirements-dev.txt
+      - name: Run pytest
+        run: pytest -q
+
+  frontend-smoke:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install frontend deps
+        run: |
+          pip install -r requirements-dev.txt
+          pip install -r requirements-frontend.txt
+      - name: Import demo modules
+        run: |
+          python -c "import ast, pathlib; ast.parse(pathlib.Path('demos/gradio_app.py').read_text())"
+          python -c "import ast, pathlib; ast.parse(pathlib.Path('demos/streamlit_app.py').read_text())"

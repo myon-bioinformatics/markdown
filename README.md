@@ -15,13 +15,46 @@ ironmate などで使っていた `markdown.py` を、そのままのファイ�
 - **想定 API の方向性** — 既存の read / write / section 抽出に加え、HTML↔Markdown（URL・画像ファイルなど）の変換ヘルパを拡充していく
 - **ascii_artist.py** — 本パッケージに同梱するか、別配置にするかは未決（要相談）
 
-## 現状の関数
+## Layout
 
-| 関数 | 役割 |
+| Path | Role |
 | --- | --- |
-| `save_markdown` | Markdown 文字列をファイルへ保存 |
-| `read_markdown` | Markdown ファイルを読み取り（任意で見出し `#` カウント） |
-| `extract_sections` | 見出し一覧の抽出 |
+| `markdown.py` | **The product** — vendored single module |
+| `tests/` | pytest = correctness |
+| `fixtures/` | Famous-README-inspired offline snippets + YAML/JSON/TOML |
+| `demos/gradio_app.py` | Optional: paste/upload → instant analysis |
+| `demos/streamlit_app.py` | Optional: sectioned headings/links/images/HTML/code view |
+
+## Quick use
+
+```python
+import markdown as md
+
+md.save_markdown("# Hello\n", "out.md")
+sections = md.extract_sections(open("out.md", encoding="utf-8").read())
+inv = md.inventory(open("README.md", encoding="utf-8").read())
+print(md.html_image_to_markdown('<img src="a.png" alt="A" />'))
+print(md.make_link("Docs", "https://example.com"))
+```
+
+## Test / demo
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+
+# optional frontends
+pip install -r requirements-frontend.txt
+python demos/gradio_app.py
+streamlit run demos/streamlit_app.py
+```
+
+CI runs **pytest + PyYAML** (and stdlib `tomllib` / `json`). Gradio / Streamlit stay optional (`workflow_dispatch` / local smoke).
+
+## Capability stance
+
+This is **not** a full CommonMark/GFM engine (see `SUPPORTED` / `UNSUPPORTED` in `markdown.py`).  
+It shines at I/O, inventory, URL/image/HTML helpers, and conservative conversions you can reason about.
 
 ## License
 
