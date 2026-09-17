@@ -1,0 +1,16 @@
+{
+  "sample_inventory_keys": [
+    "headings",
+    "links",
+    "images",
+    "code_blocks",
+    "raw_html",
+    "urls"
+  ],
+  "roundtrip": {
+    "html_image": "<img src=\"logo.png\" alt=\"Logo\" title=\"t\" />",
+    "markdown_image": "![Logo](logo.png \"t\")",
+    "html_link": "<a href=\"https://example.com\" title=\"Ex\">Example</a>",
+    "markdown_link": "[Example](https://example.com \"Ex\")"
+  }
+}

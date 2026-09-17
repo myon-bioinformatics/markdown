@@ -1,0 +1,10 @@
+# TOML fixture for serialization round-trip tests (stdlib tomllib on 3.11+).
+
+[meta]
+name = "markdown-single-file"
+purpose = "fixture-for-tests"
+
+[expect]
+heading_title = "Hello"
+link_text = "Docs"
+image_alt = "Badge"

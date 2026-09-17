@@ -1,15 +1,122 @@
-# markdown_market.py
-# __all__: 3
+# markdown.py
+"""Stdlib-only Markdown utility functions.
+
+This module is intentionally a single file with no CLI / ``main`` entry point.
+It focuses on reusable helpers for Markdown I/O, structure extraction, and
+conservative HTML <-> Markdown conversions (links, images, common tags).
+
+It is **not** a full CommonMark implementation. Prefer the inventory helpers
+and tests to see what is and is not handled.
+"""
+
+from __future__ import annotations
 
 __all__ = [
     "save_markdown",
     "read_markdown",
     "extract_sections",
+    "split_sections",
+    "extract_links",
+    "extract_images",
+    "extract_code_blocks",
+    "extract_raw_html",
+    "extract_urls",
+    "inventory",
+    "make_link",
+    "make_image",
+    "html_image_to_markdown",
+    "markdown_image_to_html",
+    "html_link_to_markdown",
+    "markdown_link_to_html",
+    "html_to_markdown",
+    "markdown_to_html",
+    "is_probably_url",
+    "SUPPORTED",
+    "UNSUPPORTED",
 ]
 
-import os, re
+import html as html_module
+import re
+from html.parser import HTMLParser
 from pathlib import Path
+from typing import Any
+from urllib.parse import urljoin, urlparse
 
+# ---------------------------------------------------------------------------
+# Capability notes (kept in-module so a vendored single file stays honest)
+# ---------------------------------------------------------------------------
+
+SUPPORTED = {
+    "io": ["save_markdown", "read_markdown"],
+    "structure": [
+        "ATX headings (# ## ...)",
+        "fenced code blocks",
+        "inline links [text](url)",
+        "reference-style link definitions [id]: url",
+        "images ![alt](url)",
+        "raw HTML tags (best-effort extraction)",
+        "horizontal rules (--- *** ___)",
+    ],
+    "conversion": [
+        "link/image builders",
+        "HTML <a>/<img> <-> Markdown link/image",
+        "conservative html_to_markdown / markdown_to_html for common tags",
+    ],
+}
+
+UNSUPPORTED = {
+    "parser": [
+        "full CommonMark / GFM compliance",
+        "nested emphasis edge cases",
+        "tables (GFM)",
+        "task lists",
+        "footnotes",
+        "Math / mermaid rendering",
+    ],
+    "conversion": [
+        "lossy round-trips for complex nested HTML",
+        "JavaScript / SVG behavior preservation",
+        "CSS class and style fidelity",
+    ],
+}
+
+_HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
+_HR_RE = re.compile(r"^(?:\s*[-*_]){3,}\s*$")
+_FENCE_RE = re.compile(r"^(`{3,}|~{3,})(.*)$")
+_INLINE_LINK_RE = re.compile(
+    r"(?<!!)\[([^\]]*)\]\(([^)\s]+)(?:\s+\"([^\"]*)\")?\)"
+)
+_INLINE_IMAGE_RE = re.compile(
+    r"!\[([^\]]*)\]\(([^)\s]+)(?:\s+\"([^\"]*)\")?\)"
+)
+_LINKED_IMAGE_RE = re.compile(
+    r"\[(?:!\[[^\]]*\]\([^)]+\))\]\(([^)\s]+)(?:\s+\"([^\"]*)\")?\)"
+)
+_REF_DEF_RE = re.compile(
+    r"^\s*\[([^\]]+)\]:\s*(\S+)(?:\s+\"([^\"]*)\")?\s*$"
+)
+_REF_LINK_RE = re.compile(r"(?<!!)\[([^\]]+)\]\[([^\]]*)\]")
+_REF_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\[([^\]]+)\]")
+_ANGLE_URL_RE = re.compile(r"<(https?://[^>\s]+)>")
+_BARE_URL_RE = re.compile(r"(?<![\"'(\\[])(https?://[^\s)<>\"]+)")
+_HTML_TAG_RE = re.compile(r"</?([A-Za-z][A-Za-z0-9]*)\b[^>]*>", re.DOTALL)
+_HTML_IMG_RE = re.compile(
+    r"<img\b([^>]*)/?>",
+    re.IGNORECASE | re.DOTALL,
+)
+_HTML_A_RE = re.compile(
+    r"<a\b([^>]*)>(.*?)</a>",
+    re.IGNORECASE | re.DOTALL,
+)
+_ATTR_RE = re.compile(
+    r"""([^\s=]+)\s*=\s*(?:\"([^\"]*)\"|'([^']*)'|([^\s\"'>]+))""",
+    re.DOTALL,
+)
+
+
+# ---------------------------------------------------------------------------
+# I/O
+# ---------------------------------------------------------------------------
 
 def save_markdown(content: str, filepath: str) -> str:
     """Save Markdown content to a file."""
@@ -17,26 +124,23 @@ def save_markdown(content: str, filepath: str) -> str:
         path = Path(filepath).resolve()
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
-        return f"Saved successfully: {path}"
     except OSError as e:
         return f"Error saving file: {e}"
+    return f"Saved successfully: {path}"
+
 
 def read_markdown(filepath: str, count_hashtags: bool = False) -> dict:
-    """Read a Markdown file and optionally count hashtags.
-
-    Args:
-        filepath: The path to the Markdown file to read.
-        count_hashtags: If True, count the number of '#' characters used as
-                        heading markers (only leading '#' sequences per line).
+    """Read a Markdown file and optionally count heading ``#`` markers.
 
     Returns:
-        A dictionary with:
-            - "content" (str): The file content, or an error message.
-            - "hashtag_count" (int | None): Total count of leading '#' characters
-              across all heading lines, or None if count_hashtags is False.
-            - "success" (bool): True if the file was read successfully.
+        dict with keys ``content`` (str), ``hashtag_count`` (int | None),
+        ``success`` (bool).
     """
-    result = {"content": "", "hashtag_count": None, "success": False}
+    result: dict[str, Any] = {
+        "content": "",
+        "hashtag_count": None,
+        "success": False,
+    }
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             content = f.read()
@@ -54,22 +158,604 @@ def read_markdown(filepath: str, count_hashtags: bool = False) -> dict:
     return result
 
 
-def extract_sections(content: str) -> list:
-    """Extract section names (Markdown headings) from content.
+# ---------------------------------------------------------------------------
+# Structure extraction
+# ---------------------------------------------------------------------------
 
-    Args:
-        content: A string containing Markdown content.
-
-    Returns:
-        A list of dictionaries, each with:
-            - "level" (int): Heading level (1 for H1, 2 for H2, etc.).
-            - "title" (str): The heading text without leading '#' characters.
-    """
-    sections = []
+def extract_sections(content: str) -> list[dict[str, Any]]:
+    """Extract ATX heading names from Markdown content."""
+    sections: list[dict[str, Any]] = []
     for line in content.splitlines():
-        match = re.match(r"^(#{1,6})\s+(.*)", line)
+        match = _HEADING_RE.match(line)
         if match:
-            level = len(match.group(1))
-            title = match.group(2).strip()
-            sections.append({"level": level, "title": title})
+            sections.append(
+                {
+                    "level": len(match.group(1)),
+                    "title": match.group(2).strip(),
+                }
+            )
     return sections
+
+
+def split_sections(content: str) -> list[dict[str, Any]]:
+    """Split content into heading-delimited sections.
+
+    The prelude before the first heading is returned with ``level`` 0 and
+    an empty ``title`` when it is non-empty.
+    """
+    lines = content.splitlines(keepends=True)
+    parts: list[dict[str, Any]] = []
+    current = {"level": 0, "title": "", "content": ""}
+    body: list[str] = []
+
+    def flush() -> None:
+        text = "".join(body)
+        if current["level"] == 0 and current["title"] == "" and text.strip() == "":
+            return
+        item = dict(current)
+        item["content"] = text
+        parts.append(item)
+
+    for line in lines:
+        match = _HEADING_RE.match(line.rstrip("\n"))
+        if match:
+            flush()
+            current = {
+                "level": len(match.group(1)),
+                "title": match.group(2).strip(),
+                "content": "",
+            }
+            body = [line]
+        else:
+            body.append(line)
+    flush()
+    return parts
+
+
+def _parse_attrs(attr_text: str) -> dict[str, str]:
+    attrs: dict[str, str] = {}
+    for match in _ATTR_RE.finditer(attr_text):
+        key = match.group(1).lower()
+        value = match.group(2) or match.group(3) or match.group(4) or ""
+        attrs[key] = html_module.unescape(value)
+    return attrs
+
+
+def _reference_map(content: str) -> dict[str, dict[str, str]]:
+    refs: dict[str, dict[str, str]] = {}
+    for line in content.splitlines():
+        match = _REF_DEF_RE.match(line)
+        if match:
+            key = match.group(1).strip().lower()
+            refs[key] = {
+                "url": match.group(2).strip("<>"),
+                "title": match.group(3) or "",
+            }
+    return refs
+
+
+def extract_links(content: str) -> list[dict[str, Any]]:
+    """Extract inline and reference-style links (not bare images)."""
+    refs = _reference_map(content)
+    links: list[dict[str, Any]] = []
+
+    # Linked images: [![alt](img)](href) — record the outer link.
+    for match in _LINKED_IMAGE_RE.finditer(content):
+        links.append(
+            {
+                "text": "",
+                "url": match.group(1),
+                "title": match.group(2) or "",
+                "style": "linked-image",
+            }
+        )
+
+    # Mask constructs that would confuse the inline-link regex.
+    masked = _LINKED_IMAGE_RE.sub(lambda m: " " * len(m.group(0)), content)
+    masked = _INLINE_IMAGE_RE.sub(lambda m: " " * len(m.group(0)), masked)
+    masked = _REF_IMAGE_RE.sub(lambda m: " " * len(m.group(0)), masked)
+
+    for match in _INLINE_LINK_RE.finditer(masked):
+        text = match.group(1)
+        links.append(
+            {
+                "text": text,
+                "url": match.group(2),
+                "title": match.group(3) or "",
+                "style": "inline",
+            }
+        )
+
+    for match in _REF_LINK_RE.finditer(masked):
+        text = match.group(1)
+        key = (match.group(2) or text).strip().lower()
+        ref = refs.get(key, {})
+        links.append(
+            {
+                "text": text,
+                "url": ref.get("url", ""),
+                "title": ref.get("title", ""),
+                "style": "reference",
+                "ref": key,
+            }
+        )
+
+    for match in _HTML_A_RE.finditer(content):
+        attrs = _parse_attrs(match.group(1))
+        href = attrs.get("href", "")
+        if href:
+            links.append(
+                {
+                    "text": re.sub(r"<[^>]+>", "", match.group(2)).strip(),
+                    "url": href,
+                    "title": attrs.get("title", ""),
+                    "style": "html",
+                }
+            )
+    return links
+
+
+def extract_images(content: str) -> list[dict[str, Any]]:
+    """Extract Markdown and HTML images."""
+    refs = _reference_map(content)
+    images: list[dict[str, Any]] = []
+
+    for match in _INLINE_IMAGE_RE.finditer(content):
+        images.append(
+            {
+                "alt": match.group(1),
+                "url": match.group(2),
+                "title": match.group(3) or "",
+                "style": "inline",
+            }
+        )
+
+    for match in _REF_IMAGE_RE.finditer(content):
+        alt = match.group(1)
+        key = match.group(2).strip().lower()
+        ref = refs.get(key, {})
+        images.append(
+            {
+                "alt": alt,
+                "url": ref.get("url", ""),
+                "title": ref.get("title", ""),
+                "style": "reference",
+                "ref": key,
+            }
+        )
+
+    for match in _HTML_IMG_RE.finditer(content):
+        attrs = _parse_attrs(match.group(1))
+        src = attrs.get("src", "")
+        if src:
+            images.append(
+                {
+                    "alt": attrs.get("alt", ""),
+                    "url": src,
+                    "title": attrs.get("title", ""),
+                    "style": "html",
+                    "width": attrs.get("width"),
+                    "height": attrs.get("height"),
+                }
+            )
+    return images
+
+
+def extract_code_blocks(content: str) -> list[dict[str, Any]]:
+    """Extract fenced code blocks (``` or ~~~)."""
+    blocks: list[dict[str, Any]] = []
+    lines = content.splitlines()
+    i = 0
+    while i < len(lines):
+        match = _FENCE_RE.match(lines[i])
+        if not match:
+            i += 1
+            continue
+        fence = match.group(1)
+        info = match.group(2).strip()
+        lang = info.split()[0] if info else ""
+        body: list[str] = []
+        i += 1
+        while i < len(lines):
+            if lines[i].startswith(fence):
+                break
+            body.append(lines[i])
+            i += 1
+        blocks.append(
+            {
+                "language": lang,
+                "info": info,
+                "code": "\n".join(body),
+            }
+        )
+        i += 1
+    return blocks
+
+
+def extract_raw_html(content: str) -> list[dict[str, Any]]:
+    """Best-effort list of raw HTML tags found in the document."""
+    found: list[dict[str, Any]] = []
+    for match in _HTML_TAG_RE.finditer(content):
+        tag = match.group(1).lower()
+        snippet = match.group(0)
+        # Skip tags that appear inside fenced code by a cheap heuristic:
+        # handled via inventory after code stripping when needed.
+        found.append({"tag": tag, "snippet": snippet})
+    return found
+
+
+def extract_urls(content: str, *, base_url: str | None = None) -> list[str]:
+    """Collect unique URLs from links, images, autolinks, and bare URLs."""
+    urls: list[str] = []
+    seen: set[str] = set()
+
+    def add(url: str) -> None:
+        url = url.strip()
+        if not url:
+            return
+        if base_url:
+            url = urljoin(base_url, url)
+        if url not in seen:
+            seen.add(url)
+            urls.append(url)
+
+    for item in extract_links(content):
+        add(item.get("url", ""))
+    for item in extract_images(content):
+        add(item.get("url", ""))
+    for match in _ANGLE_URL_RE.finditer(content):
+        add(match.group(1))
+    for match in _BARE_URL_RE.finditer(content):
+        add(match.group(1).rstrip(".,;:)"))
+    return urls
+
+
+def inventory(content: str) -> dict[str, Any]:
+    """Summarize common Markdown constructs present in ``content``."""
+    sections = extract_sections(content)
+    links = extract_links(content)
+    images = extract_images(content)
+    codes = extract_code_blocks(content)
+    # Avoid counting HTML that only appears inside fenced code.
+    scrubbed = content
+    for block in codes:
+        scrubbed = scrubbed.replace(block["code"], "")
+    html_tags = extract_raw_html(scrubbed)
+    hr_count = sum(1 for line in content.splitlines() if _HR_RE.match(line))
+    return {
+        "headings": sections,
+        "heading_count": len(sections),
+        "links": links,
+        "link_count": len(links),
+        "images": images,
+        "image_count": len(images),
+        "code_blocks": codes,
+        "code_block_count": len(codes),
+        "raw_html": html_tags,
+        "raw_html_count": len(html_tags),
+        "horizontal_rule_count": hr_count,
+        "urls": extract_urls(content),
+        "supported": SUPPORTED,
+        "unsupported": UNSUPPORTED,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Builders & focused HTML <-> Markdown helpers
+# ---------------------------------------------------------------------------
+
+def make_link(text: str, url: str, title: str | None = None) -> str:
+    """Build a Markdown inline link."""
+    if title:
+        return f'[{text}]({url} "{title}")'
+    return f"[{text}]({url})"
+
+
+def make_image(alt: str, url: str, title: str | None = None) -> str:
+    """Build a Markdown image."""
+    if title:
+        return f'![{alt}]({url} "{title}")'
+    return f"![{alt}]({url})"
+
+
+def html_image_to_markdown(html: str) -> str:
+    """Convert an ``<img>`` tag (or HTML snippet containing one) to Markdown."""
+    match = _HTML_IMG_RE.search(html)
+    if not match:
+        return ""
+    attrs = _parse_attrs(match.group(1))
+    return make_image(attrs.get("alt", ""), attrs.get("src", ""), attrs.get("title") or None)
+
+
+def markdown_image_to_html(
+    markdown: str,
+    *,
+    width: str | None = None,
+    height: str | None = None,
+) -> str:
+    """Convert a Markdown image (or image URL string) to an ``<img>`` tag."""
+    match = _INLINE_IMAGE_RE.search(markdown.strip())
+    if match:
+        alt, url, title = match.group(1), match.group(2), match.group(3) or ""
+    else:
+        # Treat bare path/URL as image source.
+        alt, url, title = "", markdown.strip(), ""
+    attrs = [
+        f'src="{html_module.escape(url, quote=True)}"',
+        f'alt="{html_module.escape(alt, quote=True)}"',
+    ]
+    if title:
+        attrs.append(f'title="{html_module.escape(title, quote=True)}"')
+    if width:
+        attrs.append(f'width="{html_module.escape(width, quote=True)}"')
+    if height:
+        attrs.append(f'height="{html_module.escape(height, quote=True)}"')
+    return "<img " + " ".join(attrs) + " />"
+
+
+def html_link_to_markdown(html: str) -> str:
+    """Convert an ``<a>...</a>`` tag to a Markdown link."""
+    match = _HTML_A_RE.search(html)
+    if not match:
+        return ""
+    attrs = _parse_attrs(match.group(1))
+    text = re.sub(r"<[^>]+>", "", match.group(2)).strip()
+    return make_link(text, attrs.get("href", ""), attrs.get("title") or None)
+
+
+def markdown_link_to_html(markdown: str) -> str:
+    """Convert a Markdown inline link to an ``<a>`` tag."""
+    match = _INLINE_LINK_RE.search(markdown.strip())
+    if not match:
+        return ""
+    text, url, title = match.group(1), match.group(2), match.group(3) or ""
+    attrs = [f'href="{html_module.escape(url, quote=True)}"']
+    if title:
+        attrs.append(f'title="{html_module.escape(title, quote=True)}"')
+    return f"<a {' '.join(attrs)}>{html_module.escape(text)}</a>"
+
+
+# ---------------------------------------------------------------------------
+# Conservative HTML <-> Markdown (common tags only)
+# ---------------------------------------------------------------------------
+
+class _HTMLToMarkdownParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self._list_stack: list[str] = []
+        self._li_index: list[int] = []
+        self._in_pre = False
+        self._in_code = False
+        self._suppress = 0
+        self._link_href = ""
+        self._link_title = ""
+        self._link_open = False
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag = tag.lower()
+        attr = {k.lower(): (v or "") for k, v in attrs}
+        if tag in {"script", "style"}:
+            self._suppress += 1
+            return
+        if self._suppress:
+            return
+        if tag in {"h1", "h2", "h3", "h4", "h5", "h6"}:
+            level = int(tag[1])
+            self.parts.append("\n\n" + ("#" * level) + " ")
+        elif tag == "p":
+            self.parts.append("\n\n")
+        elif tag == "br":
+            self.parts.append("  \n")
+        elif tag == "hr":
+            self.parts.append("\n\n---\n\n")
+        elif tag in {"strong", "b"}:
+            self.parts.append("**")
+        elif tag in {"em", "i"}:
+            self.parts.append("*")
+        elif tag == "code" and not self._in_pre:
+            self.parts.append("`")
+            self._in_code = True
+        elif tag == "pre":
+            self._in_pre = True
+            self.parts.append("\n\n```\n")
+        elif tag == "a":
+            self.parts.append("[")
+            self._link_href = attr.get("href", "")
+            self._link_title = attr.get("title", "")
+            self._link_open = True
+        elif tag == "img":
+            self.parts.append(
+                make_image(
+                    attr.get("alt", ""),
+                    attr.get("src", ""),
+                    attr.get("title") or None,
+                )
+            )
+        elif tag in {"ul", "ol"}:
+            self._list_stack.append(tag)
+            self._li_index.append(0)
+            self.parts.append("\n")
+        elif tag == "li":
+            depth = max(len(self._list_stack) - 1, 0)
+            indent = "  " * depth
+            kind = self._list_stack[-1] if self._list_stack else "ul"
+            if kind == "ol":
+                self._li_index[-1] += 1
+                bullet = f"{self._li_index[-1]}."
+            else:
+                bullet = "-"
+            self.parts.append(f"\n{indent}{bullet} ")
+        elif tag == "blockquote":
+            self.parts.append("\n\n> ")
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if tag in {"script", "style"}:
+            self._suppress = max(0, self._suppress - 1)
+            return
+        if self._suppress:
+            return
+        if tag in {"h1", "h2", "h3", "h4", "h5", "h6", "p"}:
+            self.parts.append("\n\n")
+        elif tag in {"strong", "b"}:
+            self.parts.append("**")
+        elif tag in {"em", "i"}:
+            self.parts.append("*")
+        elif tag == "code" and not self._in_pre:
+            self.parts.append("`")
+            self._in_code = False
+        elif tag == "pre":
+            self.parts.append("\n```\n\n")
+            self._in_pre = False
+        elif tag == "a" and self._link_open:
+            if self._link_title:
+                self.parts.append(f']({self._link_href} "{self._link_title}")')
+            else:
+                self.parts.append(f"]({self._link_href})")
+            self._link_open = False
+        elif tag in {"ul", "ol"}:
+            if self._list_stack:
+                self._list_stack.pop()
+            if self._li_index:
+                self._li_index.pop()
+            self.parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if self._suppress:
+            return
+        if self._in_pre or self._in_code:
+            self.parts.append(data)
+        else:
+            self.parts.append(re.sub(r"\s+", " ", data))
+
+    def output(self) -> str:
+        text = "".join(self.parts)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        return text.strip() + "\n"
+
+
+def html_to_markdown(html: str) -> str:
+    """Conservatively convert common HTML tags to Markdown."""
+    parser = _HTMLToMarkdownParser()
+    parser.feed(html)
+    parser.close()
+    return parser.output()
+
+
+def _escape_html_text(text: str) -> str:
+    return html_module.escape(text, quote=False)
+
+
+def markdown_to_html(content: str) -> str:
+    """Conservatively convert a Markdown *subset* to HTML.
+
+    Handles ATX headings, fenced code, paragraphs, inline code, bold/italic,
+    links, images, thematic breaks, and simple bullet/numbered lists.
+    """
+    lines = content.splitlines()
+    out: list[str] = []
+    i = 0
+    in_list: str | None = None
+
+    def close_list() -> None:
+        nonlocal in_list
+        if in_list:
+            out.append(f"</{in_list}>")
+            in_list = None
+
+    def render_inline(text: str) -> str:
+        placeholders: list[str] = []
+
+        def stash(snippet: str) -> str:
+            placeholders.append(snippet)
+            return f"\x00PH{len(placeholders) - 1}\x00"
+
+        text = _INLINE_IMAGE_RE.sub(
+            lambda m: stash(markdown_image_to_html(m.group(0))),
+            text,
+        )
+        text = _INLINE_LINK_RE.sub(
+            lambda m: stash(markdown_link_to_html(m.group(0))),
+            text,
+        )
+        text = re.sub(
+            r"`([^`]+)`",
+            lambda m: stash(f"<code>{_escape_html_text(m.group(1))}</code>"),
+            text,
+        )
+        text = _escape_html_text(text)
+        text = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", text)
+        text = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"<em>\1</em>", text)
+        for index, snippet in enumerate(placeholders):
+            text = text.replace(f"\x00PH{index}\x00", snippet)
+        return text
+
+    while i < len(lines):
+        line = lines[i]
+        fence = _FENCE_RE.match(line)
+        if fence:
+            close_list()
+            fence_mark = fence.group(1)
+            info = fence.group(2).strip()
+            lang = info.split()[0] if info else ""
+            body: list[str] = []
+            i += 1
+            while i < len(lines) and not lines[i].startswith(fence_mark):
+                body.append(lines[i])
+                i += 1
+            code = _escape_html_text("\n".join(body))
+            cls = f' class="language-{html_module.escape(lang)}"' if lang else ""
+            out.append(f"<pre><code{cls}>{code}\n</code></pre>")
+            i += 1
+            continue
+
+        heading = _HEADING_RE.match(line)
+        if heading:
+            close_list()
+            level = len(heading.group(1))
+            title = render_inline(heading.group(2).strip())
+            out.append(f"<h{level}>{title}</h{level}>")
+            i += 1
+            continue
+
+        if _HR_RE.match(line):
+            close_list()
+            out.append("<hr />")
+            i += 1
+            continue
+
+        ul = re.match(r"^(\s*)[-*+]\s+(.*)$", line)
+        ol = re.match(r"^(\s*)\d+\.\s+(.*)$", line)
+        if ul or ol:
+            kind = "ul" if ul else "ol"
+            item = (ul or ol).group(2)  # type: ignore[union-attr]
+            if in_list != kind:
+                close_list()
+                out.append(f"<{kind}>")
+                in_list = kind
+            out.append(f"<li>{render_inline(item)}</li>")
+            i += 1
+            continue
+
+        if not line.strip():
+            close_list()
+            i += 1
+            continue
+
+        close_list()
+        para = [line]
+        i += 1
+        while i < len(lines) and lines[i].strip() and not _HEADING_RE.match(lines[i]) and not _FENCE_RE.match(lines[i]) and not _HR_RE.match(lines[i]) and not re.match(r"^(\s*)[-*+]\s+", lines[i]) and not re.match(r"^(\s*)\d+\.\s+", lines[i]):
+            para.append(lines[i])
+            i += 1
+        out.append(f"<p>{render_inline(' '.join(s.strip() for s in para))}</p>")
+
+    close_list()
+    return "\n".join(out) + ("\n" if out else "")
+
+
+def is_probably_url(value: str) -> bool:
+    """Return True if ``value`` looks like an http(s) URL."""
+    parsed = urlparse(value.strip())
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
