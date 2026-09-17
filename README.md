@@ -1,13 +1,19 @@
 # markdown
 
-**Single-file, stdlib-only Markdown helpers for Python.**  
-Copy `markdown.py` into your project (ironmate など) — no PyPI name clash with the popular `Markdown` parser, no runtime dependencies.
+stdlib だけで動く、関数提供に特化した Python Markdown ユーティリティ。
 
-生成AIや他リポジトリから参照・ベンダー配置される前提の「最強の1ファイル」を目指しています。CLI / `main` は持たず、関数提供に特化します。
+## GitHub About（推奨）
 
-## GitHub About
+> Stdlib-only Markdown helpers for Python: read/write, section extraction, and HTML↔Markdown utilities for URLs and images. Functions only—no CLI; verified by tests.
 
-> Single-file, stdlib-only Markdown helpers for Python: I/O, structure extraction, and HTML↔Markdown utilities. Functions only—no CLI; verified by tests.
+## このリポジトリの立ち位置
+
+ironmate などで使っていた `markdown.py` を、そのままのファイル名で pip 配布できるように育てるためのライブラリです。
+
+- **標準ライブラリ前提** — 実行時依存を増やさず、できる範囲で機能を厚くする
+- **関数提供に特化** — `main` / CLI エントリポイントは持たない。確認はテスト（および任意で Streamlit / Gradio のフロント確認）で行う
+- **想定 API の方向性** — 既存の read / write / section 抽出に加え、HTML↔Markdown（URL・画像ファイルなど）の変換ヘルパを拡充していく
+- **ascii_artist.py** — 本パッケージに同梱するか、別配置にするかは未決（要相談）
 
 ## Layout
 
@@ -49,8 +55,6 @@ CI runs **pytest + PyYAML** (and stdlib `tomllib` / `json`). Gradio / Streamlit 
 
 This is **not** a full CommonMark/GFM engine (see `SUPPORTED` / `UNSUPPORTED` in `markdown.py`).  
 It shines at I/O, inventory, URL/image/HTML helpers, and conservative conversions you can reason about.
-
-`ascii_artist.py` is **out of scope** for this single file unless we later decide otherwise.
 
 ## License
 
