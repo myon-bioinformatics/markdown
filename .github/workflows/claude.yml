@@ -1,4 +1,3 @@
-# .github/workflows/claude.yml
 name: claude
 
 on:
@@ -12,8 +11,8 @@ on:
 jobs:
   claude:
     if: >-
-      contains(github.event.comment.body, '@claude') ||
-      contains(github.event.issue.body, '@claude')
+      (github.event_name == 'issues' && contains(github.event.issue.body, '@claude')) ||
+      (github.event_name != 'issues' && contains(github.event.comment.body, '@claude'))
     runs-on: ubuntu-latest
     permissions:
       contents: write
