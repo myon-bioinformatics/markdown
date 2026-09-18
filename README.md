@@ -35,6 +35,16 @@ sections = md.extract_sections(open("out.md", encoding="utf-8").read())
 inv = md.inventory(open("README.md", encoding="utf-8").read())
 print(md.html_image_to_markdown('<img src="a.png" alt="A" />'))
 print(md.make_link("Docs", "https://example.com"))
+
+# build Markdown from scratch
+report = md.section(
+    "Summary",
+    [
+        md.key_value_table({"mode": "train", "epochs": 10}),
+        md.bullet_list(["loss down", "iou up"]),
+    ],
+)
+print(report)
 ```
 
 ## Test / demo
@@ -54,7 +64,10 @@ CI runs **pytest + PyYAML** (and stdlib `tomllib` / `json`). Gradio / Streamlit 
 ## Capability stance
 
 This is **not** a full CommonMark/GFM engine (see `SUPPORTED` / `UNSUPPORTED` in `markdown.py`).  
-It shines at I/O, inventory, URL/image/HTML helpers, and conservative conversions you can reason about.
+It shines at I/O, inventory, URL/image/HTML helpers, conservative conversions, and generating
+Markdown from scratch (`heading`, `bold`/`italic`/`strikethrough`, `blockquote`, `horizontal_rule`,
+`bullet_list`/`numbered_list`, `code_block`, `table`/`key_value_table`, `section`) — all of which
+you can reason about.
 
 ## License
 

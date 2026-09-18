@@ -31,6 +31,18 @@ __all__ = [
     "html_to_markdown",
     "markdown_to_html",
     "is_probably_url",
+    "heading",
+    "bold",
+    "italic",
+    "strikethrough",
+    "blockquote",
+    "horizontal_rule",
+    "bullet_list",
+    "numbered_list",
+    "code_block",
+    "table",
+    "key_value_table",
+    "section",
     "SUPPORTED",
     "UNSUPPORTED",
 ]
@@ -61,6 +73,13 @@ SUPPORTED = {
         "link/image builders",
         "HTML <a>/<img> <-> Markdown link/image",
         "conservative html_to_markdown / markdown_to_html for common tags",
+    ],
+    "generation": [
+        "heading / bold / italic / strikethrough / blockquote / horizontal_rule",
+        "bullet_list / numbered_list",
+        "code_block",
+        "table / key_value_table",
+        "section (heading + blocks)",
     ],
 }
 
@@ -513,6 +532,101 @@ def markdown_link_to_html(markdown: str) -> str:
     if title:
         attrs.append(f'title="{html_module.escape(title, quote=True)}"')
     return f"<a {' '.join(attrs)}>{html_module.escape(text)}</a>"
+
+
+# ---------------------------------------------------------------------------
+# Markdown generation building blocks
+# ---------------------------------------------------------------------------
+
+def heading(text: str, level: int = 1) -> str:
+    """Build an ATX heading (``level`` is clamped to 1-6).
+
+    >>> heading("Title")
+    '# Title\\n'
+    >>> heading("Sub", level=2)
+    '## Sub\\n'
+    """
+    level = max(1, min(level, 6))
+    return "#" * level + " " + str(text) + "\n"
+
+
+def bold(text: str) -> str:
+    """Wrap ``text`` in ``**bold**`` markers."""
+    return f"**{text}**"
+
+
+def italic(text: str) -> str:
+    """Wrap ``text`` in ``*italic*`` markers."""
+    return f"*{text}*"
+
+
+def strikethrough(text: str) -> str:
+    """Wrap ``text`` in ``~~strikethrough~~`` markers."""
+    return f"~~{text}~~"
+
+
+def blockquote(text: str) -> str:
+    """Prefix every line of ``text`` with ``> `` to form a blockquote."""
+    lines = str(text).splitlines() or [""]
+    return "\n".join(f"> {line}" if line else ">" for line in lines) + "\n"
+
+
+def horizontal_rule() -> str:
+    """Return a thematic break (``---``)."""
+    return "---\n"
+
+
+def bullet_list(items: Any) -> str:
+    """Build an unordered (``-``) list from an iterable of strings."""
+    lines = [f"- {item}" for item in items]
+    return "\n".join(lines) + ("\n" if lines else "")
+
+
+def numbered_list(items: Any) -> str:
+    """Build an ordered (``1.``) list from an iterable of strings."""
+    lines = [f"{i}. {item}" for i, item in enumerate(items, start=1)]
+    return "\n".join(lines) + ("\n" if lines else "")
+
+
+def code_block(code: str, lang: str = "") -> str:
+    """Wrap ``code`` in a fenced code block, optionally tagged with ``lang``."""
+    return f"```{lang}\n{code}\n```\n"
+
+
+def table(headers: Any, rows: Any) -> str:
+    """Build a Markdown (GFM-style) table.
+
+    ``headers`` is a sequence of column names; ``rows`` is a sequence of
+    sequences of cell values (converted with ``str``). Short rows are padded
+    with empty cells; extra cells beyond ``len(headers)`` are dropped.
+
+    >>> table(["a", "b"], [[1, 2], [3, 4]])
+    '| a | b |\\n| --- | --- |\\n| 1 | 2 |\\n| 3 | 4 |\\n'
+    """
+    headers = [str(h) for h in headers]
+    if not headers:
+        return ""
+    out = ["| " + " | ".join(headers) + " |", "| " + " | ".join(["---"] * len(headers)) + " |"]
+    for row in rows:
+        cells = [str(v) for v in row][: len(headers)]
+        cells += [""] * (len(headers) - len(cells))
+        out.append("| " + " | ".join(cells) + " |")
+    return "\n".join(out) + "\n"
+
+
+def key_value_table(
+    data: Any,
+    key_label: str = "Key",
+    value_label: str = "Value",
+) -> str:
+    """Render a mapping as a two-column Markdown table via ``table``."""
+    rows = [[key, value] for key, value in dict(data).items()]
+    return table([key_label, value_label], rows)
+
+
+def section(title: str, blocks: Any, level: int = 2) -> str:
+    """Join a heading with a sequence of pre-rendered Markdown blocks."""
+    return heading(title, level=level) + "".join(blocks)
 
 
 # ---------------------------------------------------------------------------
