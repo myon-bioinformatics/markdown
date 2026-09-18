@@ -16,6 +16,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -96,3 +98,19 @@ def test_language_info_string_is_preserved_after_the_fence() -> None:
 
     nested = md.code_block("```\nx\n```", lang="text")
     assert nested.splitlines()[0] == "````text"
+
+
+def test_empty_fence_char_raises_instead_of_crashing_the_regex() -> None:
+    with pytest.raises(ValueError, match="fence_char"):
+        md.code_block("plain", fence_char="")
+
+
+def test_multi_character_fence_char_raises() -> None:
+    """A multi-char fence_char would build a line _FENCE_RE never recognizes as a fence at all."""
+    with pytest.raises(ValueError, match="fence_char"):
+        md.code_block("plain", fence_char="ab")
+
+
+def test_non_fence_single_character_raises() -> None:
+    with pytest.raises(ValueError, match="fence_char"):
+        md.code_block("plain", fence_char="-")

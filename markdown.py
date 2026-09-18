@@ -611,17 +611,28 @@ def inline_code(text: str) -> str:
     return f"`{text}`"
 
 
+_FENCE_CHARS = ("`", "~")
+
+
 def _adaptive_fence(code: str, fence_char: str = "`") -> str:
     """A fence of ``fence_char`` one longer than the longest run already in ``code``.
 
     ``_FENCE_RE`` (and this module's own fence-closing scan) accept any
-    length-3-or-more fence, but only close on a line starting with the exact
-    opening fence string -- so a fixed triple-backtick fence is ambiguous the
-    moment ``code`` itself contains a triple-backtick run (e.g. Markdown
-    source shown as an example inside a code block). Picking a fence longer
-    than anything already in ``code`` keeps that scan unambiguous with no
-    changes to the reading side.
+    length-3-or-more fence, but only close on a line starting with a run of
+    the same fence character at least as long as the opening fence -- so a
+    fixed triple-backtick fence is ambiguous the moment ``code`` itself
+    contains a triple-backtick run (e.g. Markdown source shown as an example
+    inside a code block). Picking a fence longer than anything already in
+    ``code`` keeps that scan unambiguous with no changes to the reading side.
+
+    ``fence_char`` must be a single backtick or tilde -- the only two
+    characters Markdown recognizes as a fence at all (``_FENCE_RE``). Any
+    other value raises ``ValueError`` rather than silently building a fence
+    nothing would ever close (a multi-character ``fence_char`` isn't a valid
+    fence line, and an empty one breaks the run-length regex outright).
     """
+    if fence_char not in _FENCE_CHARS:
+        raise ValueError(f"fence_char must be one of {_FENCE_CHARS!r}, got {fence_char!r}")
     longest = 0
     for run in re.findall(re.escape(fence_char) + r"+", code):
         longest = max(longest, len(run))
@@ -638,6 +649,9 @@ def code_block(code: str, lang: str = "", *, fence_char: str = "`") -> str:
     CommonMark itself requires. Plain content keeps the original triple
     fence, so existing callers see no change. Pass ``fence_char="~"`` for a
     tilde fence (e.g. when ``code`` itself contains backtick runs).
+
+    :raises ValueError: if ``fence_char`` isn't ``"`"`` or ``"~"`` -- the
+        only two characters Markdown recognizes as a fence.
     """
     fence = _adaptive_fence(code, fence_char)
     return f"{fence}{lang}\n{code}\n{fence}\n"
