@@ -1,3 +1,12 @@
+"""Verify the real Gradio app's wiring (Blocks -> event handler -> outputs).
+
+No browser, no clicking: ``gradio_client`` talks to the launched app's own
+HTTP/websocket API, the same interface a real browser session would use,
+so this exercises the actual ``btn.click(...)`` wiring in
+``demos/gradio_app.py`` instead of only the ``analyze()`` function directly
+(see ``tests/test_demo_logic.py`` for that plain-function-call coverage).
+"""
+
 from __future__ import annotations
 
 import sys
@@ -7,7 +16,7 @@ from pathlib import Path
 import pytest
 
 pytest.importorskip("gradio")
-pytest.importorskip("playwright.sync_api")
+gradio_client = pytest.importorskip("gradio_client")
 
 ROOT = Path(__file__).resolve().parents[2]
 for path in (str(ROOT), str(ROOT / "demos")):
@@ -18,12 +27,12 @@ import gradio_app  # noqa: E402
 
 
 @pytest.fixture()
-def gradio_url(free_port):
-    port = free_port
+def gradio_client_(free_port):
     demo = gradio_app.build_app()
+    demo.queue()
     demo.launch(
         server_name="127.0.0.1",
-        server_port=port,
+        server_port=free_port,
         prevent_thread_lock=True,
         show_error=True,
         quiet=True,
@@ -31,49 +40,17 @@ def gradio_url(free_port):
     )
     try:
         time.sleep(1)  # give the server a moment before the first request
-        yield f"http://127.0.0.1:{port}"
+        yield gradio_client.Client(f"http://127.0.0.1:{free_port}/")
     finally:
         demo.close()
 
 
-def test_gradio_analyze_populates_outputs(gradio_url, browser) -> None:
-    """Fill the Markdown textbox, click Analyze, and check every output panel."""
-    page = browser.new_page()
-    try:
-        page.goto(gradio_url, wait_until="networkidle")
-
-        page.get_by_label("Markdown", exact=True).fill(
-            "# Title\n\n[docs](https://example.com)\n\n![alt text](img.png)\n"
-        )
-        page.get_by_role("button", name="Analyze").click()
-        page.wait_for_function(
-            "document.querySelector('.cm-content')?.textContent.includes('heading_count')"
-        )
-
-        assert page.get_by_label("Headings").input_value() == "# Title"
-        assert page.get_by_label("Links").input_value() == "- docs: https://example.com"
-        assert page.get_by_label("Images").input_value() == "- alt text: img.png"
-
-        summary_text = page.locator(".cm-content").first.inner_text()
-        assert '"heading_count": 1' in summary_text
-        assert '"link_count": 1' in summary_text
-        assert '"image_count": 1' in summary_text
-        assert "https://example.com" in summary_text
-    finally:
-        page.close()
+def test_gradio_api_matches_direct_call(gradio_client_) -> None:
+    text = "# Title\n\n[docs](https://example.com)\n\n![alt text](img.png)\n"
+    api_result = gradio_client_.predict(text, None, api_name="/_run")
+    assert tuple(api_result) == gradio_app.analyze(text)
 
 
-def test_gradio_analyze_empty_input_shows_placeholders(gradio_url, browser) -> None:
-    page = browser.new_page()
-    try:
-        page.goto(gradio_url, wait_until="networkidle")
-        page.get_by_label("Markdown", exact=True).fill("")
-        page.get_by_role("button", name="Analyze").click()
-        page.wait_for_function(
-            "document.querySelector('.cm-content')?.textContent.includes('heading_count')"
-        )
-        assert page.get_by_label("Headings").input_value() == "(none)"
-        assert page.get_by_label("Links").input_value() == "(none)"
-        assert page.get_by_label("Images").input_value() == "(none)"
-    finally:
-        page.close()
+def test_gradio_api_empty_input_matches_direct_call(gradio_client_) -> None:
+    api_result = gradio_client_.predict("", None, api_name="/_run")
+    assert tuple(api_result) == gradio_app.analyze("")
