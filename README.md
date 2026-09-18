@@ -25,6 +25,7 @@ ironmate などで使っていた `markdown.py` を、そのままのファイ�
 | `demos/gradio_app.py` | Optional: paste/upload → instant analysis. `analyze()` has zero UI deps — call it directly |
 | `demos/streamlit_app.py` | Optional: sectioned headings/links/images/HTML/code view. `build_view()` has zero UI deps — call it directly |
 | `demos/chat_ui_demo.py` | Optional: generic mock chat screen — assistant replies built with `markdown.py`'s generation helpers, rendered by Gradio's `Chatbot` |
+| `demos/openai_compat_mock.py` | Optional: OpenAI-compatible chat completions server (stdlib only) so a real chat product can be pointed at `render_assistant_turn()`'s output instead of a real LLM |
 
 ## Quick use
 
@@ -161,6 +162,41 @@ pytest tests/test_benchmark_commonmark.py tests/test_benchmark_realworld.py test
 All three run in the default `pytest` — no extra dependency installs. `test_benchmark_html_roundtrip.py`
 is a separate, exploratory HTML → Markdown → HTML round trip; it's deliberately not part of the
 PASS/DEGRADED/UNSUPPORTED/FAIL grading above.
+
+## Real chat product smoke test (Open WebUI, in Docker)
+
+Every other frontend test here either has nothing to click (`demos/gradio_app.py` /
+`demos/streamlit_app.py`) or clicks through a mock chat screen this repo itself built
+(`demos/chat_ui_demo.py`). `tests/real_chat_ui/test_openwebui_docker.py` goes one step further:
+it drives a **real, unmodified Open WebUI**, running from its own published Docker image, and
+verifies *that actual product* renders `markdown.py`-generated Markdown correctly — not a mock of
+it.
+
+`demos/openai_compat_mock.py` is a small stdlib-only OpenAI-compatible chat completions server
+(`GET /v1/models`, `POST /v1/chat/completions`, streaming and non-streaming) that reuses
+`chat_ui_demo.py`'s own `render_assistant_turn()` keyword logic, so Open WebUI's "model" reply is
+the exact same deterministic Markdown the generic mock demo already uses — no real LLM, no network
+call out. `docker/openwebui-smoke/docker-compose.yml` runs Open WebUI with `WEBUI_AUTH=False`
+(skips the signup/login screen entirely) and `OPENAI_API_BASE_URLS`/`DEFAULT_MODELS` pre-pointed at
+that mock backend, so there's no interactive setup to automate.
+
+```bash
+python demos/openai_compat_mock.py &
+docker compose -f docker/openwebui-smoke/docker-compose.yml up -d
+# wait for http://127.0.0.1:3000/health
+OPEN_WEBUI_BASE_URL=http://127.0.0.1:3000 pytest tests/real_chat_ui/test_openwebui_docker.py -v
+docker compose -f docker/openwebui-smoke/docker-compose.yml down -v
+```
+
+These tests skip cleanly (`OPEN_WEBUI_BASE_URL` unset) everywhere else, including the default
+`pytest` run — they only run in the `real-chat-ui-smoke` GitHub Actions workflow
+(`workflow_dispatch` only: a full container + browser run is too slow/heavy to gate every push or
+PR, the same policy `frontend-smoke` already uses) or a manual local run as above. On a failure,
+that workflow uploads a screenshot and the container logs as artifacts.
+
+LibreChat is a planned second target here (see `docs`-equivalent notes in
+[mcp-toolcall-lab](https://github.com/myon-bioinformatics/mcp-toolcall-lab)'s own LibreChat
+integration for the parallel on that side) — not yet wired up in this repo.
 
 ## Capability stance
 

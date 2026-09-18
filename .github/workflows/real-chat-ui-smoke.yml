@@ -1,0 +1,78 @@
+name: real-chat-ui-smoke
+
+# Runs a REAL Open WebUI in Docker (unmodified, from its own published image)
+# against demos/openai_compat_mock.py, and drives it with Playwright to verify
+# it actually renders markdown.py-generated Markdown correctly -- not this
+# repo's own generic mock chat UI (demos/chat_ui_demo.py), the real product.
+#
+# workflow_dispatch only: spinning up a full container + browser automation
+# run is too slow/heavy for every push or PR, matching this repo's existing
+# frontend-smoke job's own policy. Never gates a PR.
+on:
+  workflow_dispatch:
+
+jobs:
+  openwebui-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test + Playwright deps
+        run: |
+          pip install -r requirements-dev.txt
+          pip install -r requirements-frontend.txt
+          playwright install --with-deps chromium
+
+      - name: Start the OpenAI-compatible mock backend
+        run: |
+          python demos/openai_compat_mock.py > /tmp/mock-backend.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8090/v1/models > /dev/null && break
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:8090/v1/models
+
+      - name: Start Open WebUI
+        working-directory: docker/openwebui-smoke
+        run: docker compose up -d
+
+      - name: Wait for Open WebUI
+        run: |
+          for i in $(seq 1 60); do
+            curl -sf http://127.0.0.1:3000/health > /dev/null && break
+            sleep 2
+          done
+          curl -sf http://127.0.0.1:3000/health
+
+      - name: Run the real Open WebUI Playwright smoke test
+        env:
+          OPEN_WEBUI_BASE_URL: http://127.0.0.1:3000
+        run: pytest -q tests/real_chat_ui/test_openwebui_docker.py -v
+
+      - name: Dump logs and a screenshot on failure
+        if: failure()
+        working-directory: docker/openwebui-smoke
+        run: |
+          echo "::group::mock backend log"
+          cat /tmp/mock-backend.log || true
+          echo "::endgroup::"
+          echo "::group::open-webui container log"
+          docker compose logs --no-color || true
+          echo "::endgroup::"
+
+      - name: Upload failure screenshot
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openwebui-smoke-failure
+          path: |
+            /tmp/mock-backend.log
+            test-results/
+          if-no-files-found: ignore
+
+      - name: Tear down
+        if: always()
+        working-directory: docker/openwebui-smoke
+        run: docker compose down -v
