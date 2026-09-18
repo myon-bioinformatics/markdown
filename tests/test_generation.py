@@ -70,6 +70,33 @@ def test_key_value_table() -> None:
     assert out == "| Key | Value |\n| --- | --- |\n| mode | train |\n| epochs | 10 |\n"
 
 
+def test_md_table_header_and_rows() -> None:
+    out = md.md_table(["name", "val"], ["loss", "0.01"], ["iou", "0.85"])
+    assert out == "| name | val |\n| --- | --- |\n| loss | 0.01 |\n| iou | 0.85 |\n"
+
+
+def test_md_table_dict_records() -> None:
+    out = md.md_table({"name": "loss", "val": "0.01"}, {"name": "iou", "val": "0.85"})
+    assert out == "| name | val |\n| --- | --- |\n| loss | 0.01 |\n| iou | 0.85 |\n"
+
+
+def test_md_table_scalar_fallback_and_empty() -> None:
+    assert md.md_table("a", "b") == "| value |\n| --- |\n| a |\n| b |\n"
+    assert md.md_table() == ""
+
+
+def test_md_kv_alternating_and_dict_mixed() -> None:
+    out = md.md_kv("mode", "train", "epochs", 10)
+    assert out == "| Key | Value |\n| --- | --- |\n| mode | train |\n| epochs | 10 |\n"
+    out2 = md.md_kv({"mode": "train"}, "device", "cuda")
+    assert out2 == "| Key | Value |\n| --- | --- |\n| mode | train |\n| device | cuda |\n"
+
+
+def test_md_kv_trailing_key_without_value() -> None:
+    out = md.md_kv("mode", "train", "orphan")
+    assert out == "| Key | Value |\n| --- | --- |\n| mode | train |\n| orphan |  |\n"
+
+
 def test_section_joins_blocks() -> None:
     out = md.section("Summary", [md.bullet_list(["ok"]), md.horizontal_rule()])
     assert out == "## Summary\n" + "- ok\n" + "---\n"
@@ -96,6 +123,8 @@ def test_generation_functions_exposed_in_all() -> None:
         "json_block",
         "table",
         "key_value_table",
+        "md_table",
+        "md_kv",
         "status_line",
         "section",
         "wrap_section",

@@ -47,6 +47,8 @@ __all__ = [
     "json_block",
     "status_line",
     "wrap_section",
+    "md_table",
+    "md_kv",
     "SUPPORTED",
     "UNSUPPORTED",
 ]
@@ -84,6 +86,7 @@ SUPPORTED = {
         "bullet_list / numbered_list",
         "inline_code / code_block / json_block",
         "table / key_value_table",
+        "md_table / md_kv (*args-friendly wrappers, no list/dict pre-building needed)",
         "status_line",
         "section (heading + blocks) / wrap_section (tool-detectable markers)",
     ],
@@ -639,6 +642,70 @@ def key_value_table(
     """Render a mapping as a two-column Markdown table via ``table``."""
     rows = [[key, value] for key, value in dict(data).items()]
     return table([key_label, value_label], rows)
+
+
+def _record_to_cells(record: Any) -> list[str]:
+    if isinstance(record, dict):
+        return [str(v) for v in record.values()]
+    if isinstance(record, (list, tuple)):
+        return [str(v) for v in record]
+    return [str(record)]
+
+
+def md_table(*headers_and_rows: Any) -> str:
+    """``*args`` version of ``table`` — pass values directly, no list needed.
+
+    Dispatches on the first argument:
+
+    - a ``dict`` -> every argument is a record; headers come from the first
+      record's keys, and each record's ``.values()`` become that row's cells.
+    - a ``list``/``tuple`` -> treated as the header row; the remaining
+      arguments are data rows (each a list/tuple of cells, a dict of values,
+      or a single scalar rendered as a one-cell row).
+    - anything else -> every argument becomes a single-cell row under a
+      generic ``value`` header.
+
+    >>> md_table(["name", "val"], ["loss", "0.01"], ["iou", "0.85"])
+    '| name | val |\\n| --- | --- |\\n| loss | 0.01 |\\n| iou | 0.85 |\\n'
+    >>> md_table({"name": "loss", "val": "0.01"}, {"name": "iou", "val": "0.85"})
+    '| name | val |\\n| --- | --- |\\n| loss | 0.01 |\\n| iou | 0.85 |\\n'
+    """
+    if not headers_and_rows:
+        return ""
+
+    first = headers_and_rows[0]
+    if isinstance(first, dict):
+        headers = [str(k) for k in first.keys()]
+        rows = [_record_to_cells(rec) for rec in headers_and_rows]
+        return table(headers, rows)
+
+    if isinstance(first, (list, tuple)):
+        headers = [str(h) for h in first]
+        rows = [_record_to_cells(rec) for rec in headers_and_rows[1:]]
+        return table(headers, rows)
+
+    return table(["value"], [[str(v)] for v in headers_and_rows])
+
+
+def md_kv(*pairs: Any, key_label: str = "Key", value_label: str = "Value") -> str:
+    """``*args`` version of ``key_value_table`` — pass ``key, value`` pairs or dicts.
+
+    Alternating positional ``key, value`` arguments and ``dict`` arguments can
+    be freely mixed; a trailing key with no value gets an empty string.
+
+    >>> md_kv("mode", "train", "epochs", 10)
+    '| Key | Value |\\n| --- | --- |\\n| mode | train |\\n| epochs | 10 |\\n'
+    >>> md_kv({"mode": "train"}, "device", "cuda")
+    '| Key | Value |\\n| --- | --- |\\n| mode | train |\\n| device | cuda |\\n'
+    """
+    merged: dict[str, Any] = {}
+    it = iter(pairs)
+    for item in it:
+        if isinstance(item, dict):
+            merged.update(item)
+        else:
+            merged[str(item)] = next(it, "")
+    return key_value_table(merged, key_label=key_label, value_label=value_label)
 
 
 def status_line(ok: bool, msg_ok: str, msg_ng: str) -> str:

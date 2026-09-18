@@ -67,7 +67,8 @@ This is **not** a full CommonMark/GFM engine (see `SUPPORTED` / `UNSUPPORTED` in
 It shines at I/O, inventory, URL/image/HTML helpers, conservative conversions, and generating
 Markdown from scratch (`heading`, `bold`/`italic`/`strikethrough`, `blockquote`, `horizontal_rule`,
 `bullet_list`/`numbered_list`, `inline_code`/`code_block`/`json_block`, `table`/`key_value_table`,
-`status_line`, `section`/`wrap_section`) — all of which you can reason about.
+`md_table`/`md_kv` (`*args`-friendly, no list/dict pre-building needed), `status_line`,
+`section`/`wrap_section`) — all of which you can reason about.
 
 ## License
 
