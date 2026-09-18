@@ -11,7 +11,7 @@ stdlib だけで動く、関数提供に特化した Python Markdown ユーテ�
 ironmate などで使っていた `markdown.py` を、そのままのファイル名で pip 配布できるように育てるためのライブラリです。
 
 - **標準ライブラリ前提** — 実行時依存を増やさず、できる範囲で機能を厚くする
-- **関数提供に特化** — `main` / CLI エントリポイントは持たない。確認はテスト（および任意で Streamlit / Gradio のフロント確認）で行う
+- **関数提供に特化** — `main` / CLI エントリポイントは持たない。確認はテスト（`demos/*.py` の実処理もブラウザ不要のプレーンな関数呼び出しとして直接検証、任意で Streamlit / Gradio のフロント確認も可能）で行う
 - **想定 API の方向性** — 既存の read / write / section 抽出に加え、HTML↔Markdown（URL・画像ファイルなど）の変換ヘルパを拡充していく
 - **ascii_artist.py** — 本パッケージに同梱するか、別配置にするかは未決（要相談）
 
@@ -22,8 +22,8 @@ ironmate などで使っていた `markdown.py` を、そのままのファイ�
 | `markdown.py` | **The product** — vendored single module |
 | `tests/` | pytest = correctness |
 | `fixtures/` | Famous-README-inspired offline snippets + YAML/JSON/TOML |
-| `demos/gradio_app.py` | Optional: paste/upload → instant analysis |
-| `demos/streamlit_app.py` | Optional: sectioned headings/links/images/HTML/code view |
+| `demos/gradio_app.py` | Optional: paste/upload → instant analysis. `analyze()` has zero UI deps — call it directly |
+| `demos/streamlit_app.py` | Optional: sectioned headings/links/images/HTML/code view. `build_view()` has zero UI deps — call it directly |
 | `demos/chat_ui_demo.py` | Optional: generic mock chat screen — assistant replies built with `markdown.py`'s generation helpers, rendered by Gradio's `Chatbot` |
 
 ## Quick use
@@ -54,14 +54,35 @@ print(report)
 pip install -r requirements-dev.txt
 pytest
 
-# optional frontends
+# optional frontends (only needed to see the actual UI — not to verify behavior)
 pip install -r requirements-frontend.txt
 python demos/gradio_app.py
 streamlit run demos/streamlit_app.py
 python demos/chat_ui_demo.py   # generic mock chat UI (gr.Chatbot)
+
+# verify demo behavior without a browser or either frontend framework installed:
+# analyze()/build_view() are plain functions, so a one-liner is enough.
+python -c "import sys; sys.path.insert(0, 'demos'); import gradio_app; \
+print(gradio_app.analyze('# Hi\n\n[x](https://example.com)\n'))"
+
+# optional: verify each app's real wiring with no browser, no clicking, no JS —
+# gradio_client / curl hit Gradio's own HTTP API directly; AppTest runs the
+# Streamlit script headless; curl checks Streamlit's HTTP health + index.
+pytest tests/frontend
 ```
 
-CI runs **pytest + PyYAML** (and stdlib `tomllib` / `json`). Gradio / Streamlit stay optional (`workflow_dispatch` / local smoke).
+Gradio's backend is a plain FastAPI app, so `tests/frontend/test_gradio_curl.py` drives it with
+nothing but `curl` (POST to start a job, GET an SSE stream for the result) — no Python client
+library needed, just what's already on any Ubuntu box. Streamlit's interactive reruns are a
+stateful websocket protocol rather than a request/response API, so `AppTest` (not curl) is what
+actually exercises its widgets; `test_streamlit_curl.py` uses `curl` for what *is* plain HTTP
+there — the health endpoint and initial page. `tests/test_demo_logic.py` covers `analyze()` /
+`build_view()` directly, with no frontend dependency installed at all.
+
+CI runs **pytest + PyYAML** (and stdlib `tomllib` / `json`), which already covers `demos/*.py`'s
+real logic via `tests/test_demo_logic.py` — no extra dependency installs needed. Gradio / Streamlit
+themselves (the actual UI, not its behavior) — including the browser-free `tests/frontend` wiring
+checks — stay optional (`workflow_dispatch` / local smoke).
 
 `demos/chat_ui_demo.py` is the one demo in this repo with an actual chat screen
 (a bubble-history `gr.Chatbot`, not tied to any specific product), so it's also

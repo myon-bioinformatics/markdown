@@ -37,3 +37,7 @@ jobs:
         run: |
           python -c "import ast, pathlib; ast.parse(pathlib.Path('demos/gradio_app.py').read_text())"
           python -c "import ast, pathlib; ast.parse(pathlib.Path('demos/streamlit_app.py').read_text())"
+      - name: Install Playwright's Chromium
+        run: playwright install --with-deps chromium
+      - name: Run Gradio/Streamlit/chat UI frontend tests
+        run: pytest -q tests/frontend
