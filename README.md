@@ -47,9 +47,15 @@ pytest
 pip install -r requirements-frontend.txt
 python demos/gradio_app.py
 streamlit run demos/streamlit_app.py
+
+# optional: browser-driven UI tests for both frontends (Playwright)
+playwright install chromium
+pytest tests/frontend
 ```
 
-CI runs **pytest + PyYAML** (and stdlib `tomllib` / `json`). Gradio / Streamlit stay optional (`workflow_dispatch` / local smoke).
+CI runs **pytest + PyYAML** (and stdlib `tomllib` / `json`). Gradio / Streamlit — including the
+Playwright-driven `tests/frontend` UI checks that launch each app and click through it in a real
+browser — stay optional (`workflow_dispatch` / local smoke).
 
 ## Capability stance
 

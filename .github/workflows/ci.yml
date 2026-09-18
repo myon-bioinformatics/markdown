@@ -33,7 +33,11 @@ jobs:
         run: |
           pip install -r requirements-dev.txt
           pip install -r requirements-frontend.txt
+      - name: Install Playwright browsers
+        run: playwright install --with-deps chromium
       - name: Import demo modules
         run: |
           python -c "import ast, pathlib; ast.parse(pathlib.Path('demos/gradio_app.py').read_text())"
           python -c "import ast, pathlib; ast.parse(pathlib.Path('demos/streamlit_app.py').read_text())"
+      - name: Run Gradio/Streamlit UI tests
+        run: pytest -q tests/frontend
