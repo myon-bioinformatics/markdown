@@ -24,6 +24,7 @@ ironmate などで使っていた `markdown.py` を、そのままのファイ�
 | `fixtures/` | Famous-README-inspired offline snippets + YAML/JSON/TOML |
 | `demos/gradio_app.py` | Optional: paste/upload → instant analysis |
 | `demos/streamlit_app.py` | Optional: sectioned headings/links/images/HTML/code view |
+| `demos/chat_ui_demo.py` | Optional: generic mock chat screen — assistant replies built with `markdown.py`'s generation helpers, rendered by Gradio's `Chatbot` |
 
 ## Quick use
 
@@ -35,6 +36,16 @@ sections = md.extract_sections(open("out.md", encoding="utf-8").read())
 inv = md.inventory(open("README.md", encoding="utf-8").read())
 print(md.html_image_to_markdown('<img src="a.png" alt="A" />'))
 print(md.make_link("Docs", "https://example.com"))
+
+# build Markdown from scratch
+report = md.section(
+    "Summary",
+    [
+        md.key_value_table({"mode": "train", "epochs": 10}),
+        md.bullet_list(["loss down", "iou up"]),
+    ],
+)
+print(report)
 ```
 
 ## Test / demo
@@ -47,14 +58,43 @@ pytest
 pip install -r requirements-frontend.txt
 python demos/gradio_app.py
 streamlit run demos/streamlit_app.py
+python demos/chat_ui_demo.py   # generic mock chat UI (gr.Chatbot)
 ```
 
 CI runs **pytest + PyYAML** (and stdlib `tomllib` / `json`). Gradio / Streamlit stay optional (`workflow_dispatch` / local smoke).
 
+`demos/chat_ui_demo.py` is the one demo in this repo with an actual chat screen
+(a bubble-history `gr.Chatbot`, not tied to any specific product), so it's also
+the one demo whose frontend tests click through the real rendered page.
+`markdown.py`'s generation helpers only build the Markdown *text* — it's
+Gradio's own `Chatbot` component that renders that text to HTML in the
+browser, tables included (see "Capability stance" below: this repo's own
+`markdown_to_html()` does not render GFM tables, by design — it's a
+different, much smaller converter than Gradio's). `tests/frontend/test_chat_ui_screen.py`
+types a message, clicks Send, and asserts on the resulting DOM
+(a real `<table>` with `<th>`/`<td>` rows, `<pre><code>`, `<li>`, `<strong>`/`<em>`)
+via Playwright (`pip install -r requirements-frontend.txt && playwright install chromium`).
+Its pure rendering logic (`render_assistant_turn` / `respond`, no gradio import
+needed) is covered separately in `tests/test_chat_ui_demo_logic.py`.
+
+Viewing rendered Markdown doesn't actually require a chat UI (or any app) at
+all, though — `markdown_to_html()`'s output is just an HTML file, and
+Playwright ships a CLI for exactly that: `python -m playwright screenshot`
+and `python -m playwright pdf` render a `file://` URL with no server and no
+`sync_playwright()` script, the same "reach for the tool's own CLI" approach
+this repo already takes with curl for HTTP APIs.
+`tests/frontend/test_markdown_html_playwright_cli.py` drives both against
+this repo's own generated Markdown to confirm the HTML is real, renderable
+output.
+
 ## Capability stance
 
 This is **not** a full CommonMark/GFM engine (see `SUPPORTED` / `UNSUPPORTED` in `markdown.py`).  
-It shines at I/O, inventory, URL/image/HTML helpers, and conservative conversions you can reason about.
+It shines at I/O, inventory, URL/image/HTML helpers, conservative conversions, and generating
+Markdown from scratch (`heading`, `bold`/`italic`/`strikethrough`, `blockquote`, `horizontal_rule`,
+`bullet_list`/`numbered_list`, `inline_code`/`code_block`/`json_block`, `table`/`key_value_table`,
+`md_table`/`md_kv` (`*args`-friendly, no list/dict pre-building needed), `status_line`,
+`section`/`wrap_section`) — all of which you can reason about.
 
 ## License
 

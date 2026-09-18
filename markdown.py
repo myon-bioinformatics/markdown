@@ -31,11 +31,30 @@ __all__ = [
     "html_to_markdown",
     "markdown_to_html",
     "is_probably_url",
+    "heading",
+    "bold",
+    "italic",
+    "strikethrough",
+    "blockquote",
+    "horizontal_rule",
+    "bullet_list",
+    "numbered_list",
+    "code_block",
+    "table",
+    "key_value_table",
+    "section",
+    "inline_code",
+    "json_block",
+    "status_line",
+    "wrap_section",
+    "md_table",
+    "md_kv",
     "SUPPORTED",
     "UNSUPPORTED",
 ]
 
 import html as html_module
+import json
 import re
 from html.parser import HTMLParser
 from pathlib import Path
@@ -61,6 +80,15 @@ SUPPORTED = {
         "link/image builders",
         "HTML <a>/<img> <-> Markdown link/image",
         "conservative html_to_markdown / markdown_to_html for common tags",
+    ],
+    "generation": [
+        "heading / bold / italic / strikethrough / blockquote / horizontal_rule",
+        "bullet_list / numbered_list",
+        "inline_code / code_block / json_block",
+        "table / key_value_table",
+        "md_table / md_kv (*args-friendly wrappers, no list/dict pre-building needed)",
+        "status_line",
+        "section (heading + blocks) / wrap_section (tool-detectable markers)",
     ],
 }
 
@@ -513,6 +541,188 @@ def markdown_link_to_html(markdown: str) -> str:
     if title:
         attrs.append(f'title="{html_module.escape(title, quote=True)}"')
     return f"<a {' '.join(attrs)}>{html_module.escape(text)}</a>"
+
+
+# ---------------------------------------------------------------------------
+# Markdown generation building blocks
+# ---------------------------------------------------------------------------
+
+def heading(text: str, level: int = 1) -> str:
+    """Build an ATX heading (``level`` is clamped to 1-6).
+
+    >>> heading("Title")
+    '# Title\\n'
+    >>> heading("Sub", level=2)
+    '## Sub\\n'
+    """
+    level = max(1, min(level, 6))
+    return "#" * level + " " + str(text) + "\n"
+
+
+def bold(text: str) -> str:
+    """Wrap ``text`` in ``**bold**`` markers."""
+    return f"**{text}**"
+
+
+def italic(text: str) -> str:
+    """Wrap ``text`` in ``*italic*`` markers."""
+    return f"*{text}*"
+
+
+def strikethrough(text: str) -> str:
+    """Wrap ``text`` in ``~~strikethrough~~`` markers."""
+    return f"~~{text}~~"
+
+
+def blockquote(text: str) -> str:
+    """Prefix every line of ``text`` with ``> `` to form a blockquote."""
+    lines = str(text).splitlines() or [""]
+    return "\n".join(f"> {line}" if line else ">" for line in lines) + "\n"
+
+
+def horizontal_rule() -> str:
+    """Return a thematic break (``---``)."""
+    return "---\n"
+
+
+def bullet_list(items: Any) -> str:
+    """Build an unordered (``-``) list from an iterable of strings."""
+    lines = [f"- {item}" for item in items]
+    return "\n".join(lines) + ("\n" if lines else "")
+
+
+def numbered_list(items: Any) -> str:
+    """Build an ordered (``1.``) list from an iterable of strings."""
+    lines = [f"{i}. {item}" for i, item in enumerate(items, start=1)]
+    return "\n".join(lines) + ("\n" if lines else "")
+
+
+def inline_code(text: str) -> str:
+    """Wrap ``text`` in single backticks for inline code."""
+    return f"`{text}`"
+
+
+def code_block(code: str, lang: str = "") -> str:
+    """Wrap ``code`` in a fenced code block, optionally tagged with ``lang``."""
+    return f"```{lang}\n{code}\n```\n"
+
+
+def json_block(obj: Any, indent: int = 2) -> str:
+    """Serialize ``obj`` as JSON and wrap it in a ```json fenced code block."""
+    text = json.dumps(obj, ensure_ascii=False, indent=indent)
+    return code_block(text, lang="json")
+
+
+def table(headers: Any, rows: Any) -> str:
+    """Build a Markdown (GFM-style) table.
+
+    ``headers`` is a sequence of column names; ``rows`` is a sequence of
+    sequences of cell values (converted with ``str``). Short rows are padded
+    with empty cells; extra cells beyond ``len(headers)`` are dropped.
+
+    >>> table(["a", "b"], [[1, 2], [3, 4]])
+    '| a | b |\\n| --- | --- |\\n| 1 | 2 |\\n| 3 | 4 |\\n'
+    """
+    headers = [str(h) for h in headers]
+    if not headers:
+        return ""
+    out = ["| " + " | ".join(headers) + " |", "| " + " | ".join(["---"] * len(headers)) + " |"]
+    for row in rows:
+        cells = [str(v) for v in row][: len(headers)]
+        cells += [""] * (len(headers) - len(cells))
+        out.append("| " + " | ".join(cells) + " |")
+    return "\n".join(out) + "\n"
+
+
+def key_value_table(
+    data: Any,
+    key_label: str = "Key",
+    value_label: str = "Value",
+) -> str:
+    """Render a mapping as a two-column Markdown table via ``table``."""
+    rows = [[key, value] for key, value in dict(data).items()]
+    return table([key_label, value_label], rows)
+
+
+def _record_to_cells(record: Any) -> list[str]:
+    if isinstance(record, dict):
+        return [str(v) for v in record.values()]
+    if isinstance(record, (list, tuple)):
+        return [str(v) for v in record]
+    return [str(record)]
+
+
+def md_table(*headers_and_rows: Any) -> str:
+    """``*args`` version of ``table`` — pass values directly, no list needed.
+
+    Dispatches on the first argument:
+
+    - a ``dict`` -> every argument is a record; headers come from the first
+      record's keys, and each record's ``.values()`` become that row's cells.
+    - a ``list``/``tuple`` -> treated as the header row; the remaining
+      arguments are data rows (each a list/tuple of cells, a dict of values,
+      or a single scalar rendered as a one-cell row).
+    - anything else -> every argument becomes a single-cell row under a
+      generic ``value`` header.
+
+    >>> md_table(["name", "val"], ["loss", "0.01"], ["iou", "0.85"])
+    '| name | val |\\n| --- | --- |\\n| loss | 0.01 |\\n| iou | 0.85 |\\n'
+    >>> md_table({"name": "loss", "val": "0.01"}, {"name": "iou", "val": "0.85"})
+    '| name | val |\\n| --- | --- |\\n| loss | 0.01 |\\n| iou | 0.85 |\\n'
+    """
+    if not headers_and_rows:
+        return ""
+
+    first = headers_and_rows[0]
+    if isinstance(first, dict):
+        headers = [str(k) for k in first.keys()]
+        rows = [_record_to_cells(rec) for rec in headers_and_rows]
+        return table(headers, rows)
+
+    if isinstance(first, (list, tuple)):
+        headers = [str(h) for h in first]
+        rows = [_record_to_cells(rec) for rec in headers_and_rows[1:]]
+        return table(headers, rows)
+
+    return table(["value"], [[str(v)] for v in headers_and_rows])
+
+
+def md_kv(*pairs: Any, key_label: str = "Key", value_label: str = "Value") -> str:
+    """``*args`` version of ``key_value_table`` — pass ``key, value`` pairs or dicts.
+
+    Alternating positional ``key, value`` arguments and ``dict`` arguments can
+    be freely mixed; a trailing key with no value gets an empty string.
+
+    >>> md_kv("mode", "train", "epochs", 10)
+    '| Key | Value |\\n| --- | --- |\\n| mode | train |\\n| epochs | 10 |\\n'
+    >>> md_kv({"mode": "train"}, "device", "cuda")
+    '| Key | Value |\\n| --- | --- |\\n| mode | train |\\n| device | cuda |\\n'
+    """
+    merged: dict[str, Any] = {}
+    it = iter(pairs)
+    for item in it:
+        if isinstance(item, dict):
+            merged.update(item)
+        else:
+            merged[str(item)] = next(it, "")
+    return key_value_table(merged, key_label=key_label, value_label=value_label)
+
+
+def status_line(ok: bool, msg_ok: str, msg_ng: str) -> str:
+    """Build a one-line status message, prefixed with a checkmark or warning."""
+    prefix = "✓" if ok else "⚠"
+    return f"{prefix} {msg_ok if ok else msg_ng}\n"
+
+
+def section(title: str, blocks: Any, level: int = 2) -> str:
+    """Join a heading with a sequence of pre-rendered Markdown blocks."""
+    return heading(title, level=level) + "".join(blocks)
+
+
+def wrap_section(name: str, content: str) -> str:
+    """Wrap ``content`` in HTML-comment markers so tools/LLMs can find section boundaries."""
+    content = content if content.endswith("\n") else content + "\n"
+    return f"<!-- BEGIN_SECTION:{name} -->\n{content}<!-- END_SECTION:{name} -->\n"
 
 
 # ---------------------------------------------------------------------------
