@@ -43,11 +43,16 @@ __all__ = [
     "table",
     "key_value_table",
     "section",
+    "inline_code",
+    "json_block",
+    "status_line",
+    "wrap_section",
     "SUPPORTED",
     "UNSUPPORTED",
 ]
 
 import html as html_module
+import json
 import re
 from html.parser import HTMLParser
 from pathlib import Path
@@ -77,9 +82,10 @@ SUPPORTED = {
     "generation": [
         "heading / bold / italic / strikethrough / blockquote / horizontal_rule",
         "bullet_list / numbered_list",
-        "code_block",
+        "inline_code / code_block / json_block",
         "table / key_value_table",
-        "section (heading + blocks)",
+        "status_line",
+        "section (heading + blocks) / wrap_section (tool-detectable markers)",
     ],
 }
 
@@ -588,9 +594,20 @@ def numbered_list(items: Any) -> str:
     return "\n".join(lines) + ("\n" if lines else "")
 
 
+def inline_code(text: str) -> str:
+    """Wrap ``text`` in single backticks for inline code."""
+    return f"`{text}`"
+
+
 def code_block(code: str, lang: str = "") -> str:
     """Wrap ``code`` in a fenced code block, optionally tagged with ``lang``."""
     return f"```{lang}\n{code}\n```\n"
+
+
+def json_block(obj: Any, indent: int = 2) -> str:
+    """Serialize ``obj`` as JSON and wrap it in a ```json fenced code block."""
+    text = json.dumps(obj, ensure_ascii=False, indent=indent)
+    return code_block(text, lang="json")
 
 
 def table(headers: Any, rows: Any) -> str:
@@ -624,9 +641,21 @@ def key_value_table(
     return table([key_label, value_label], rows)
 
 
+def status_line(ok: bool, msg_ok: str, msg_ng: str) -> str:
+    """Build a one-line status message, prefixed with a checkmark or warning."""
+    prefix = "✓" if ok else "⚠"
+    return f"{prefix} {msg_ok if ok else msg_ng}\n"
+
+
 def section(title: str, blocks: Any, level: int = 2) -> str:
     """Join a heading with a sequence of pre-rendered Markdown blocks."""
     return heading(title, level=level) + "".join(blocks)
+
+
+def wrap_section(name: str, content: str) -> str:
+    """Wrap ``content`` in HTML-comment markers so tools/LLMs can find section boundaries."""
+    content = content if content.endswith("\n") else content + "\n"
+    return f"<!-- BEGIN_SECTION:{name} -->\n{content}<!-- END_SECTION:{name} -->\n"
 
 
 # ---------------------------------------------------------------------------

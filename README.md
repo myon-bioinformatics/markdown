@@ -66,8 +66,8 @@ CI runs **pytest + PyYAML** (and stdlib `tomllib` / `json`). Gradio / Streamlit 
 This is **not** a full CommonMark/GFM engine (see `SUPPORTED` / `UNSUPPORTED` in `markdown.py`).  
 It shines at I/O, inventory, URL/image/HTML helpers, conservative conversions, and generating
 Markdown from scratch (`heading`, `bold`/`italic`/`strikethrough`, `blockquote`, `horizontal_rule`,
-`bullet_list`/`numbered_list`, `code_block`, `table`/`key_value_table`, `section`) — all of which
-you can reason about.
+`bullet_list`/`numbered_list`, `inline_code`/`code_block`/`json_block`, `table`/`key_value_table`,
+`status_line`, `section`/`wrap_section`) — all of which you can reason about.
 
 ## License
 

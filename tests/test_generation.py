@@ -38,9 +38,25 @@ def test_bullet_and_numbered_list() -> None:
     assert md.numbered_list(["a", "b"]) == "1. a\n2. b\n"
 
 
+def test_inline_code() -> None:
+    assert md.inline_code("x = 1") == "`x = 1`"
+
+
 def test_code_block() -> None:
     assert md.code_block("print(1)", lang="python") == "```python\nprint(1)\n```\n"
     assert md.code_block("plain") == "```\nplain\n```\n"
+
+
+def test_json_block() -> None:
+    out = md.json_block({"a": 1})
+    assert out.startswith("```json\n")
+    assert out.endswith("```\n")
+    assert '"a": 1' in out
+
+
+def test_status_line() -> None:
+    assert md.status_line(True, "all good", "broken") == "✓ all good\n"
+    assert md.status_line(False, "all good", "broken") == "⚠ broken\n"
 
 
 def test_table_basic_and_padding() -> None:
@@ -60,6 +76,11 @@ def test_section_joins_blocks() -> None:
     assert md.section("Top", ["body\n"], level=1) == "# Top\nbody\n"
 
 
+def test_wrap_section_markers() -> None:
+    out = md.wrap_section("PATHS_TRACE", "body\n")
+    assert out == "<!-- BEGIN_SECTION:PATHS_TRACE -->\nbody\n<!-- END_SECTION:PATHS_TRACE -->\n"
+
+
 def test_generation_functions_exposed_in_all() -> None:
     for name in (
         "heading",
@@ -70,10 +91,14 @@ def test_generation_functions_exposed_in_all() -> None:
         "horizontal_rule",
         "bullet_list",
         "numbered_list",
+        "inline_code",
         "code_block",
+        "json_block",
         "table",
         "key_value_table",
+        "status_line",
         "section",
+        "wrap_section",
     ):
         assert name in md.__all__
         assert hasattr(md, name)
