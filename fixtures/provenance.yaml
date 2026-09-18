@@ -37,3 +37,69 @@ unsupported_examples:
       - [ ] todo
       - [x] done
     note: Task lists are not normalized; treated as plain list text at best.
+
+# --- Benchmark fixtures (PR: "how far does this get on real Markdown?") ---
+#
+# Unlike the two "representative, offline" fixtures above, these are real
+# excerpts (or, for CHANGELOG, a real truncated prefix) fetched verbatim
+# from the pinned commit below, with only GitHub Docs' own Liquid
+# templating ({% data ... %}, {% ifversion %}...{% endif %}) stripped from
+# prose lines -- never from fenced code content, so embedded examples like
+# the nested code fence in "Quoting code" keep their exact indentation.
+# fetched_at is when this benchmark was built; re-run the fetch commands
+# below and diff against the pinned commit's tree to refresh.
+benchmark_fixtures:
+  - id: github_docs_markdown
+    path: benchmark/github_docs_markdown.md
+    source: github/docs (CC-BY-4.0)
+    commit: 2320b38e746de554f7f3d2b83520bc0f26485abc
+    fetched_at: "2026-09-18"
+    sections:
+      - {heading: Headings, file: content/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax.md, lines: [17, 31]}
+      - {heading: Styling text, file: content/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax.md, lines: [33, 46]}
+      - {heading: Quoting text, file: content/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax.md, lines: [48, 63]}
+      - {heading: Quoting code, file: content/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax.md, lines: [65, 90]}
+      - {heading: Links, file: content/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax.md, lines: [114, 125]}
+      - {heading: Creating a table / Formatting content within your table, file: content/get-started/writing-on-github/working-with-advanced-formatting/organizing-information-with-tables.md, lines: [17, 79]}
+      - {heading: Lists / Nested Lists, file: content/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax.md, lines: [274, 337]}
+      - {heading: Task lists, file: content/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax.md, lines: [338, 346]}
+      - {heading: URLs / Issues and pull requests (autolinks), file: content/get-started/writing-on-github/working-with-advanced-formatting/autolinked-references-and-urls.md, lines: [17, 44]}
+      - {heading: Footnotes, file: content/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax.md, lines: [401, 420]}
+      - {heading: Alerts, file: content/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax.md, lines: [422, 449]}
+    fetch_example: |
+      curl -sS "https://raw.githubusercontent.com/github/docs/2320b38e746de554f7f3d2b83520bc0f26485abc/content/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax.md"
+    covers: [headings, links, images, fenced_code, nested_lists, tables, task_lists, autolinks, alerts, footnotes, inline_html]
+
+  - id: commonmark_examples
+    path: benchmark/commonmark_examples.yaml
+    source: commonmark/commonmark-spec, spec.txt, version 0.31.2 (CC-BY-SA 4.0)
+    commit: 3da939428d80f146f270cd1765e4ba462e96bb1b
+    fetched_at: "2026-09-18"
+    fetch_example: |
+      curl -sS "https://raw.githubusercontent.com/commonmark/commonmark-spec/3da939428d80f146f270cd1765e4ba462e96bb1b/spec.txt"
+    note: >
+      13 of the spec's own 655 numbered "example N" blocks, chosen by hand
+      to cover headings / emphasis / nested emphasis / escaping /
+      blockquote / nested list / fenced code / inline code / horizontal
+      rule / links / edge cases. Each entry in the YAML records its
+      spec_example number, CommonMark's own expected HTML, this module's
+      actual HTML, and a PASS/DEGRADED/UNSUPPORTED/FAIL classification --
+      see tests/test_benchmark_commonmark.py.
+
+  - id: contributing_example
+    path: benchmark/contributing_example.md
+    source: nodejs/node CONTRIBUTING.md (MIT), vendored close to verbatim (small enough not to need excerpting)
+    commit: 8566220b359bd2ed8223a30ca37207838431a3dd
+    fetched_at: "2026-09-18"
+    fetch_example: |
+      curl -sS "https://raw.githubusercontent.com/nodejs/node/8566220b359bd2ed8223a30ca37207838431a3dd/CONTRIBUTING.md"
+    covers: [headings, links, nested_lists, fenced_code, blockquote_style_tip_callout]
+
+  - id: changelog_example
+    path: benchmark/changelog_example.md
+    source: axios/axios CHANGELOG.md (MIT), first 400 of 1416 real lines (auto-generated release-notes changelog; truncated for fixture size, not summarized or rewritten)
+    commit: 56a5f1acdc41965f464eb59bec6cc828113ba546
+    fetched_at: "2026-09-18"
+    fetch_example: |
+      curl -sS "https://raw.githubusercontent.com/axios/axios/56a5f1acdc41965f464eb59bec6cc828113ba546/CHANGELOG.md" | head -400
+    covers: [many_headings, many_links, lists, version_strings, long_input_stability, inline_html_avatars]

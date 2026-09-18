@@ -95,16 +95,25 @@ SUPPORTED = {
 UNSUPPORTED = {
     "parser": [
         "full CommonMark / GFM compliance",
-        "nested emphasis edge cases",
+        "backslash escaping (\\* stays literal, does not suppress emphasis)",
+        "blockquotes (> lines are not parsed into <blockquote>; they escape "
+        "and flatten into a plain paragraph, same fallback as tables/task lists)",
+        "GitHub-style alerts (> [!NOTE] etc. -- built on the same unsupported blockquote syntax)",
+        "nested emphasis edge cases (asymmetric delimiter runs, whitespace-adjacent "
+        "delimiters -- see fixtures/benchmark/commonmark_examples.yaml)",
         "tables (GFM)",
         "task lists",
         "footnotes",
+        "autolinks (bare URLs and <url>; only [text](url) is recognized)",
+        "strikethrough parsing in markdown_to_html (~~x~~ stays literal; "
+        "the strikethrough() generator still produces valid ~~x~~ output)",
         "Math / mermaid rendering",
     ],
     "conversion": [
         "lossy round-trips for complex nested HTML",
         "JavaScript / SVG behavior preservation",
         "CSS class and style fidelity",
+        "raw inline HTML tags are escaped, not passed through, by markdown_to_html",
     ],
 }
 
@@ -602,9 +611,50 @@ def inline_code(text: str) -> str:
     return f"`{text}`"
 
 
-def code_block(code: str, lang: str = "") -> str:
-    """Wrap ``code`` in a fenced code block, optionally tagged with ``lang``."""
-    return f"```{lang}\n{code}\n```\n"
+_FENCE_CHARS = ("`", "~")
+
+
+def _adaptive_fence(code: str, fence_char: str = "`") -> str:
+    """A fence of ``fence_char`` one longer than the longest run already in ``code``.
+
+    ``_FENCE_RE`` (and this module's own fence-closing scan) accept any
+    length-3-or-more fence, but only close on a line starting with a run of
+    the same fence character at least as long as the opening fence -- so a
+    fixed triple-backtick fence is ambiguous the moment ``code`` itself
+    contains a triple-backtick run (e.g. Markdown source shown as an example
+    inside a code block). Picking a fence longer than anything already in
+    ``code`` keeps that scan unambiguous with no changes to the reading side.
+
+    ``fence_char`` must be a single backtick or tilde -- the only two
+    characters Markdown recognizes as a fence at all (``_FENCE_RE``). Any
+    other value raises ``ValueError`` rather than silently building a fence
+    nothing would ever close (a multi-character ``fence_char`` isn't a valid
+    fence line, and an empty one breaks the run-length regex outright).
+    """
+    if fence_char not in _FENCE_CHARS:
+        raise ValueError(f"fence_char must be one of {_FENCE_CHARS!r}, got {fence_char!r}")
+    longest = 0
+    for run in re.findall(re.escape(fence_char) + r"+", code):
+        longest = max(longest, len(run))
+    return fence_char * max(3, longest + 1)
+
+
+def code_block(code: str, lang: str = "", *, fence_char: str = "`") -> str:
+    """Wrap ``code`` in a fenced code block, optionally tagged with ``lang``.
+
+    The fence length adapts to ``code``'s content: if it already contains a
+    run of ``fence_char`` as long as (or longer than) a plain triple fence
+    -- typically Markdown-inside-Markdown, like a fenced example embedded in
+    a doc -- the fence grows just enough to stay unambiguous, the same way
+    CommonMark itself requires. Plain content keeps the original triple
+    fence, so existing callers see no change. Pass ``fence_char="~"`` for a
+    tilde fence (e.g. when ``code`` itself contains backtick runs).
+
+    :raises ValueError: if ``fence_char`` isn't ``"`"`` or ``"~"`` -- the
+        only two characters Markdown recognizes as a fence.
+    """
+    fence = _adaptive_fence(code, fence_char)
+    return f"{fence}{lang}\n{code}\n{fence}\n"
 
 
 def json_block(obj: Any, indent: int = 2) -> str:

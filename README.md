@@ -21,7 +21,7 @@ ironmate などで使っていた `markdown.py` を、そのままのファイ�
 | --- | --- |
 | `markdown.py` | **The product** — vendored single module |
 | `tests/` | pytest = correctness |
-| `fixtures/` | Famous-README-inspired offline snippets + YAML/JSON/TOML |
+| `fixtures/` | Famous-README-inspired offline snippets + YAML/JSON/TOML + `benchmark/` (real, sourced Markdown) |
 | `demos/gradio_app.py` | Optional: paste/upload → instant analysis. `analyze()` has zero UI deps — call it directly |
 | `demos/streamlit_app.py` | Optional: sectioned headings/links/images/HTML/code view. `build_view()` has zero UI deps — call it directly |
 | `demos/chat_ui_demo.py` | Optional: generic mock chat screen — assistant replies built with `markdown.py`'s generation helpers, rendered by Gradio's `Chatbot` |
@@ -108,14 +108,75 @@ this repo already takes with curl for HTTP APIs.
 this repo's own generated Markdown to confirm the HTML is real, renderable
 output.
 
+## Benchmark: how far does this get on real Markdown?
+
+`tests/test_benchmark_commonmark.py`, `tests/test_benchmark_realworld.py`, and
+`tests/test_benchmark_html_roundtrip.py` run real, published Markdown — not just this repo's own
+README — through `markdown.py` and record, reproducibly, what works and what doesn't. The goal
+isn't "pass everything" (this is explicitly not a full CommonMark/GFM engine — see Capability
+stance below); it's knowing exactly where the edges are, and pinning that down so a real change
+is a deliberate decision, not a silent regression.
+
+Sources (full provenance — commit SHA, license, exact excerpted line ranges — in
+[`fixtures/provenance.yaml`](fixtures/provenance.yaml)):
+
+- **CommonMark spec** (`fixtures/benchmark/commonmark_examples.yaml`) — 13 of the spec's own 655
+  numbered examples (spec version 0.31.2), covering headings, emphasis, nested emphasis, escaping,
+  blockquotes, nested lists, fenced/inline code, horizontal rules, links, and two emphasis edge cases
+- **GitHub Docs** (`fixtures/benchmark/github_docs_markdown.md`) — real excerpts from
+  [github/docs](https://github.com/github/docs)'s own Markdown-writing documentation, covering
+  headings, links, images, fenced code (including a fence nested inside a fence), nested lists,
+  tables, task lists, autolinks, alerts, footnotes, and inline HTML
+- **nodejs/node's `CONTRIBUTING.md`** (`fixtures/benchmark/contributing_example.md`) — a real OSS
+  contributing guide, close to verbatim
+- **axios/axios's `CHANGELOG.md`** (`fixtures/benchmark/changelog_example.md`) — the real first 400
+  (of 1416) lines, for long-input stability with many headings/links/lists/version strings
+
+Results, CommonMark spec examples:
+
+| Construct | Classification |
+| --- | --- |
+| ATX headings, emphasis (basic), fenced code, inline code, horizontal rule, links | PASS |
+| nested emphasis (`**foo *bar* baz**`) | DEGRADED — the inner `*bar*` parses, the outer `**` doesn't |
+| nested lists | DEGRADED — flattens to one `<ul>`, no text lost |
+| blockquotes | UNSUPPORTED — escapes and flattens to a plain paragraph, same fallback as tables |
+| backslash escaping | FAIL — not implemented; `\*` stays literal instead of suppressing emphasis |
+| emphasis edge cases (asymmetric delimiter runs, whitespace-adjacent delimiters) | FAIL |
+
+Results, GitHub-flavored constructs found inside the real GitHub Docs excerpt:
+
+| Construct | Classification |
+| --- | --- |
+| headings, links, images, fenced code (incl. fence-in-fence), inline code | PASS |
+| nested lists | DEGRADED |
+| tables, task lists, footnotes | UNSUPPORTED (matches the pre-existing `unsupported_examples` note) |
+| autolinks (`<url>`, bare URLs) | UNSUPPORTED |
+| alerts (`> [!NOTE]`) | UNSUPPORTED — built on the same unsupported blockquote syntax |
+| inline HTML | UNSUPPORTED — escaped, not passed through |
+
+```bash
+pytest tests/test_benchmark_commonmark.py tests/test_benchmark_realworld.py tests/test_benchmark_html_roundtrip.py -v
+```
+
+All three run in the default `pytest` — no extra dependency installs. `test_benchmark_html_roundtrip.py`
+is a separate, exploratory HTML → Markdown → HTML round trip; it's deliberately not part of the
+PASS/DEGRADED/UNSUPPORTED/FAIL grading above.
+
 ## Capability stance
 
-This is **not** a full CommonMark/GFM engine (see `SUPPORTED` / `UNSUPPORTED` in `markdown.py`).  
+This is **not** a full CommonMark/GFM engine (see `SUPPORTED` / `UNSUPPORTED` in `markdown.py`, and
+the benchmark above for what that looks like on real documents).
 It shines at I/O, inventory, URL/image/HTML helpers, conservative conversions, and generating
 Markdown from scratch (`heading`, `bold`/`italic`/`strikethrough`, `blockquote`, `horizontal_rule`,
 `bullet_list`/`numbered_list`, `inline_code`/`code_block`/`json_block`, `table`/`key_value_table`,
 `md_table`/`md_kv` (`*args`-friendly, no list/dict pre-building needed), `status_line`,
 `section`/`wrap_section`) — all of which you can reason about.
+
+`code_block()`'s fence length is adaptive: plain content still gets a triple-backtick fence, but
+content that itself contains a run of backticks (e.g. Markdown-about-Markdown, like a fenced example
+inside a doc — see the GitHub Docs benchmark fixture above for a real one) gets a longer fence, just
+enough to stay unambiguous, matching what CommonMark itself requires. Pass `fence_char="~"` for a
+tilde fence instead. See `tests/test_adaptive_fence.py`.
 
 ## License
 
