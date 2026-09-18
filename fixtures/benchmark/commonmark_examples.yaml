@@ -1,0 +1,162 @@
+# A small, curated set of the official CommonMark spec's own numbered
+# examples (spec.txt), used as a parser stress test -- not to prove full
+# CommonMark compliance (this module explicitly isn't a full engine, see
+# markdown.py's own SUPPORTED/UNSUPPORTED), but to record, precisely and
+# reproducibly, how far markdown_to_html() actually gets on real spec
+# inputs. FAIL entries are expected and fine; what matters is that this
+# file states plainly which they are.
+#
+# Provenance: commonmark/commonmark-spec, spec version 0.31.2, license
+# CC-BY-SA 4.0 (see fixtures/provenance.yaml for the exact commit SHA and
+# spec.txt example numbers this was extracted from).
+#
+# classification is one of: PASS, DEGRADED, UNSUPPORTED, FAIL
+#   PASS        - our markdown_to_html() output matches CommonMark's
+#                 own expected output for this example exactly.
+#   DEGRADED    - some structure is recognized and text content is
+#                 preserved, but the result isn't CommonMark's structure
+#                 (e.g. nesting collapsed, partial emphasis parsed).
+#   UNSUPPORTED - the construct isn't recognized at all; it safely falls
+#                 back to an escaped plain paragraph with no data loss
+#                 (the same fallback tables/task lists already get).
+#   FAIL        - the output is actively wrong: missing conversions that
+#                 should have applied, or conversions applied that
+#                 shouldn't have (a false positive), not just "simpler".
+#
+# our_html is markdown_to_html()'s actual, current output (minus the
+# trailing newline every call to it adds) -- a recorded regression
+# baseline, not a claim that it's correct.
+
+examples:
+  - id: headings_basic
+    category: headings
+    spec_example: 62
+    markdown: "# foo\n## foo\n### foo\n#### foo\n##### foo\n###### foo"
+    commonmark_html: "<h1>foo</h1>\n<h2>foo</h2>\n<h3>foo</h3>\n<h4>foo</h4>\n<h5>foo</h5>\n<h6>foo</h6>"
+    our_html: "<h1>foo</h1>\n<h2>foo</h2>\n<h3>foo</h3>\n<h4>foo</h4>\n<h5>foo</h5>\n<h6>foo</h6>"
+    classification: PASS
+
+  - id: headings_seven_hashes_is_not_a_heading
+    category: headings
+    spec_example: 63
+    markdown: "####### foo"
+    commonmark_html: "<p>####### foo</p>"
+    our_html: "<p>####### foo</p>"
+    classification: PASS
+
+  - id: emphasis_basic
+    category: emphasis
+    spec_example: 358
+    markdown: "5*6*78"
+    commonmark_html: "<p>5<em>6</em>78</p>"
+    our_html: "<p>5<em>6</em>78</p>"
+    classification: PASS
+
+  - id: nested_emphasis
+    category: nested_emphasis
+    spec_example: 430
+    markdown: "**foo *bar* baz**"
+    commonmark_html: "<strong>foo <em>bar</em> baz</strong>"
+    our_html: "<p>**foo <em>bar</em> baz**</p>"
+    classification: DEGRADED
+    note: >
+      The inner *bar* is correctly parsed as <em>, but the outer ** ** is
+      left as literal text instead of becoming <strong> -- this parser
+      only matches one emphasis level per pass, so overlapping/nested
+      emphasis markers of the same kind of delimiter run are not
+      re-scanned once consumed.
+
+  - id: backslash_escapes
+    category: escaping
+    spec_example: 12
+    markdown: '\!\"\#\$\%\&\''\(\)\*\+\,\-\.\/\:\;\<\=\>\?\@\[\\\]\^\_\`\{\|\}\~'
+    commonmark_html: "<p>!&quot;#$%&amp;'()*+,-./:;&lt;=&gt;?@[\\]^_`{|}~</p>"
+    our_html: '<p>\!\"\#\$\%\&amp;\''\(\)\*\+\,\-\.\/\:\;\&lt;\=\&gt;\?\@\[\\\]\^\_\`\{\|\}\~</p>'
+    classification: FAIL
+    note: >
+      Backslash escaping is not implemented at all -- CommonMark strips
+      the backslash and treats the next character as literal; this
+      module leaves every backslash in the output untouched. Not
+      previously listed in UNSUPPORTED; added by this benchmark.
+
+  - id: blockquote_basic
+    category: blockquote
+    spec_example: 230
+    markdown: "> # Foo\n> bar\n> baz"
+    commonmark_html: "<blockquote>\n<h1>Foo</h1>\n<p>bar\nbaz</p>\n</blockquote>"
+    our_html: "<p>&gt; # Foo &gt; bar &gt; baz</p>"
+    classification: UNSUPPORTED
+    note: >
+      Blockquotes are not a recognized block type in markdown_to_html:
+      every line (including the heading inside it) is escaped and
+      flattened into one plain paragraph -- the same safe "not
+      recognized, falls back to escaped text" behavior as tables and
+      task lists, just not previously named in UNSUPPORTED.
+
+  - id: nested_list
+    category: nested_list
+    spec_example: 296
+    markdown: "- foo\n  - bar\n    - baz\n      - boo"
+    commonmark_html: "<ul>\n<li>foo\n<ul>\n<li>bar\n<ul>\n<li>baz\n<ul>\n<li>boo</li>\n</ul>\n</li>\n</ul>\n</li>\n</ul>\n</li>\n</ul>"
+    our_html: "<ul>\n<li>foo</li>\n<li>bar</li>\n<li>baz</li>\n<li>boo</li>\n</ul>"
+    classification: DEGRADED
+    note: List nesting is not tracked; every level flattens into one <ul>, but every item's text is preserved with no data loss.
+
+  - id: fenced_code_basic
+    category: fenced_code
+    spec_example: 119
+    markdown: "```\n<\n >\n```"
+    commonmark_html: "<pre><code>&lt;\n &gt;\n</code></pre>"
+    our_html: "<pre><code>&lt;\n &gt;\n</code></pre>"
+    classification: PASS
+
+  - id: inline_code_basic
+    category: inline_code
+    spec_example: 330
+    markdown: "`foo`"
+    commonmark_html: "<p><code>foo</code></p>"
+    our_html: "<p><code>foo</code></p>"
+    classification: PASS
+
+  - id: thematic_break_basic
+    category: horizontal_rule
+    spec_example: 43
+    markdown: "***\n---\n___"
+    commonmark_html: "<hr />\n<hr />\n<hr />"
+    our_html: "<hr />\n<hr />\n<hr />"
+    classification: PASS
+
+  - id: link_basic
+    category: links
+    spec_example: 484
+    markdown: '[link](/uri "title")'
+    commonmark_html: '<p><a href="/uri" title="title">link</a></p>'
+    our_html: '<p><a href="/uri" title="title">link</a></p>'
+    classification: PASS
+
+  - id: edge_unmatched_emphasis_run
+    category: edge_cases
+    spec_example: 445
+    markdown: "*foo**"
+    commonmark_html: "<p><em>foo</em>*</p>"
+    our_html: "<p>*foo**</p>"
+    classification: FAIL
+    note: >
+      CommonMark matches the opening * against the first of the two
+      closing *s, leaving one literal * -- an asymmetric delimiter-run
+      count this regex-based emphasis matcher doesn't attempt, so it
+      emits no <em> at all here (a false negative).
+
+  - id: edge_space_before_closing_delimiter
+    category: edge_cases
+    spec_example: 368
+    markdown: "*foo bar *"
+    commonmark_html: "<p>*foo bar *</p>"
+    our_html: "<p><em>foo bar </em></p>"
+    classification: FAIL
+    note: >
+      CommonMark's flanking rule disqualifies a delimiter preceded by
+      whitespace from closing emphasis, so this should stay literal
+      text. This parser doesn't check for that and wraps it in <em>
+      anyway -- a false positive, the opposite failure mode from
+      edge_unmatched_emphasis_run above.
