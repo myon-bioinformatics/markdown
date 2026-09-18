@@ -49,14 +49,20 @@ python demos/gradio_app.py
 streamlit run demos/streamlit_app.py
 
 # optional: verify each app's real wiring with no browser, no clicking, no JS —
-# gradio_client hits Gradio's own API, streamlit.testing.v1.AppTest runs the
-# Streamlit script headless, both purely through Python.
+# gradio_client / curl hit Gradio's own HTTP API directly; AppTest runs the
+# Streamlit script headless; curl checks Streamlit's HTTP health + index.
 pytest tests/frontend
 ```
 
+Gradio's backend is a plain FastAPI app, so `tests/frontend/test_gradio_curl.py` drives it with
+nothing but `curl` (POST to start a job, GET an SSE stream for the result) — no Python client
+library needed, just what's already on any Ubuntu box. Streamlit's interactive reruns are a
+stateful websocket protocol rather than a request/response API, so `AppTest` (not curl) is what
+actually exercises its widgets; `test_streamlit_curl.py` uses `curl` for what *is* plain HTTP
+there — the health endpoint and initial page.
+
 CI runs **pytest + PyYAML** (and stdlib `tomllib` / `json`). Gradio / Streamlit — including the
-browser-free `tests/frontend` wiring checks (`gradio_client` / `AppTest`) — stay optional
-(`workflow_dispatch` / local smoke).
+browser-free `tests/frontend` wiring checks — stay optional (`workflow_dispatch` / local smoke).
 
 ## Capability stance
 
