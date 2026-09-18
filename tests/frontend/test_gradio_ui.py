@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import sys
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -26,6 +28,19 @@ for path in (str(ROOT), str(ROOT / "demos")):
 import gradio_app  # noqa: E402
 
 
+def _wait_until_up(url: str, timeout: float = 30.0) -> None:
+    deadline = time.monotonic() + timeout
+    last_error: Exception | None = None
+    while time.monotonic() < deadline:
+        try:
+            urllib.request.urlopen(url, timeout=1)
+            return
+        except (urllib.error.URLError, ConnectionError) as exc:
+            last_error = exc
+            time.sleep(0.2)
+    raise RuntimeError(f"gradio app did not start in time: {last_error}")
+
+
 @pytest.fixture()
 def gradio_client_(free_port):
     demo = gradio_app.build_app()
@@ -39,18 +54,19 @@ def gradio_client_(free_port):
         inbrowser=False,
     )
     try:
-        time.sleep(1)  # give the server a moment before the first request
-        yield gradio_client.Client(f"http://127.0.0.1:{free_port}/")
+        base_url = f"http://127.0.0.1:{free_port}/"
+        _wait_until_up(base_url)
+        yield gradio_client.Client(base_url)
     finally:
         demo.close()
 
 
 def test_gradio_api_matches_direct_call(gradio_client_) -> None:
     text = "# Title\n\n[docs](https://example.com)\n\n![alt text](img.png)\n"
-    api_result = gradio_client_.predict(text, None, api_name="/_run")
+    api_result = gradio_client_.predict(text, None, api_name="/analyze")
     assert tuple(api_result) == gradio_app.analyze(text)
 
 
 def test_gradio_api_empty_input_matches_direct_call(gradio_client_) -> None:
-    api_result = gradio_client_.predict("", None, api_name="/_run")
+    api_result = gradio_client_.predict("", None, api_name="/analyze")
     assert tuple(api_result) == gradio_app.analyze("")

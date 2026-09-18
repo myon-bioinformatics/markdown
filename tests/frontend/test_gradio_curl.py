@@ -14,6 +14,8 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -30,6 +32,19 @@ import gradio_app  # noqa: E402
 CURL = shutil.which("curl")
 
 
+def _wait_until_up(url: str, timeout: float = 30.0) -> None:
+    deadline = time.monotonic() + timeout
+    last_error: Exception | None = None
+    while time.monotonic() < deadline:
+        try:
+            urllib.request.urlopen(url, timeout=1)
+            return
+        except (urllib.error.URLError, ConnectionError) as exc:
+            last_error = exc
+            time.sleep(0.2)
+    raise RuntimeError(f"gradio app did not start in time: {last_error}")
+
+
 @pytest.fixture()
 def gradio_base_url(free_port):
     demo = gradio_app.build_app()
@@ -42,9 +57,10 @@ def gradio_base_url(free_port):
         quiet=True,
         inbrowser=False,
     )
+    base_url = f"http://127.0.0.1:{free_port}"
     try:
-        time.sleep(1)  # give the server a moment before the first request
-        yield f"http://127.0.0.1:{free_port}"
+        _wait_until_up(base_url)
+        yield base_url
     finally:
         demo.close()
 
@@ -53,7 +69,7 @@ def _curl_call(base_url: str, text: str, timeout: float = 15.0) -> tuple:
     """POST to start the job, then GET the SSE stream for its result — both via curl."""
     post = subprocess.run(
         [
-            CURL, "-s", "-X", "POST", f"{base_url}/gradio_api/call/_run",
+            CURL, "-s", "-X", "POST", f"{base_url}/gradio_api/call/analyze",
             "-H", "Content-Type: application/json",
             "-d", json.dumps({"data": [text, None]}),
         ],
@@ -62,7 +78,7 @@ def _curl_call(base_url: str, text: str, timeout: float = 15.0) -> tuple:
     event_id = json.loads(post.stdout)["event_id"]
 
     stream = subprocess.run(
-        [CURL, "-s", "-N", "--max-time", str(timeout), f"{base_url}/gradio_api/call/_run/{event_id}"],
+        [CURL, "-s", "-N", "--max-time", str(timeout), f"{base_url}/gradio_api/call/analyze/{event_id}"],
         capture_output=True, text=True, timeout=timeout + 5, check=True,
     )
     data_line = next(

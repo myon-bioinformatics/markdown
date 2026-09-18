@@ -60,12 +60,10 @@ def build_app():
             path = file_obj.name if file_obj is not None else None
             return analyze(text_value or "", path)
 
-        btn.click(_run, inputs=[text, file], outputs=[headings, links, images, summary])
+        btn.click(_run, inputs=[text, file], outputs=[headings, links, images, summary], api_name="analyze")
     return demo
 
 
-if __name__ != "__main__":
+if __name__ == "__main__":
     # Importable without launching; demos are for humans, not library entry points.
-    pass
-else:
     build_app().launch()
