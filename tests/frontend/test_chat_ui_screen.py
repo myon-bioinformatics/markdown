@@ -51,8 +51,14 @@ def test_initial_conversation_renders_a_real_table(chat_ui_url, browser) -> None
     try:
         page.goto(chat_ui_url, wait_until="networkidle")
         assert page.get_by_text("Show me a results table").count() >= 1
-        assert page.get_by_text("loss").count() >= 1
-        assert page.get_by_text("0.041").count() >= 1
+
+        # Assert actual <table> DOM structure, not just visible text — this repo's own
+        # markdown_to_html() does NOT emit <table> by design (see test_chat_ui_demo_logic.py),
+        # so text-only assertions here would also pass for an unparsed plain-text fallback.
+        table = page.locator("table").first
+        assert table.locator("th").all_inner_texts() == ["metric", "value"]
+        assert table.locator("tbody tr").count() == 3
+        assert table.locator("tbody tr").first.locator("td").all_inner_texts() == ["loss", "0.041"]
     finally:
         page.close()
 

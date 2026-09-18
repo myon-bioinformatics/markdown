@@ -24,7 +24,7 @@ ironmate などで使っていた `markdown.py` を、そのままのファイ�
 | `fixtures/` | Famous-README-inspired offline snippets + YAML/JSON/TOML |
 | `demos/gradio_app.py` | Optional: paste/upload → instant analysis |
 | `demos/streamlit_app.py` | Optional: sectioned headings/links/images/HTML/code view |
-| `demos/chat_ui_demo.py` | Optional: generic mock chat screen — assistant replies rendered with `markdown.py`'s generation helpers |
+| `demos/chat_ui_demo.py` | Optional: generic mock chat screen — assistant replies built with `markdown.py`'s generation helpers, rendered by Gradio's `Chatbot` |
 
 ## Quick use
 
@@ -65,9 +65,14 @@ CI runs **pytest + PyYAML** (and stdlib `tomllib` / `json`). Gradio / Streamlit 
 
 `demos/chat_ui_demo.py` is the one demo in this repo with an actual chat screen
 (a bubble-history `gr.Chatbot`, not tied to any specific product), so it's also
-the one demo whose frontend tests click through the real rendered page —
-`tests/frontend/test_chat_ui_screen.py` types a message, clicks Send, and
-asserts on the resulting HTML (`<table>`, `<pre><code>`, `<li>`, `<strong>`/`<em>`)
+the one demo whose frontend tests click through the real rendered page.
+`markdown.py`'s generation helpers only build the Markdown *text* — it's
+Gradio's own `Chatbot` component that renders that text to HTML in the
+browser, tables included (see "Capability stance" below: this repo's own
+`markdown_to_html()` does not render GFM tables, by design — it's a
+different, much smaller converter than Gradio's). `tests/frontend/test_chat_ui_screen.py`
+types a message, clicks Send, and asserts on the resulting DOM
+(a real `<table>` with `<th>`/`<td>` rows, `<pre><code>`, `<li>`, `<strong>`/`<em>`)
 via Playwright (`pip install -r requirements-frontend.txt && playwright install chromium`).
 Its pure rendering logic (`render_assistant_turn` / `respond`, no gradio import
 needed) is covered separately in `tests/test_chat_ui_demo_logic.py`.
