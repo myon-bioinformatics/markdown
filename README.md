@@ -194,6 +194,31 @@ These tests skip cleanly (`OPEN_WEBUI_BASE_URL` unset) everywhere else, includin
 PR, the same policy `frontend-smoke` already uses) or a manual local run as above. On a failure,
 that workflow uploads a screenshot and the container logs as artifacts.
 
+### Triggering `real-chat-ui-smoke` without the "Run workflow" form
+
+The workflow takes two optional `workflow_dispatch` inputs, so a chat message and a run label can
+be supplied programmatically instead of clicking through the Actions tab's form each time:
+
+- `message` — an extra chat message to send through the real UI; runs
+  `test_openwebui_renders_a_custom_message_from_the_mock_backend` alongside the three fixed-content
+  tests. Since the text is caller-supplied, that test only asserts *some* non-empty response
+  rendered (not specific Markdown content — see the code comment for why).
+- `run_label` — a free-text tag folded into the failure-artifact name, so results from several
+  manual runs are easy to tell apart.
+
+```bash
+# gh CLI
+gh workflow run real-chat-ui-smoke.yml -f message="show me a table" -f run_label="ad-hoc"
+gh run list --workflow=real-chat-ui-smoke.yml --limit=1   # latest run + its conclusion
+
+# REST API directly
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  https://api.github.com/repos/<owner>/<repo>/actions/workflows/real-chat-ui-smoke.yml/dispatches \
+  -d '{"ref": "main", "inputs": {"message": "show me a table", "run_label": "ad-hoc"}}'
+curl -H "Authorization: Bearer $TOKEN" \
+  "https://api.github.com/repos/<owner>/<repo>/actions/workflows/real-chat-ui-smoke.yml/runs?per_page=1"
+```
+
 LibreChat is a planned second target here (see `docs`-equivalent notes in
 [mcp-toolcall-lab](https://github.com/myon-bioinformatics/mcp-toolcall-lab)'s own LibreChat
 integration for the parallel on that side) — not yet wired up in this repo.

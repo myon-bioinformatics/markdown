@@ -114,3 +114,33 @@ def test_openwebui_renders_markdown_list_from_the_mock_backend(page) -> None:
     )
     items = container.locator("li").all_inner_texts()
     assert [item.strip() for item in items] == ["review the PR", "run the tests", "ship it"]
+
+
+CUSTOM_CHAT_MESSAGE = os.environ.get("CUSTOM_CHAT_MESSAGE", "").strip()
+
+
+@pytest.mark.skipif(
+    not CUSTOM_CHAT_MESSAGE,
+    reason="CUSTOM_CHAT_MESSAGE not set -- set the real-chat-ui-smoke workflow's "
+    "'message' input (or export CUSTOM_CHAT_MESSAGE locally) to exercise an "
+    "arbitrary chat message instead of only the three fixed-content cases above",
+)
+def test_openwebui_renders_a_custom_message_from_the_mock_backend(page) -> None:
+    """Unlike the fixed-content tests above, the message here is caller-supplied
+    (workflow_dispatch input or a local env var), so it can't assert specific
+    Markdown content -- chat_ui_demo.render_assistant_turn() picks its reply from
+    the keywords in the message, falling back to an echo. This only confirms the
+    round trip works end to end: a real, unmodified Open WebUI actually renders
+    *some* non-empty response to that message."""
+    page.goto(OPEN_WEBUI_BASE_URL, wait_until="networkidle")
+    page.wait_for_selector("#chat-input", timeout=30_000)
+
+    _send_message(page, CUSTOM_CHAT_MESSAGE)
+
+    container = page.locator("#response-content-container").last
+    page.wait_for_function(
+        """(el) => el.innerText.trim().length > 0""",
+        arg=container.element_handle(),
+        timeout=30_000,
+    )
+    assert container.inner_text().strip()
