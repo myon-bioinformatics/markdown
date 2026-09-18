@@ -72,6 +72,16 @@ via Playwright (`pip install -r requirements-frontend.txt && playwright install 
 Its pure rendering logic (`render_assistant_turn` / `respond`, no gradio import
 needed) is covered separately in `tests/test_chat_ui_demo_logic.py`.
 
+Viewing rendered Markdown doesn't actually require a chat UI (or any app) at
+all, though — `markdown_to_html()`'s output is just an HTML file, and
+Playwright ships a CLI for exactly that: `python -m playwright screenshot`
+and `python -m playwright pdf` render a `file://` URL with no server and no
+`sync_playwright()` script, the same "reach for the tool's own CLI" approach
+this repo already takes with curl for HTTP APIs.
+`tests/frontend/test_markdown_html_playwright_cli.py` drives both against
+this repo's own generated Markdown to confirm the HTML is real, renderable
+output.
+
 ## Capability stance
 
 This is **not** a full CommonMark/GFM engine (see `SUPPORTED` / `UNSUPPORTED` in `markdown.py`).  
