@@ -1,3 +1,4 @@
 # Optional manual frontends only — not required for the library or CI.
 gradio>=4.0
 streamlit>=1.28
+playwright>=1.40  # only for tests/frontend/test_chat_ui_screen.py; run `playwright install chromium` once
