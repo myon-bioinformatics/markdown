@@ -5,6 +5,14 @@ name: real-chat-ui-smoke
 # it actually renders markdown.py-generated Markdown correctly -- not this
 # repo's own generic mock chat UI (demos/chat_ui_demo.py), the real product.
 #
+# Also registers a real MCP tool server -- mcp-toolcall-lab's
+# openwebui_mcp_mock.py, checked out from that repo below -- as a
+# TOOL_SERVER_CONNECTIONS entry, and drives Open WebUI's own native MCP
+# tool-call round trip through the real per-chat "Tools" picker
+# (tests/real_chat_ui/test_openwebui_mcp_tool_call.py). When that round trip
+# doesn't come back correctly, add what's learned to docs/antipatterns.md --
+# that log exists precisely for failures a live run like this one surfaces.
+#
 # workflow_dispatch only: spinning up a full container + browser automation
 # run is too slow/heavy for every push or PR, matching this repo's existing
 # frontend-smoke job's own policy. Never gates a PR.
@@ -46,6 +54,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Check out mcp-toolcall-lab's mock MCP server
+        uses: actions/checkout@v4
+        with:
+          repository: myon-bioinformatics/mcp-toolcall-lab
+          # Pinned for reproducibility -- openwebui_mcp_mock.py is designed
+          # as a portable, drop-in single file ("Copy this entire file as a
+          # standalone mock MCP server"), so checking it out here rather
+          # than vendoring a copy keeps mcp-toolcall-lab the single source
+          # of truth. Bump when that repo's mock tools/schema change.
+          ref: fd25f006d94c6382c2ae174eac75daeea7f82561
+          path: mcp-toolcall-lab
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -53,6 +72,7 @@ jobs:
         run: |
           pip install -r requirements-dev.txt
           pip install -r requirements-frontend.txt
+          pip install "fastmcp==3.4.7"
           playwright install --with-deps chromium
 
       - name: Start the OpenAI-compatible mock backend
@@ -70,6 +90,21 @@ jobs:
           done
           curl -sf http://127.0.0.1:8090/v1/models
 
+      - name: Start the mock MCP tool server
+        env:
+          MCP_HOST: "0.0.0.0"
+        run: |
+          python mcp-toolcall-lab/openwebui_mcp_mock.py > /tmp/mock-mcp.log 2>&1 &
+          # Only checking for a live TCP+HTTP response here, not a valid MCP
+          # handshake (that needs a session-establishing POST this readiness
+          # loop doesn't need to replicate) -- any response, even a 4xx/5xx,
+          # means the port is up. --max-time bounds a GET that might instead
+          # open a long-lived SSE stream.
+          for i in $(seq 1 30); do
+            curl -s --max-time 3 -o /dev/null http://127.0.0.1:8000/mcp && break
+            sleep 1
+          done
+
       - name: Start Open WebUI
         working-directory: docker/openwebui-smoke
         run: docker compose up -d
@@ -86,7 +121,11 @@ jobs:
         env:
           OPEN_WEBUI_BASE_URL: http://127.0.0.1:3000
           CUSTOM_CHAT_MESSAGE: ${{ github.event.inputs.message }}
-        run: pytest -q tests/real_chat_ui/test_openwebui_docker.py -v
+          # Must match docker-compose.yml's TOOL_SERVER_CONNECTIONS info.name
+          # exactly -- test_openwebui_mcp_tool_call.py clicks the tools-list
+          # row with this text, the same way a real user would.
+          MOCK_MCP_SERVER_NAME: "Mock MCP (mcp-toolcall-lab)"
+        run: pytest -q tests/real_chat_ui/ -v
 
       - name: Dump logs and a screenshot on failure
         if: failure()
@@ -94,6 +133,9 @@ jobs:
         run: |
           echo "::group::mock backend log"
           cat /tmp/mock-backend.log || true
+          echo "::endgroup::"
+          echo "::group::mock MCP server log"
+          cat /tmp/mock-mcp.log || true
           echo "::endgroup::"
           echo "::group::open-webui container log"
           docker compose logs --no-color || true
@@ -125,6 +167,7 @@ jobs:
           name: ${{ steps.artifact-name.outputs.name }}
           path: |
             /tmp/mock-backend.log
+            /tmp/mock-mcp.log
             test-results/
           if-no-files-found: ignore
 

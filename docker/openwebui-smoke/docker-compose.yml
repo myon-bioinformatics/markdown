@@ -1,16 +1,29 @@
-# Real Open WebUI, pointed at demos/openai_compat_mock.py instead of a real LLM.
+# Real Open WebUI, pointed at demos/openai_compat_mock.py instead of a real LLM,
+# with a real MCP tool server (mcp-toolcall-lab's openwebui_mcp_mock.py) registered
+# behind it so the native MCP tool-call round trip can be driven for real too.
 #
 # Usage:
-#   python demos/openai_compat_mock.py &          # from the repo root, listens on :8090
+#   HOST=0.0.0.0 python demos/openai_compat_mock.py &   # from the repo root, listens on :8090
+#   # clone myon-bioinformatics/mcp-toolcall-lab alongside this repo, then:
+#   pip install "fastmcp==3.4.7"
+#   MCP_HOST=0.0.0.0 python ../mcp-toolcall-lab/openwebui_mcp_mock.py &   # listens on :8000
 #   docker compose -f docker/openwebui-smoke/docker-compose.yml up -d
-#   # ... open http://127.0.0.1:3000, or run tests/real_chat_ui/test_openwebui_docker.py ...
+#   # ... open http://127.0.0.1:3000, or run tests/real_chat_ui/ ...
 #   docker compose -f docker/openwebui-smoke/docker-compose.yml down -v
+#
+# HOST/MCP_HOST=0.0.0.0 matter: Open WebUI reaches both mocks over
+# host.docker.internal:host-gateway, which resolves to the host's bridge/gateway
+# IP rather than 127.0.0.1 (notably on Linux) -- see docs/antipatterns.md.
 #
 # WEBUI_AUTH=False skips Open WebUI's signup/login screen entirely (verified against
 # its own source: backend/open_webui/routers/auths.py auto-authenticates a fixed
 # admin@localhost account when this is set) -- there is no interactive setup step to
 # automate. OPENAI_API_BASE_URLS/OPENAI_API_KEYS pre-register the mock backend as a
-# connection at startup, so there's nothing to configure through the admin UI either.
+# connection at startup, and TOOL_SERVER_CONNECTIONS pre-registers the MCP tool
+# server the same way, so there's nothing to configure through the admin UI either
+# -- only the per-chat "enable this tool for this chat" step is a real UI action
+# (tests/real_chat_ui/test_openwebui_mcp_tool_call.py drives that with Playwright,
+# the same click path a real user takes).
 services:
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
@@ -29,7 +42,15 @@ services:
       ANONYMIZED_TELEMETRY: "False"
       DO_NOT_TRACK: "True"
       SCARF_NO_ANALYTICS: "True"
+      # See backend/open_webui/routers/tools.py: an "mcp" connection needs
+      # config.enable=true to be listed at all, and info.id is the id used in
+      # the "server:mcp:<id>" tool id the chat-completions request carries.
+      TOOL_SERVER_CONNECTIONS: >-
+        [{"type":"mcp","url":"http://host.docker.internal:8000/mcp","auth_type":"none",
+        "config":{"enable":true},
+        "info":{"id":"mock-mcp","name":"Mock MCP (mcp-toolcall-lab)",
+        "description":"Deterministic real-estate-style mock MCP tools: find_municipalities, find_transaction_prices, find_stations."}}]
     extra_hosts:
-      # Lets the container reach demos/openai_compat_mock.py running on the host,
-      # the same way this works on Docker Desktop -- explicit here for Linux CI runners.
+      # Lets the container reach the two host-side mocks above, the same way
+      # this works on Docker Desktop -- explicit here for Linux CI runners.
       - "host.docker.internal:host-gateway"

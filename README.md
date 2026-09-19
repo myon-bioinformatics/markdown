@@ -25,7 +25,8 @@ ironmate などで使っていた `markdown.py` を、そのままのファイ�
 | `demos/gradio_app.py` | Optional: paste/upload → instant analysis. `analyze()` has zero UI deps — call it directly |
 | `demos/streamlit_app.py` | Optional: sectioned headings/links/images/HTML/code view. `build_view()` has zero UI deps — call it directly |
 | `demos/chat_ui_demo.py` | Optional: generic mock chat screen — assistant replies built with `markdown.py`'s generation helpers, rendered by Gradio's `Chatbot` |
-| `demos/openai_compat_mock.py` | Optional: OpenAI-compatible chat completions server (stdlib only) so a real chat product can be pointed at `render_assistant_turn()`'s output instead of a real LLM |
+| `demos/openai_compat_mock.py` | Optional: OpenAI-compatible chat completions server (stdlib only) so a real chat product can be pointed at `render_assistant_turn()`'s output instead of a real LLM — also issues one real OpenAI-style tool call for the MCP round-trip test below |
+| `docs/antipatterns.md` | A running log of concrete ways a real chat product has broken the Docker/Playwright smoke tests in an actual CI run, with root cause and fix |
 
 ## Quick use
 
@@ -227,6 +228,32 @@ curl -H "Authorization: Bearer $TOKEN" \
 LibreChat is a planned second target here (see `docs`-equivalent notes in
 [mcp-toolcall-lab](https://github.com/myon-bioinformatics/mcp-toolcall-lab)'s own LibreChat
 integration for the parallel on that side) — not yet wired up in this repo.
+
+### The real MCP tool-call round trip
+
+`tests/real_chat_ui/test_openwebui_mcp_tool_call.py` goes further still: it registers a real MCP
+tool server — [mcp-toolcall-lab](https://github.com/myon-bioinformatics/mcp-toolcall-lab)'s
+`openwebui_mcp_mock.py`, checked out fresh in the workflow rather than vendored here, since that
+file is designed as a portable, drop-in single-file mock — as a `TOOL_SERVER_CONNECTIONS` entry,
+clicks through Open WebUI's real per-chat "Tools" picker to enable it (the same click path a real
+user takes, not a backend shortcut), sends a message that should trigger a tool call, and verifies
+the tool's *actual* result renders in the chat. `demos/openai_compat_mock.py`'s "model" recognizes
+one trigger phrase and issues a real OpenAI-style `tool_calls` response referencing whichever tool
+name the request actually offered (never hardcoded, since a tool-server-backed function name is
+prefixed by the caller); on the follow-up request it unwraps the MCP result (which nests a second
+layer of JSON — confirmed by probing the real `mcp` client SDK against the real mock server, not
+guessed) and renders it as a Markdown table.
+
+To reproduce locally: clone `mcp-toolcall-lab` alongside this repo, `pip install "fastmcp==3.4.7"`,
+run `MCP_HOST=0.0.0.0 python ../mcp-toolcall-lab/openwebui_mcp_mock.py &` alongside the two commands
+above, then run `pytest tests/real_chat_ui/ -v` with `MOCK_MCP_SERVER_NAME="Mock MCP (mcp-toolcall-lab)"`
+also exported (must match `docker-compose.yml`'s `TOOL_SERVER_CONNECTIONS.info.name` exactly).
+
+**[`docs/antipatterns.md`](docs/antipatterns.md)** is a running log of concrete ways a real chat
+product has broken this setup in an actual `workflow_dispatch` run — not predicted failures, only
+ones a live run produced, with the root cause traced to the product's own source. When the MCP
+round trip above doesn't come back correctly, that's exactly the kind of failure the log exists to
+capture.
 
 ## Capability stance
 
