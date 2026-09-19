@@ -1,0 +1,132 @@
+name: real-chat-ui-smoke
+
+# Runs a REAL Open WebUI in Docker (unmodified, from its own published image)
+# against demos/openai_compat_mock.py, and drives it with Playwright to verify
+# it actually renders markdown.py-generated Markdown correctly -- not this
+# repo's own generic mock chat UI (demos/chat_ui_demo.py), the real product.
+#
+# workflow_dispatch only: spinning up a full container + browser automation
+# run is too slow/heavy for every push or PR, matching this repo's existing
+# frontend-smoke job's own policy. Never gates a PR.
+#
+# Both inputs are optional so "Run workflow" with no changes still runs the
+# three fixed-content assertions in test_openwebui_docker.py unchanged:
+#   message   - an extra chat message to send through the real Open WebUI UI.
+#               Runs test_openwebui_renders_a_custom_message_from_the_mock_backend
+#               in addition to the three fixed cases; since the text is
+#               caller-supplied, that test only asserts *some* non-empty
+#               response rendered, not specific content.
+#   run_label - free-text tag folded into this run's artifact name, so when
+#               comparing multiple manual runs (e.g. via `gh run list
+#               --workflow=real-chat-ui-smoke.yml` or the REST
+#               /actions/workflows/{id}/runs endpoint) the failure artifacts
+#               for a given trigger are easy to tell apart.
+#
+# Triggering without the "Run workflow" form:
+#   gh workflow run real-chat-ui-smoke.yml -f message="show me a table" -f run_label="ad-hoc"
+#   gh run list --workflow=real-chat-ui-smoke.yml --limit=1   # latest run + conclusion
+# or via the REST API directly:
+#   POST /repos/{owner}/{repo}/actions/workflows/real-chat-ui-smoke.yml/dispatches
+#     {"ref": "main", "inputs": {"message": "...", "run_label": "..."}}
+#   GET  /repos/{owner}/{repo}/actions/workflows/real-chat-ui-smoke.yml/runs?per_page=1
+on:
+  workflow_dispatch:
+    inputs:
+      message:
+        description: "Extra chat message to send (optional; runs the custom-message test alongside the three fixed cases)"
+        required: false
+        default: ""
+      run_label:
+        description: "Free-text label tagged onto this run's failure-artifact name (optional)"
+        required: false
+        default: ""
+
+jobs:
+  openwebui-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test + Playwright deps
+        run: |
+          pip install -r requirements-dev.txt
+          pip install -r requirements-frontend.txt
+          playwright install --with-deps chromium
+
+      - name: Start the OpenAI-compatible mock backend
+        env:
+          # Open WebUI reaches this over host.docker.internal:host-gateway,
+          # which on a Linux runner resolves to the bridge/gateway IP, not
+          # 127.0.0.1 -- a loopback-only bind is unreachable from the
+          # container even though curl from this same host step works fine.
+          HOST: "0.0.0.0"
+        run: |
+          python demos/openai_compat_mock.py > /tmp/mock-backend.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8090/v1/models > /dev/null && break
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:8090/v1/models
+
+      - name: Start Open WebUI
+        working-directory: docker/openwebui-smoke
+        run: docker compose up -d
+
+      - name: Wait for Open WebUI
+        run: |
+          for i in $(seq 1 90); do
+            curl -sf http://127.0.0.1:3000/health > /dev/null && break
+            sleep 2
+          done
+          curl -sf http://127.0.0.1:3000/health
+
+      - name: Run the real Open WebUI Playwright smoke test
+        env:
+          OPEN_WEBUI_BASE_URL: http://127.0.0.1:3000
+          CUSTOM_CHAT_MESSAGE: ${{ github.event.inputs.message }}
+        run: pytest -q tests/real_chat_ui/test_openwebui_docker.py -v
+
+      - name: Dump logs and a screenshot on failure
+        if: failure()
+        working-directory: docker/openwebui-smoke
+        run: |
+          echo "::group::mock backend log"
+          cat /tmp/mock-backend.log || true
+          echo "::endgroup::"
+          echo "::group::open-webui container log"
+          docker compose logs --no-color || true
+          echo "::endgroup::"
+
+      - name: Compute failure-artifact name
+        if: failure()
+        id: artifact-name
+        env:
+          # Passed via env, not interpolated into the script body, so an
+          # adversarial run_label (e.g. containing "; rm -rf" or backticks)
+          # can't be used for script injection -- see GitHub's own guidance
+          # on untrusted workflow_dispatch input in run: steps.
+          RUN_LABEL: ${{ github.event.inputs.run_label }}
+        run: |
+          if [ -n "$RUN_LABEL" ]; then
+            safe_label=$(echo "$RUN_LABEL" | tr -c 'a-zA-Z0-9_.-' '-')
+            echo "name=openwebui-smoke-failure-${safe_label}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=openwebui-smoke-failure" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload failure screenshot
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.artifact-name.outputs.name }}
+          path: |
+            /tmp/mock-backend.log
+            test-results/
+          if-no-files-found: ignore
+
+      - name: Tear down
+        if: always()
+        working-directory: docker/openwebui-smoke
+        run: docker compose down -v

@@ -25,6 +25,7 @@ ironmate などで使っていた `markdown.py` を、そのままのファイ�
 | `demos/gradio_app.py` | Optional: paste/upload → instant analysis. `analyze()` has zero UI deps — call it directly |
 | `demos/streamlit_app.py` | Optional: sectioned headings/links/images/HTML/code view. `build_view()` has zero UI deps — call it directly |
 | `demos/chat_ui_demo.py` | Optional: generic mock chat screen — assistant replies built with `markdown.py`'s generation helpers, rendered by Gradio's `Chatbot` |
+| `demos/openai_compat_mock.py` | Optional: OpenAI-compatible chat completions server (stdlib only) so a real chat product can be pointed at `render_assistant_turn()`'s output instead of a real LLM |
 
 ## Quick use
 
@@ -161,6 +162,71 @@ pytest tests/test_benchmark_commonmark.py tests/test_benchmark_realworld.py test
 All three run in the default `pytest` — no extra dependency installs. `test_benchmark_html_roundtrip.py`
 is a separate, exploratory HTML → Markdown → HTML round trip; it's deliberately not part of the
 PASS/DEGRADED/UNSUPPORTED/FAIL grading above.
+
+## Real chat product smoke test (Open WebUI, in Docker)
+
+Every other frontend test here either has nothing to click (`demos/gradio_app.py` /
+`demos/streamlit_app.py`) or clicks through a mock chat screen this repo itself built
+(`demos/chat_ui_demo.py`). `tests/real_chat_ui/test_openwebui_docker.py` goes one step further:
+it drives a **real, unmodified Open WebUI**, running from its own published Docker image, and
+verifies *that actual product* renders `markdown.py`-generated Markdown correctly — not a mock of
+it.
+
+`demos/openai_compat_mock.py` is a small stdlib-only OpenAI-compatible chat completions server
+(`GET /v1/models`, `POST /v1/chat/completions`, streaming and non-streaming) that reuses
+`chat_ui_demo.py`'s own `render_assistant_turn()` keyword logic, so Open WebUI's "model" reply is
+the exact same deterministic Markdown the generic mock demo already uses — no real LLM, no network
+call out. `docker/openwebui-smoke/docker-compose.yml` runs Open WebUI with `WEBUI_AUTH=False`
+(skips the signup/login screen entirely) and `OPENAI_API_BASE_URLS`/`DEFAULT_MODELS` pre-pointed at
+that mock backend, so there's no interactive setup to automate.
+
+```bash
+# HOST=0.0.0.0 matters here: Open WebUI reaches this over
+# host.docker.internal:host-gateway, which resolves to the host's bridge/
+# gateway IP rather than 127.0.0.1 (notably on Linux) -- a loopback-only
+# bind is unreachable from the container even though curl from the host
+# itself would still work.
+HOST=0.0.0.0 python demos/openai_compat_mock.py &
+docker compose -f docker/openwebui-smoke/docker-compose.yml up -d
+# wait for http://127.0.0.1:3000/health
+OPEN_WEBUI_BASE_URL=http://127.0.0.1:3000 pytest tests/real_chat_ui/test_openwebui_docker.py -v
+docker compose -f docker/openwebui-smoke/docker-compose.yml down -v
+```
+
+These tests skip cleanly (`OPEN_WEBUI_BASE_URL` unset) everywhere else, including the default
+`pytest` run — they only run in the `real-chat-ui-smoke` GitHub Actions workflow
+(`workflow_dispatch` only: a full container + browser run is too slow/heavy to gate every push or
+PR, the same policy `frontend-smoke` already uses) or a manual local run as above. On a failure,
+that workflow uploads a screenshot and the container logs as artifacts.
+
+### Triggering `real-chat-ui-smoke` without the "Run workflow" form
+
+The workflow takes two optional `workflow_dispatch` inputs, so a chat message and a run label can
+be supplied programmatically instead of clicking through the Actions tab's form each time:
+
+- `message` — an extra chat message to send through the real UI; runs
+  `test_openwebui_renders_a_custom_message_from_the_mock_backend` alongside the three fixed-content
+  tests. Since the text is caller-supplied, that test only asserts *some* non-empty response
+  rendered (not specific Markdown content — see the code comment for why).
+- `run_label` — a free-text tag folded into the failure-artifact name, so results from several
+  manual runs are easy to tell apart.
+
+```bash
+# gh CLI
+gh workflow run real-chat-ui-smoke.yml -f message="show me a table" -f run_label="ad-hoc"
+gh run list --workflow=real-chat-ui-smoke.yml --limit=1   # latest run + its conclusion
+
+# REST API directly
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  https://api.github.com/repos/<owner>/<repo>/actions/workflows/real-chat-ui-smoke.yml/dispatches \
+  -d '{"ref": "main", "inputs": {"message": "show me a table", "run_label": "ad-hoc"}}'
+curl -H "Authorization: Bearer $TOKEN" \
+  "https://api.github.com/repos/<owner>/<repo>/actions/workflows/real-chat-ui-smoke.yml/runs?per_page=1"
+```
+
+LibreChat is a planned second target here (see `docs`-equivalent notes in
+[mcp-toolcall-lab](https://github.com/myon-bioinformatics/mcp-toolcall-lab)'s own LibreChat
+integration for the parallel on that side) — not yet wired up in this repo.
 
 ## Capability stance
 

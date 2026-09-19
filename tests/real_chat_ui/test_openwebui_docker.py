@@ -1,0 +1,146 @@
+"""Real Open WebUI, in a real Docker container, rendering markdown.py's own output.
+
+Every other frontend test in this repo either avoids clicking (there's nothing
+to look at) or clicks through a generic mock chat screen this repo itself
+built (``demos/chat_ui_demo.py``). This one is different: it drives the
+actual Open WebUI product, running unmodified from its own published Docker
+image, pointed at ``demos/openai_compat_mock.py`` instead of a real LLM so the
+"model's" reply is deterministic Markdown built by this repo's own
+``markdown.py`` helpers (the same ``render_assistant_turn()`` logic
+``chat_ui_demo.py`` uses). The question this answers that the generic mock
+demo test can't: does a real, unmodified chat product's own Markdown
+renderer actually turn that output into the HTML it's supposed to?
+
+Only runs with ``OPEN_WEBUI_BASE_URL`` set, which only the CI workflow
+(``.github/workflows/real-chat-ui-smoke.yml``, ``workflow_dispatch`` only) or
+a manual local run of ``docker/openwebui-smoke/docker-compose.yml`` sets --
+never in the default ``pytest`` run, since it needs a real running container.
+
+Selectors here were derived by reading Open WebUI's own frontend source
+(open-webui/open-webui, commit 0a7c158) rather than verified against a live
+instance locally -- this sandbox's network policy blocks pulling the
+ghcr.io image. The GitHub Actions run is the first live verification; on a
+selector mismatch, the workflow uploads a screenshot and the container logs
+as artifacts to make iterating on that fast.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+
+import pytest
+
+pytest.importorskip("playwright.sync_api")
+from playwright.sync_api import sync_playwright  # noqa: E402
+
+OPEN_WEBUI_BASE_URL = os.environ.get("OPEN_WEBUI_BASE_URL")
+
+pytestmark = pytest.mark.skipif(
+    not OPEN_WEBUI_BASE_URL,
+    reason="OPEN_WEBUI_BASE_URL not set -- only the real-chat-ui-smoke workflow "
+    "(workflow_dispatch) or a manual docker/openwebui-smoke run sets this",
+)
+
+
+@pytest.fixture(scope="module")
+def browser():
+    executable_path = os.environ.get("PLAYWRIGHT_CHROMIUM_EXECUTABLE") or None
+    with sync_playwright() as p:
+        launched = p.chromium.launch(executable_path=executable_path)
+        yield launched
+        launched.close()
+
+
+@pytest.fixture()
+def page(browser):
+    pg = browser.new_page()
+    try:
+        yield pg
+    finally:
+        pg.close()
+
+
+def _send_message(page, text: str) -> None:
+    """Type into Open WebUI's chat input and submit -- it's a rich-text
+    (contenteditable) editor by default, not a plain <textarea>, so this
+    clicks and types rather than using .fill()."""
+    chat_input = page.locator("#chat-input")
+    chat_input.click()
+    page.keyboard.type(text)
+    page.keyboard.press("Enter")
+
+
+def test_openwebui_renders_markdown_table_from_the_mock_backend(page) -> None:
+    page.goto(OPEN_WEBUI_BASE_URL, wait_until="networkidle")
+
+    # WEBUI_AUTH=False auto-signs in; DEFAULT_MODELS pre-selects the mock
+    # model -- there is no login form or model picker to drive here.
+    page.wait_for_selector("#chat-input", timeout=30_000)
+
+    _send_message(page, "show me a table")
+
+    container = page.locator("#response-content-container").last
+    container.locator("table").wait_for(timeout=30_000)
+
+    table = container.locator("table")
+    assert table.locator("th", has_text=re.compile("metric", re.I)).count() >= 1
+    assert table.locator("td", has_text="loss").count() >= 1
+    assert table.locator("td", has_text="0.041").count() >= 1
+
+
+def test_openwebui_renders_markdown_code_block_from_the_mock_backend(page) -> None:
+    page.goto(OPEN_WEBUI_BASE_URL, wait_until="networkidle")
+    page.wait_for_selector("#chat-input", timeout=30_000)
+
+    _send_message(page, "show me some code")
+
+    container = page.locator("#response-content-container").last
+    container.locator("pre code").wait_for(timeout=30_000)
+    assert "md.bold" in container.locator("pre code").last.inner_text()
+
+
+def test_openwebui_renders_markdown_list_from_the_mock_backend(page) -> None:
+    page.goto(OPEN_WEBUI_BASE_URL, wait_until="networkidle")
+    page.wait_for_selector("#chat-input", timeout=30_000)
+
+    _send_message(page, "give me a todo list")
+
+    container = page.locator("#response-content-container").last
+    page.wait_for_function(
+        """(el) => el.querySelectorAll('li').length >= 3""",
+        arg=container.element_handle(),
+        timeout=30_000,
+    )
+    items = container.locator("li").all_inner_texts()
+    assert [item.strip() for item in items] == ["review the PR", "run the tests", "ship it"]
+
+
+CUSTOM_CHAT_MESSAGE = os.environ.get("CUSTOM_CHAT_MESSAGE", "").strip()
+
+
+@pytest.mark.skipif(
+    not CUSTOM_CHAT_MESSAGE,
+    reason="CUSTOM_CHAT_MESSAGE not set -- set the real-chat-ui-smoke workflow's "
+    "'message' input (or export CUSTOM_CHAT_MESSAGE locally) to exercise an "
+    "arbitrary chat message instead of only the three fixed-content cases above",
+)
+def test_openwebui_renders_a_custom_message_from_the_mock_backend(page) -> None:
+    """Unlike the fixed-content tests above, the message here is caller-supplied
+    (workflow_dispatch input or a local env var), so it can't assert specific
+    Markdown content -- chat_ui_demo.render_assistant_turn() picks its reply from
+    the keywords in the message, falling back to an echo. This only confirms the
+    round trip works end to end: a real, unmodified Open WebUI actually renders
+    *some* non-empty response to that message."""
+    page.goto(OPEN_WEBUI_BASE_URL, wait_until="networkidle")
+    page.wait_for_selector("#chat-input", timeout=30_000)
+
+    _send_message(page, CUSTOM_CHAT_MESSAGE)
+
+    container = page.locator("#response-content-container").last
+    page.wait_for_function(
+        """(el) => el.innerText.trim().length > 0""",
+        arg=container.element_handle(),
+        timeout=30_000,
+    )
+    assert container.inner_text().strip()
