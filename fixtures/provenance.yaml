@@ -103,3 +103,25 @@ benchmark_fixtures:
     fetch_example: |
       curl -sS "https://raw.githubusercontent.com/axios/axios/56a5f1acdc41965f464eb59bec6cc828113ba546/CHANGELOG.md" | head -400
     covers: [many_headings, many_links, lists, version_strings, long_input_stability, inline_html_avatars]
+
+  # --- Real-world HTML -> html_to_markdown() fixtures ---
+  #
+  # Every fixture above feeds markdown_to_html() (Markdown source). These
+  # feed the other direction: real HTML from actual sites, not the small
+  # synthetic snippet in test_benchmark_html_roundtrip.py (whose own
+  # docstring flags that gap -- "not vendored from any specific real page").
+  # No git commit exists for a plain website, so provenance is fetched_at +
+  # sha256 of the exact vendored bytes instead of a commit SHA.
+  - id: tohoho_web_home
+    path: benchmark/tohoho_web_home.html
+    source: "https://www.tohoho-web.com/ (top page, live site, all rights reserved by its author -- vendored for parser-benchmark purposes only, not redistribution)"
+    fetched_at: "2026-09-19"
+    sha256: e21b277928c6e06109d3143cabed792391e55d643d9c8d4158b7b1c7eaa55bfc
+    fetch_example: |
+      curl -sS "https://www.tohoho-web.com/"
+    covers: [headings, many_links, nested_semantic_tags_header_aside_main_footer, forms, inline_scripts, japanese_text]
+    note: >
+      A real, dense Japanese HTML index page (1 <h1>, 24 <h2>, 263 <a href>,
+      <header>/<aside>/<main>/<footer> semantic tags, an inline <form>, and
+      inline <script> ad-loading blocks) -- see
+      tests/test_benchmark_html_roundtrip.py for what survives.

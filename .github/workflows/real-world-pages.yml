@@ -1,0 +1,64 @@
+name: real-world-pages
+
+# Publishes scripts/real_world_pages_report.py's output to GitHub Pages:
+# for every real, vendored HTML fixture in fixtures/provenance.yaml (see
+# tests/test_benchmark_html_roundtrip.py), a screenshot of the original
+# next to a screenshot of the html_to_markdown() -> markdown_to_html()
+# round trip, plus a before/after construct-count table.
+#
+# Runs entirely against the vendored fixture -- no live fetch of the real
+# site happens here, so this never flakes on that site being slow, down,
+# or changed since the fixture was last refreshed (same bet every other
+# benchmark fixture in this repo already makes).
+#
+# workflow_dispatch only, matching this repo's own "heavy job" convention
+# (frontend-smoke, real-chat-ui-smoke): a Playwright Chromium install
+# plus screenshots is too slow for every push. deploy is main-only so a
+# feature branch's report never overwrites the published Pages site.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/real_world_pages_report.py"
+      - "fixtures/benchmark/**"
+      - "fixtures/provenance.yaml"
+      - ".github/workflows/real-world-pages.yml"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          pip install pyyaml playwright
+          playwright install --with-deps chromium
+      - name: Build the report
+        run: python scripts/real_world_pages_report.py --out _site
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
