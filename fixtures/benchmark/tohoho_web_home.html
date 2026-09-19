@@ -1,0 +1,413 @@
+﻿<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>とほほのＷＷＷ入門</title>
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="description" content="とほほのWWW入門">
+<link rel="apple-touch-icon" type="image/png" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="stylesheet" href="www.css?d=202603131244">
+<script src="./lib/common.js"></script>
+<link rel="stylesheet" href="./style5.css">
+<script src="/freepass_bidder.js?cb=202602121640"></script>
+</head>
+<body>
+<div id="main">
+<header>
+  <h1>とほほのWWW入門</h1>
+  <form id="search" method="GET" action="https://www.google.com/search">
+    <input type="hidden" name="ie" value="utf-8">
+    <input type="hidden" name="oe" value="utf-8">
+    <input type="hidden" name="hl" value="ja">
+    <input type="hidden" name="lr" value="lang_ja">
+    <input type="hidden" name="as_sitesearch" value="www.tohoho-web.com">
+    <input id="google-search" type="text" name="q" size="20" maxlength="255" value=""><!--
+    --><input type="submit" name="btnG" value="検索">
+  </form>
+</header>
+<div class="my-info">
+  <p>誤り指摘・要望・コメントなどありましたら<br class="sp">下記から管理者にご連絡ください。</p>
+  <p>返信の必要な方は <a href="wwwquest.htm">管理者</a> までメールお願いします。</p>
+  <form id="mail-form" action="cgi/mail.cgi" method="post" accept-charset="UTF-8">
+    <textarea name="message" placeholder="例) ～に誤りがあります。～入門を追加してくださいなど。ASCIIのみの書き込みは受け付けません。"></textarea><!--
+    --><button id="btn-mail">送信</button>
+  </form>
+</div>
+<div id="content">
+  <aside>
+    <h2>メニュー</h2>
+    <ul>
+    <li><a target="_top" href="index.htm">HOME</a></li>
+    <li><a href="www-f.htm" onclick="return frame()">フレーム版</a></li>
+    <li><a target="_top" href="lng/index.htm">ラウンジ</a></li>
+    </ul>
+  </aside>
+  <main>
+    <h2>はじめに</h2>
+    <ul>
+    <li><a href="wwwintro.htm">ご使用上の注意</a> <i>(1)</i></li>
+    <li><a href="wwwhist.htm">主な更新履歴</a> <i>(25)</i></li>
+    <li><a href="wwwquest.htm">管理者へのメール</a> <i>(1)</i></li>
+    <li><a href="wwwwho.html">自己紹介</a> <i>(1)</i></li>
+    </ul>
+    <h2>基本編</h2>
+    <ul>
+    <li><a href="term/index.htm">用語集</a> <i>(82)</i></li>
+    <li><a href="wwwbeg.htm">Webページ作成入門</a> <i>(7)</i></li>
+    <li><a href="how2/index.htm">逆引きリファレンス</a> <i>(32)</i></li>
+    </ul>
+    <h2>HTML</h2>
+    <ul>
+    <li><a href="html/index.htm">HTML</a> <i>(412)</i></li>
+    <li><a href="html5/index.html">HTML5</a> <i>(7)</i></li>
+    <li><a href="ex/xhtml.htm">XHTML</a> <i>(1)</i></li>
+    <li><a href="ex/mathml.html">MathML</a> <i>(1)</i></li>
+    <li><a href="ex/dtd.htm">DTD</a> <i>(1)</i></li>
+    <li><a href="ex/web-components.html">Webコンポーネント</a> <i>(5)</i>
+    <li><a href="ex/custom-elements.html">カスタム要素</a> <i>(1)</i></li>
+    <li><a href="ex/shadow-dom.html">シャドーDOM</a> <i>(1)</i></li>
+    <li><a href="ex/html-imports.html">HTMLインポート</a> <i>(1)</i></li>
+    <li><a href="ex/html-template.html">HTMLテンプレート</a> <i>(1)</i></li>
+    <li><a href="wwwdhtml.htm">ダイナミックHTML</a> <i>(1)</i></li>
+    </ul>
+    <h2>フォーマット</h2>
+    <ul>
+    <li><a href="ex/markdown.html">Markdown</a> <i>(1)</i></li>
+    <li><a href="ex/json.html">JSON</a> <i>(1)</i></li>
+    <li><a href="ex/jsonl.html">JSONL</a> <i>(1)</i></li>
+    <li><a href="ex/json5.html">JSON5</a> <i>(1)</i></li>
+    <li><a href="ex/svg.html">SVG</a> <i>(1)</i></li>
+    <li><a href="wwwvml.htm">VML</a> <i>(1)</i></li>
+    <li><a href="wwwgif.htm">GIF</a> <i>(1)</i></li>
+    <li><a href="ex/csv.html">CSV</a> <i>(1)</i></li>
+    <li><a href="ex/semantic-web.html">セマンティック・ウェブ</a> <i>(1)</i></li>
+    </ul>
+    <h2>CSS</h2>
+    <ul>
+    <li><a href="css/index.htm">CSS</a> (<a href="css/index2.htm">ABC順</a>)<i>(765)</i></li>
+    <li><a href="ex/bootstrap.html">Bootstrap 3</a> <i>(1)</i></li>
+    <li><a href="bootstrap/index.html">Bootstrap 4</a> <i>(50)</i></li>
+    <li><a href="bootstrap5/index.html">Bootstrap 5</a> <i>(10)</i></li>
+    <li><a href="ex/less.html">Less</a> <i>(1)</i></li>
+    <li><a href="ex/sass.html">Sass</a> <i>(1)</i></li>
+    <li><a href="ex/tailwind.html">Tailwind CSS</a> <i>(1)</i></li>
+    <li><a href="ex/css-framework.html">CSSフレームワーク</a> <i>(1)</i></li>
+    <li><a href="ex/reset-css.html">リセットCSS</a> <i>(1)</i></li>
+    <li><a href="ex/centering.html">センタリング</a> <i>(1)</i></li>
+    <li><a href="ex/grid.html">グリッド</a> <i>(1)</i></li>
+    <li><a href="ex/css-align.html">フレックス・グリッドのレイアウト</a> <i>(1)</i></li>
+    <li><a href="ex/css-transition.html">CSSトランジション</a> <i>(1)</i></li>
+    <li><a href="ex/css-motion-path.html">CSSモーションパス</a> <i>(1)</i></li>
+    <li><a href="ex/css-nesting.html">CSSネスティング</a> <i>(1)</i></li>
+    <li><a href="ex/css-custom-function.html">CSSカスタム関数</a> <i>(1)</i></li>
+    <li><a href="ex/css-cascade-layers.html">CSSカスケードレイヤー</a> <i>(1)</i></li>
+    <li><a href="ex/css-mask.html">CSSマスク</a> <i>(1)</i></li>
+    <li><a href="ex/css-carousel.html">CSSカルーセル</a> <i>(1)</i></li>
+    <li><a href="ex/css-custom-highlight-api.html">CSSカスタムハイライトAPI</a> <i>(1)</i></li>
+    <li><a href="ex/container-query.html">コンテナクエリ</a> <i>(1)</i></li>
+    <li><a href="ex/anchor-positioning.html">アンカーポジショニング</a> <i>(1)</i></li>
+    <li><a href="ex/customizable-select.html">カスタマイザブルセレクト</a> <i>(1)</i></li>
+    <li><a href="ex/scroll-animation.html">スクロールドリブンアニメーション</a> <i>(1)</i></li>
+    <li><a href="ex/scroll-trigger.html">スクロールトリガーアニメーション</a> <i>(1)</i></li>
+    <li><a href="ex/rebeccapurple.html">レベッカパープル</a> <i>(1)</i></li>
+    </ul>
+    <h2>プログラミング言語</h2>
+    <ul>
+    <li><a href="js/index.htm">JavaScript</a> <i>(42)</i></li>
+    <li><a href="ex/typescript.html">TypeScript</a> <i>(1)</i></li>
+    <li><a href="java/index.htm">Java</a> <i>(26)</i></li>
+    <li><a href="perl5/index.html">Perl</a> <i>(6)</i></li>
+    <li><a href="php/index.html">PHP</a> <i>(14)</i></li>
+    <li><a href="ruby/index.html">Ruby</a> <i>(11)</i></li>
+    <li><a href="python/index.html">Python</a> <i>(14)</i></li>
+    <li><a href="ex/golang.html">Go言語</a> <i>(1)</i></li>
+    <li><a href="ex/c-lang.html">C言語</a> <i>(1)</i></li>
+    <li><a href="ex/c-sharp.html">C#</a> <i>(1)</i></li>
+    <li><a href="ex/rust.html">Rust</a> <i>(1)</i></li>
+    <li><a href="ex/scala.html">Scala</a> <i>(1)</i></li>
+    <li><a href="ex/swift.html">Swift</a> <i>(1)</i></li>
+    <li><a href="ex/haskell.html">Haskell</a> <i>(1)</i></li>
+    <li><a href="ex/kotlin.html">Kotlin</a> <i>(1)</i></li>
+    <li><a href="ex/sh-history.html">シェル</a> <i>(1)</i></li>
+    <li><a href="ex/shell.html">Bash</a> <i>(1)</i></li>
+    <li><a href="ex/awk.html">AWK</a> <i>(1)</i></li>
+    <li><a href="ex/bat.html">バッチ</a> <i>(1)</i></li>
+    <li><a href="ex/vba.html">VBA</a> <i>(1)</i></li>
+    <li><a href="ex/power-shell.html">PowerShell</a> <i>(1)</i></li>
+    <li><a href="ex/fortran77.html">FORTRAN</a> <i>(1)</i></li>
+    <li><a href="ex/lisp.html">Lisp</a> <i>(1)</i></li>
+    <li><a href="ex/assembler.html">8ビットアセンブラ</a> <i>(1)</i></li>
+    </ul>
+    <h2>JavaScript</h2>
+    <ul>
+    <li><a href="js/index.htm">JavaScript</a> <i>(42)</i></li>
+    <li><a href="ex/jstech.html">JavaScript関連技術</a> <i>(1)</i></li>
+    <li><a href="ex/promise.html">Promise</a> <i>(1)</i></li>
+    <li><a href="ex/es2020.html">ES2020</a> <i>(1)</i></li>
+    <li><a href="ex/es2022.html">ES2022</a> <i>(1)</i></li>
+    <li><a href="ex/es2023.html">ES2023</a> <i>(1)</i></li>
+    <li><a href="ex/es2024.html">ES2024</a> <i>(1)</i></li>
+    <li><a href="ex/es2025.html">ES2025</a> <i>(1)</i></li>
+    <li><a href="ex/es2026.html">ES2026</a> <i>(1)</i></li>
+    <li><a href="ex/prompt-api.html">Prompt API</a> <i>(1)</i></li>
+    <li><a href="ex/translator-api.html">Translator API</a> <i>(1)</i></li>
+    </ul>
+    <h2>Python</h2>
+    <ul>
+    <li><a href="python/index.html">Python</a> <i>(14)</i></li>
+    <li><a href="python/logging.html">logging</a> <i>(1)</i></li>
+    <li><a href="python/requests.html">requests</a> <i>(1)</i></li>
+    <li><a href="python/jinja.html">Jinja</a> <i>(1)</i></li>
+    <li><a href="python/imapclient.html">imapclient</a> <i>(1)</i></li>
+    </ul>
+    <h2>フレームワーク・CMS</h2>
+    <ul>
+    <li><a href="wordpress/index.html">WordPress</a> <i>(5)</i></li>
+    <li><a href="drupal/index.htm">Drupal</a> <i>(15)</i></li>
+    <li><a href="ex/rails.html">Ruby on Rails</a> <i>(3)</i></li>
+    <li><a href="django/index.html">Django</a> <i>(3)</i></li>
+    <li><a href="ex/laravel.html">Laravel</a> <i>(1)</i></li>
+    <li><a href="js/jquery/index.htm">jQuery</a> <i>(16)</i></li>
+    <li><a href="ex/nodejs.html">Node.js</a> <i>(1)</i></li>
+    <li><a href="ex/express.html">Express</a> <i>(1)</i></li>
+    <li><a href="ex/angularjs.html">AngularJS</a> <i>(1)</i></li>
+    <li><a href="ex/angular.html">Angular</a> <i>(1)</i></li>
+    <li><a href="ex/vuejs.html">Vue2</a> <i>(1)</i></li>
+    <li><a href="ex/vue3.html">Vue3</a> <i>(1)</i></li>
+    <li><a href="ex/react.html">React</a> <i>(1)</i></li>
+    <li><a href="ex/nextjs.html">Next.js</a> <i>(1)</i></li>
+    <li><a href="ex/alpine.html">Alpine.js</a> <i>(1)</i></li>
+    <li><a href="ex/flask.html">Flask</a> <i>(1)</i></li>
+    <li><a href="ex/amp.html">AMP</a> <i>(1)</i></li>
+    </ul>
+    <h2>ライブラリ</h2>
+    <ul>
+    <li><a href="ex/chartjs.html">Chart.js</a> <i>(2)</i></li>
+    <li><a href="ex/jspreadsheet.html">Jspreadsheet</a> <i>(1)</i></li>
+    <li><a href="ex/json-schema.html">JSON Schema</a> <i>(1)</i></li>
+    <li><a href="ex/grpc.html">gRPC</a> <i>(1)</i></li>
+    <li><a href="ex/mathjax.html">MathJax</a> <i>(1)</i></li>
+    <li><a href="ex/excel-functions.html">Excel関数</a> <i>(1)</i></li>
+    </ul>
+    <h2>CGI</h2>
+    <ul>
+    <li><a href="wwwcgi.htm">CGI</a> <i>(7)</i></li>
+    <li><a href="ex/ssi.html">SSI</a> <i>(1)</i></li>
+    <li><a href="wwwcount.htm">カウンター設置</a> <i>(1)</i></li>
+    <li><a href="wwwmail.htm">メール送信フォーム</a> <i>(1)</i></li>
+    <li><a href="wwwboard.htm">掲示板設置</a> <i>(1)</i></li>
+    <li><a href="wwwsrch.htm">検索フォーム</a> <i>(1)</i></li>
+    <li><a href="soft/index.html">とほほのCGIソフト集</a> <i>(6)</i></li>
+    </ul>
+    <h2>Linux</h2>
+    <ul>
+    <li><a href="linux/index.html">Linux</a> <i>(56)</i></li>
+    <li><a href="ex/rhel.html">RHEL</a> <i>(2)</i></li>
+    <li><a href="ex/centos.html">CentOS 7</a> <i>(1)</i></li>
+    <li><a href="ex/centos8.html">CentOS 8</a> <i>(1)</i></li>
+    <li><a href="ex/almalinux9.html">AlmaLinux</a> <i>(1)</i></li>
+    <li><a href="ex/yum.html">Yum</a> <i>(1)</i></li>
+    <li><a href="vim/index.html">Vim</a> <i>(17)</i></li>
+    <li><a href="ex/selinux.html">SELinux</a> <i>(1)</i></li>
+    <li><a href="ex/apparmor.html">AppArmor</a> <i>(1)</i></li>
+    </ul>
+    <h2>データベース</h2>
+    <ul>
+    <li><a href="ex/mysql.html">MySQL</a> <i>(4)</i></li>
+    <li><a href="ex/postgresql.html">PostgreSQL</a> <i>(1)</i></li>
+    <li><a href="ex/mongodb.html">MongoDB</a> <i>(1)</i></li>
+    <li><a href="ex/cassandra.html">Cassandra</a> <i>(1)</i></li>
+    <li><a href="ex/openldap.html">OpenLDAP</a> <i>(1)</i></li>
+    </ul>
+    <h2>ツール</h2>
+    <ul>
+    <li><a href="ex/virtualbox.html">VirtualBox</a> <i>(1)</i></li>
+    <li><a href="ex/vagrant.html">Vagrant</a> <i>(1)</i></li>
+    <li><a href="ex/wsl.html">WSL</a> <i>(1)</i></li>
+    <li><a href="docker/index.html">Docker</a> <i>(19)</i></li>
+    <li><a href="ex/kubernetes.html">Kubernetes</a> <i>(1)</i>
+    <li><a href="ex/nginx.html">Nginx</a> <i>(1)</i></li>
+    <li><a href="ex/openssl.html">OpenSSL</a> <i>(1)</i></li>
+    <li><a href="ex/pacemaker.html">Pacemaker</a> <i>(1)</i></li>
+    <li><a href="ex/git.html">Git</a> <i>(1)</i></li>
+    <li><a href="ex/github.html">GitHub</a> <i>(1)</i></li>
+    <li><a href="ex/gitlab.html">GitLab</a> <i>(1)</i></li>
+    <li><a href="ex/playwright.html">Playwright</a> <i>(1)</i></li>
+    <li><a href="ex/puppeteer.html">Puppeteer</a> <i>(1)</i></li>
+    <li><a href="ex/zabbix.html">Zabbix</a> <i>(1)</i></li>
+    <li><a href="ex/snmp.html">SNMP</a> <i>(1)</i></li>
+    <li><a href="ex/elk.html">ELK</a> <i>(1)</i></li>
+    <li><a href="ex/prometheus.html">Prometheus</a> <i>(1)</i></li>
+    <li><a href="ex/tmux.html">tmux</a> <i>(1)</i></li>
+    <li><a href="ex/tcpdump.html">tcpdump</a> <i>(1)</i></li>
+    <li><a href="ex/jq.html">jq</a> <i>(1)</i></li>
+    <li><a href="ex/fzf.html">fzf</a> <i>(1)</i></li>
+    <li><a href="ex/keycloak.html">Keycloak</a> <i>(1)</i></li>
+    <li><a href="ex/modsecurity.html">ModSecurity</a> <i>(1)</i></li>
+    <li><a href="ex/nu-html-checker.html">HTML構文チェッカー</a> <i>(1)</i></li>
+    </ul>
+    <h2>Chrome</h2>
+    <ul>
+    <li><a href="ex/chrome-new-features.html">Chrome新機能</a> <i>(1)</i></li>
+    <li><a href="ex/devtools.html">Chrome 開発者ツール(DevTools)</a> <i>(1)</i></li>
+    <li><a href="ex/chrome_extension.html">Chrome拡張機能</a> <i>(1)</i></li>
+    <li><a href="how2/chrome-old-version.html">Chrome旧版インストール</a> <i>(1)</i></li>
+    </ul>
+    <h2>サービス</h2>
+    <ul>
+    <li><a href="ex/gas.html">Google Apps Script(GAS)</a> <i>(1)</i></li>
+    <li><a href="ex/colab.html">Google Colab</a> <i>(1)</i></li>
+    <li><a href="ex/box.html">Box</a> <i>(1)</i></li>
+    </ul>
+    <h2>プロトコル</h2>
+    <ul>
+    <li><a href="ex/http.html">HTTP</a> <i>(2)</i></li>
+    <li><a href="ex/cookie.html">Cookie</a> <i>(1)</i></li>
+    <li><a href="ex/websocket.html">WebSocket</a> <i>(1)</i></li>
+    <li><a href="ex/sse.html">SSE</a> <i>(1)</i></li>
+    <li><a href="ex/openid-connect.html">OpenID Connect</a> <i>(1)</i></li>
+    </ul>
+    <h2>技術知識</h2>
+    <ul>
+    <li><a href="ex/charset.html">文字コード</a> <i>(1)</i></li>
+    <li><a href="ex/unicode-list.html">Unicode一覧</a> <i>(1)</i></li>
+    <li><a href="ex/font.html">フォント</a> <i>(1)</i></li>
+    <li><a href="ex/regexp.html">正規表現</a> <i>(1)</i></li>
+    <li><a href="ex/newline-code.html">改行コード</a> <i>(1)</i></li>
+    <li><a href="wwwcolor.htm">色入門・色インデックス</a> <i>(1)</i></li>
+    <li><a href="ex/extensions.html">拡張子</a> <i>(1)</i></li>
+    <li><a href="wwwimage.htm">画像(GIF/JPEG)</a> <i>(1)</i></li>
+    <li><a href="ex/crypt.html">暗号化</a> <i>(1)</i></li>
+    <li><a href="ex/unit.html">単位</a> <i>(1)</i></li>
+    <li><a href="ex/numerical-format.html">数値フォーマット</a> <i>(1)</i></li>
+    <li><a href="wwwmmdia.htm">マルチメディア</a> <i>(4)</i></li>
+    <li><a href="ex/license.html">ライセンス</a> <i>(1)</i></li>
+    <li><a href="ex/creative-commons.html">クリエイティブ・コモンズ</a> <i>(1)</i></li>
+    <li><a href="ex/semver.html">セマンティックバージョニング</a> <i>(1)</i></li>
+    <li><a href="ex/robots.html">robots.txt</a> <i>(1)</i></li>
+    <li><a href="ex/sitemap.html">sitemap.xml</a> <i>(1)</i></li>
+    <li><a href="ex/well-known.html">.well-known</a> <i>(1)</i></li>
+    <li><a href="ex/traffic-advice.html">traffic-advice</a> <i>(1)</i></li>
+    </ul>
+    <h2>セキュリティ</h2>
+    <ul>
+    <li><a href="ex/security.html">セキュリティ</a> <i>(1)</i></li>
+    <li><a href="ex/cors.html">CORS</a> <i>(1)</i></li>
+    <li><a href="ex/same-origin-policy.html">同一生成元ポリシー</a> <i>(1)</i></li>
+    <li><a href="ex/jsonp.html">JSONP</a> <i>(1)</i></li>
+    </ul>
+    <h2>AI</h2>
+    <ul>
+    <li><a href="ai/index.html">AI</a> <i>(7)</i></li>
+    <li>&nbsp;&nbsp;<a href="ai/terms.html">AI関連用語</a> <i>(1)</i></li>
+    <li>&nbsp;&nbsp;<a href="ai/history.html">AIの歴史</a> <i>(1)</i></li>
+    <li>&nbsp;&nbsp;<a href="ai/models.html">AIモデル</a> <i>(1)</i></li>
+    <li>&nbsp;&nbsp;<a href="ai/ai-browsers.html">AIブラウザ</a> <i>(1)</i></li>
+    <li>&nbsp;&nbsp;<a href="ai/services.html">AIサービス</a> <i>(1)</i></li>
+    <li>&nbsp;&nbsp;<a href="ai/agent-dev-tools.html">AIエージェント開発プラットフォーム</a> <i>(1)</i></li>
+    <li>&nbsp;&nbsp;<a href="ai/coding-assistant.html">AIコーディングアシスタント</a> <i>(1)</i></li>
+    <li>&nbsp;&nbsp;<a href="ai/local-ai.html">ローカルAI</a> <i>(1)</i></li>
+    <li><a href="ai/openai.html">OpenAI</a> <i>(1)</i></li>
+    <li><a href="ai/openai-api.html">OpenAI API</a> <i>(1)</i></li>
+    <li><a href="ai/codex.html">Codex</a> <i>(1)</i></li>
+    <li><a href="ai/claude.html">Claude</a> <i>(1)</i></li>
+    <li><a href="ai/claude-code.html">Claude Code</a> <i>(1)</i></li>
+    <li><a href="ai/copilot-in-windows.html">Copilot in Windows</a> <i>(1)</i></li>
+    <li><a href="ai/google-ai-studio.html">Google AI Studio</a> <i>(1)</i></li>
+    <li><a href="ai/notebooklm.html">NotebookLM</a> <i>(1)</i></li>
+    <li><a href="ai/google-opal.html">Google Opal</a> <i>(1)</i></li>
+    <li><a href="ai/comet.html">Comet</a> <i>(1)</i></li>
+    <li><a href="ai/dify.html">Dify</a> <i>(1)</i></li>
+    </ul>
+    <h2>注意事項</h2>
+    <ul>
+    <li><a href="wwwpoint.htm">ＨＰ作成上の注意</a> <i>(1)</i></li>
+    <li><a href="wwwcopy.htm">著作権</a> <i>(1)</i></li>
+    <li><a href="wwwaccs.htm">アクセス向上施策</a> <i>(1)</i></li>
+    </ul>
+    <h2>アラカルト</h2>
+    <ul>
+    <li><a href="ex/web-history.html">Webの歴史</a> <i>(1)</i></li>
+    <li><a href="ala/index.html">アラカルト</a> <i>(42)</i></li>
+    <li><a href="tr/index.html">トラブルシュート</a> <i>(2)</i></li>
+    <li><a href="ex/short-cut.html">ショートカット</a> <i>(1)</i></li>
+    <li><a href="wwwtools.htm">ツール集</a> <i>(10)</i></li>
+    <li><a href="wwwlinks.htm">リンク集</a> <i>(1)</i></li>
+    <li><a href="wwwbook.htm">杜甫々の本</a> <i>(1)</i></li>
+    <li><a href="ot/conference.html">講演会・インタビュー・コラム</a> <i>(1)</i></li>
+    <li><a href="wwwthank.htm">スペシャルサンクス</a> <i>(1)</i></li>
+    </ul>
+    <h2>番外編</h2>
+    <ul>
+    <li><a href="tenji.htm">点字</a> <i>(1)</i></li>
+    <li><a href="ot/movie.html">映画・ドラマ</a> <i>(5)</i></li>
+    <li><a href="ot/unique-name.html">珍しい名字(苗字)</a> <i>(1)</i></li>
+    <li><a href="ot/yakimono.html">陶磁器</a> <i>(1)</i></li>
+    <li><a href="ot/buddhism.html">仏教</a> <i>(1)</i></li>
+    <li><a href="ot/hangug.html">韓国語</a> <i>(1)</i></li>
+    <li><a href="ot/chinese.html">中国語</a> <i>(1)</i></li>
+    <li><a href="ot/palau.html">パラオ語</a> <i>(1)</i></li>
+    <li><a href="ot/numbers.html">数の数え方</a> <i>(6)</i></li>
+    <li><a href="ot/foreign-music.html">洋楽</a> <i>(1)</i></li>
+    <li><a href="ot/kakutei-shinkoku.html">確定申告</a> <i>(1)</i></li>
+    <li><a href="ot/souzoku.html">相続</a> <i>(1)</i></li>
+    <li><a href="ot/asset_management.html">資産運用</a> <i>(1)</i></li>
+    <li><a href="ot/retirement.html">退職</a> <i>(1)</i></li>
+    <li><a href="ot/self-proprietor.html">個人事業主</a> <i>(1)</i></li>
+    <li><a href="ot/law.html">法令</a> <i>(1)</i></li>
+    <li><a href="ot/imperial-succession.html">皇室典範改正</a> <i>(1)</i></li>
+    <li><a href="ot/hiroshima-ramen.html">広島ラーメン</a> <i>(1)</i></li>
+    <li><a href="ot/hiroshima-hassho.html">広島お好み焼き「八昌」</a> <i>(1)</i></li>
+    <li><a href="ot/carp.html">カープ</a> <i>(1)</i></li>
+    <li><a href="ot/thai-foods.html">タイ料理</a> <i>(1)</i></li>
+    <li><a href="ot/liquor.html">お酒</a> <i>(1)</i></li>
+    <li><a href="ot/tea.html">お茶・紅茶</a> <i>(1)</i></li>
+    <li><a href="cook/index.html">簡単クッキング</a> <i>(1)</i></li>
+    <li><a href="ot/top-3.html">三大○○</a> <i>(1)</i></li>
+    <li><a href="diary/index.html">不定期日記</a> <i>(1)</i></li>
+    <li><a href="index_old.htm">古いトップページ</a> <i>(1)</i></li>
+    <li><a href="wwwmama.htm">とほほママの過去ページ</a> <i>(10)</i></li>
+    </ul>
+  </main>
+</div>
+<hr>
+<footer>
+  <address>
+    <div>
+      Copyright (C) 1996-2026 <a href="wwwquest.htm">杜甫々</a>
+      <img src="image/popase.gif" width=18 height=19 alt="">
+    </div>
+    <div class="url"><a href="https://www.tohoho-web.com/index.htm" target="_top" >https://www.tohoho-web.com/index.htm</a></div>
+  </address>
+  <div class="banner"><img src="image/tohoho.gif" style="width:88px; height:31px;" alt="Tohoho"></div>
+</footer>
+<div class='advertise'>
+  <!-- /22841720016/tohoho-media-PC/article-footer-banner-0 -->
+  <div id='div-gpt-ad-1737079436338-0' style='position: fixed;left: 0;bottom: 0;z-index: 999;text-align: center;width: 100%;'>
+  <script>if (FP_BIDDER_IS_PC) { googletag.cmd.push(function() { googletag.display('div-gpt-ad-1737079436338-0'); }); setInterval(() => window.FP_BIDDER.refreshAds('div-gpt-ad-1737079436338-0'), 30000); }</script>
+  </div>
+  <!-- /22841720016/tohoho-media-SP/article-footer-banner-0 -->
+  <div id='div-gpt-ad-1737079483388-0' style='position: fixed;left: 0;bottom: 0;z-index: 999;text-align: center;width: 100%;'>
+  <script>if (!FP_BIDDER_IS_PC) { googletag.cmd.push(function() { googletag.display('div-gpt-ad-1737079483388-0'); }); setInterval(() => window.FP_BIDDER.refreshAds('div-gpt-ad-1737079483388-0'), 30000); }</script>
+  </div>
+</div>
+</div>
+<div class='side-advertise'>
+  <!-- /22841720016/tohoho-media-PC/article-rightheader-rect-0 -->
+  <div id='div-gpt-ad-1743659509050-0'>
+  <script>if (FP_BIDDER_IS_PC) { googletag.cmd.push(function() { googletag.display('div-gpt-ad-1743659509050-0'); });
+  setInterval(() => window.FP_BIDDER.refreshAds('div-gpt-ad-1743659509050-0'), 30000); }</script>
+  </div>
+  <!-- /22841720016/tohoho-media-PC/article-rightheader-rect-1 -->
+  <div id='div-gpt-ad-1746764773101-0'>
+  <script>if (FP_BIDDER_IS_PC) { googletag.cmd.push(function() { googletag.display('div-gpt-ad-1746764773101-0'); });
+  setInterval(() => window.FP_BIDDER.refreshAds('div-gpt-ad-1746764773101-0'), 30000); }</script>
+  </div>
+  <!-- /22841720016/tohoho-media-PC/article-rightheader-rect-2 -->
+  <div id='div-gpt-ad-1746764793000-0'>
+  <script>if (FP_BIDDER_IS_PC) { googletag.cmd.push(function() { googletag.display('div-gpt-ad-1746764793000-0'); });
+   setInterval(() => window.FP_BIDDER.refreshAds('div-gpt-ad-1746764793000-0'), 30000); }</script>
+  </div>
+</div>
+</body>
+</html>
