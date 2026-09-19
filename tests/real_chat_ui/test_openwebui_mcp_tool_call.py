@@ -76,10 +76,25 @@ def _enable_mcp_tool_server(page) -> None:
     message input's Integrations menu) to turn on the registered MCP tool
     server for this chat -- the same click path a real user takes, not a
     backend/API shortcut, since the point of this test is to prove the real
-    UI flow round-trips correctly."""
-    page.locator("#integration-menu-button").click()
-    page.get_by_role("button", name=re.compile(r"^Tools\b")).click()
-    page.get_by_role("button", name=re.compile(re.escape(MOCK_MCP_SERVER_NAME))).click()
+    UI flow round-trips correctly.
+
+    Prints a match-count for each step before clicking: on a failure this
+    goes straight into pytest's captured-output section of the job log
+    (readable without an artifact download), pinpointing which selector
+    stopped matching what a real user would see, rather than only knowing
+    the whole thing eventually timed out three steps later."""
+    menu_button = page.locator("#integration-menu-button")
+    print(f"[mcp-tool-select] #integration-menu-button count={menu_button.count()}")
+    menu_button.click()
+
+    tools_button = page.get_by_role("button", name=re.compile(r"^Tools\b"))
+    print(f"[mcp-tool-select] 'Tools' button count={tools_button.count()}")
+    tools_button.click()
+
+    server_row = page.get_by_role("button", name=re.compile(re.escape(MOCK_MCP_SERVER_NAME)))
+    print(f"[mcp-tool-select] {MOCK_MCP_SERVER_NAME!r} row count={server_row.count()}")
+    server_row.click()
+
     # Close the menu the same way a user would (click elsewhere) rather than
     # Escape, which closes Modal.svelte-style dialogs, not this dropdown.
     page.locator("#chat-input").click()

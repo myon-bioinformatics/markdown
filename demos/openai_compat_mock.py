@@ -249,6 +249,17 @@ class Handler(BaseHTTPRequestHandler):
         last_message = messages[-1] if messages else {}
         tools_offered = body.get("tools") or []
 
+        # Always-on, one-line-per-request summary: cheap, and the fastest way
+        # to tell "the tool-selection UI didn't actually enable the tool" (no
+        # tool names here) apart from "it did, but this mock's own trigger
+        # logic didn't match" (names present, no tool_calls issued) -- from
+        # this log alone, without needing a screenshot artifact.
+        tool_names = [(t.get("function") or {}).get("name", "") for t in tools_offered]
+        sys.stderr.write(
+            f"openai_compat_mock: chat.completions last_role={last_message.get('role')!r} "
+            f"tools_offered={tool_names!r} last_user_message={_last_user_message(body)!r}\n"
+        )
+
         if last_message.get("role") == "tool":
             # The caller already executed the tool call we issued below and
             # is now handing back its result -- render the final answer from
