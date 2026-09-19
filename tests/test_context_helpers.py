@@ -30,8 +30,6 @@ def test_extract_section_respects_heading_boundaries() -> None:
         "target body\n"
         "### Child\n"
         "child body\n"
-        "## Next\n"
-        "next body\n"
     )
     assert md.extract_section(SAMPLE, "intro", level=1) == (
         "# Intro\n"
@@ -40,6 +38,8 @@ def test_extract_section_respects_heading_boundaries() -> None:
         "target body\n"
         "### Child\n"
         "child body\n"
+        "## Next\n"
+        "next body\n"
     )
     assert md.extract_section(SAMPLE, "tar", partial=True) == (
         "## Target\n"
