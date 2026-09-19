@@ -110,7 +110,9 @@ jobs:
           RUN_LABEL: ${{ github.event.inputs.run_label }}
         run: |
           if [ -n "$RUN_LABEL" ]; then
-            safe_label=$(echo "$RUN_LABEL" | tr -c 'a-zA-Z0-9_.-' '-')
+            # printf, not echo: echo's own trailing newline would otherwise
+            # get fed into tr and translated into a spurious trailing "-".
+            safe_label=$(printf '%s' "$RUN_LABEL" | tr -c 'a-zA-Z0-9_.-' '-')
             echo "name=openwebui-smoke-failure-${safe_label}" >> "$GITHUB_OUTPUT"
           else
             echo "name=openwebui-smoke-failure" >> "$GITHUB_OUTPUT"

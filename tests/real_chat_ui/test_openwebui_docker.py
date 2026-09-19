@@ -61,10 +61,26 @@ def page(browser):
         pg.close()
 
 
+def _dismiss_blocking_dialog(page) -> None:
+    """Open WebUI shows the admin a "What's New" changelog modal
+    (ChangelogModal.svelte) whenever $settings.version != $config.version --
+    true on every run here, since the WEBUI_AUTH=False auto-provisioned admin
+    account never persists a stored settings.version across container
+    restarts. It sits on top of #chat-input and intercepts clicks, so it must
+    be dismissed first -- the same way a user would, via Escape (the close
+    button has no stable selector; Escape is common/Modal.svelte's own
+    top-most-dialog handler)."""
+    dialog = page.locator('div[role="dialog"][aria-modal="true"]')
+    if dialog.count():
+        page.keyboard.press("Escape")
+        dialog.last.wait_for(state="hidden", timeout=5_000)
+
+
 def _send_message(page, text: str) -> None:
     """Type into Open WebUI's chat input and submit -- it's a rich-text
     (contenteditable) editor by default, not a plain <textarea>, so this
     clicks and types rather than using .fill()."""
+    _dismiss_blocking_dialog(page)
     chat_input = page.locator("#chat-input")
     chat_input.click()
     page.keyboard.type(text)
