@@ -51,6 +51,23 @@ report = md.section(
 print(report)
 ```
 
+
+## Context helpers
+
+The stdlib-only context helpers added in PR #12 are deterministic preparation
+utilities, not a CommonMark parser or an LLM summarizer:
+
+- extract_section selects one ATX heading and its nested children.
+- strip_prose_keep_structure keeps headings, lists, blockquotes, thematic breaks,
+  and fenced code while dropping ordinary prose lines.
+- minify_markdown removes optional HTML comments and collapses excessive blank
+  lines without converting Markdown.
+- safe_truncate enforces a character limit and closes an open code fence when
+  the limit leaves enough room.
+
+Conversation-history compression and broader HTML conversion remain separate
+future design topics. See docs/context_helpers.md for the exact contracts.
+
 ## Test / demo
 
 ```bash
