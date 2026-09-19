@@ -177,20 +177,20 @@ it.
 (`GET /v1/models`, `POST /v1/chat/completions`, streaming and non-streaming) that reuses
 `chat_ui_demo.py`'s own `render_assistant_turn()` keyword logic, so Open WebUI's "model" reply is
 the exact same deterministic Markdown the generic mock demo already uses — no real LLM, no network
-call out. `docker/openwebui-smoke/docker-compose.yml` runs Open WebUI with `WEBUI_AUTH=False`
-(skips the signup/login screen entirely) and `OPENAI_API_BASE_URLS`/`DEFAULT_MODELS` pre-pointed at
-that mock backend, so there's no interactive setup to automate.
+call out. `docker/openwebui-smoke/docker-compose.yml` runs it (and mcp-toolcall-lab's mock MCP
+server — see below) as compose services on the stack's own Docker network, addressed by service
+name rather than routed back through the host — more reproducible than `host.docker.internal`
+(see `docs/antipatterns.md`) and self-contained: one `docker compose up` starts everything, in the
+right order, with no separate host-side mock processes to start yourself. Open WebUI itself runs
+with `WEBUI_AUTH=False` (skips the signup/login screen entirely) and `OPENAI_API_BASE_URLS`/
+`DEFAULT_MODELS` pre-pointed at the mock backend, so there's no interactive setup to automate.
 
 ```bash
-# HOST=0.0.0.0 matters here: Open WebUI reaches this over
-# host.docker.internal:host-gateway, which resolves to the host's bridge/
-# gateway IP rather than 127.0.0.1 (notably on Linux) -- a loopback-only
-# bind is unreachable from the container even though curl from the host
-# itself would still work.
-HOST=0.0.0.0 python demos/openai_compat_mock.py &
+git clone https://github.com/myon-bioinformatics/mcp-toolcall-lab mcp-toolcall-lab
 docker compose -f docker/openwebui-smoke/docker-compose.yml up -d
 # wait for http://127.0.0.1:3000/health
-OPEN_WEBUI_BASE_URL=http://127.0.0.1:3000 pytest tests/real_chat_ui/test_openwebui_docker.py -v
+OPEN_WEBUI_BASE_URL=http://127.0.0.1:3000 MOCK_MCP_SERVER_NAME="Mock MCP (mcp-toolcall-lab)" \
+  pytest tests/real_chat_ui/ -v
 docker compose -f docker/openwebui-smoke/docker-compose.yml down -v
 ```
 
@@ -198,7 +198,7 @@ These tests skip cleanly (`OPEN_WEBUI_BASE_URL` unset) everywhere else, includin
 `pytest` run — they only run in the `real-chat-ui-smoke` GitHub Actions workflow
 (`workflow_dispatch` only: a full container + browser run is too slow/heavy to gate every push or
 PR, the same policy `frontend-smoke` already uses) or a manual local run as above. On a failure,
-that workflow uploads a screenshot and the container logs as artifacts.
+that workflow uploads a screenshot and the compose stack's container logs as artifacts.
 
 ### Triggering `real-chat-ui-smoke` without the "Run workflow" form
 
@@ -233,21 +233,23 @@ integration for the parallel on that side) — not yet wired up in this repo.
 
 `tests/real_chat_ui/test_openwebui_mcp_tool_call.py` goes further still: it registers a real MCP
 tool server — [mcp-toolcall-lab](https://github.com/myon-bioinformatics/mcp-toolcall-lab)'s
-`openwebui_mcp_mock.py`, checked out fresh in the workflow rather than vendored here, since that
-file is designed as a portable, drop-in single-file mock — as a `TOOL_SERVER_CONNECTIONS` entry,
-clicks through Open WebUI's real per-chat "Tools" picker to enable it (the same click path a real
-user takes, not a backend shortcut), sends a message that should trigger a tool call, and verifies
-the tool's *actual* result renders in the chat. `demos/openai_compat_mock.py`'s "model" recognizes
-one trigger phrase and issues a real OpenAI-style `tool_calls` response referencing whichever tool
-name the request actually offered (never hardcoded, since a tool-server-backed function name is
-prefixed by the caller); on the follow-up request it unwraps the MCP result (which nests a second
-layer of JSON — confirmed by probing the real `mcp` client SDK against the real mock server, not
-guessed) and renders it as a Markdown table.
+`openwebui_mcp_mock.py`, run as this compose stack's own `mcp-mock` service rather than vendored
+here, since that file is designed as a portable, drop-in single-file mock — as a
+`TOOL_SERVER_CONNECTIONS` entry, clicks through Open WebUI's real per-chat "Tools" picker to enable
+it (the same click path a real user takes, not a backend shortcut), sends a message that should
+trigger a tool call, and verifies the tool's *actual* result renders in the chat.
+`demos/openai_compat_mock.py`'s "model" recognizes one trigger phrase and issues a real
+OpenAI-style `tool_calls` response referencing whichever tool name the request actually offered
+(never hardcoded, since a tool-server-backed function name is prefixed by the caller); on the
+follow-up request it unwraps the MCP result (which nests a second layer of JSON — confirmed by
+probing the real `mcp` client SDK against the real mock server, not guessed) and renders it as a
+Markdown table. This is exactly the round trip `docs/antipatterns.md` exists for — see there for
+concrete failures a live run has actually produced.
 
-To reproduce locally: clone `mcp-toolcall-lab` alongside this repo, `pip install "fastmcp==3.4.7"`,
-run `MCP_HOST=0.0.0.0 python ../mcp-toolcall-lab/openwebui_mcp_mock.py &` alongside the two commands
-above, then run `pytest tests/real_chat_ui/ -v` with `MOCK_MCP_SERVER_NAME="Mock MCP (mcp-toolcall-lab)"`
-also exported (must match `docker-compose.yml`'s `TOOL_SERVER_CONNECTIONS.info.name` exactly).
+The local-repro command above already covers this: cloning `mcp-toolcall-lab` as a subdirectory of
+this repo's checkout and `docker compose up` are all that's needed — `mcp-mock` installs
+`fastmcp` itself at container start, and `MOCK_MCP_SERVER_NAME` must match `docker-compose.yml`'s
+`TOOL_SERVER_CONNECTIONS.info.name` exactly (already the case in the command above).
 
 **[`docs/antipatterns.md`](docs/antipatterns.md)** is a running log of concrete ways a real chat
 product has broken this setup in an actual `workflow_dispatch` run — not predicted failures, only

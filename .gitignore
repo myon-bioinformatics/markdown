@@ -5,3 +5,5 @@ venv/
 *.pyc
 .streamlit/
 .gradio/
+# Local clone for docker/openwebui-smoke's mcp-mock service -- see README.md
+/mcp-toolcall-lab/

@@ -2,18 +2,26 @@
 # with a real MCP tool server (mcp-toolcall-lab's openwebui_mcp_mock.py) registered
 # behind it so the native MCP tool-call round trip can be driven for real too.
 #
+# All three services share this compose project's own Docker network, addressed
+# by service name (openai-mock, mcp-mock) rather than host.docker.internal --
+# more reproducible than routing through the host at all: no host firewall/
+# host-gateway quirks to hit (see docs/antipatterns.md for the HOST=0.0.0.0
+# one host-gateway routing already cost us), and `docker compose up` alone
+# brings up a fully self-contained stack with no separate host-side processes
+# to start in the right order. open-webui's own `depends_on: service_healthy`
+# on both mocks means compose itself won't start it until they're actually
+# answering, not just "container running".
+#
 # Usage:
-#   HOST=0.0.0.0 python demos/openai_compat_mock.py &   # from the repo root, listens on :8090
-#   # clone myon-bioinformatics/mcp-toolcall-lab alongside this repo, then:
-#   pip install "fastmcp==3.4.7"
-#   MCP_HOST=0.0.0.0 python ../mcp-toolcall-lab/openwebui_mcp_mock.py &   # listens on :8000
+#   git clone https://github.com/myon-bioinformatics/mcp-toolcall-lab mcp-toolcall-lab
 #   docker compose -f docker/openwebui-smoke/docker-compose.yml up -d
 #   # ... open http://127.0.0.1:3000, or run tests/real_chat_ui/ ...
 #   docker compose -f docker/openwebui-smoke/docker-compose.yml down -v
 #
-# HOST/MCP_HOST=0.0.0.0 matter: Open WebUI reaches both mocks over
-# host.docker.internal:host-gateway, which resolves to the host's bridge/gateway
-# IP rather than 127.0.0.1 (notably on Linux) -- see docs/antipatterns.md.
+# mcp-toolcall-lab must be cloned as a subdirectory of this repo's own checkout
+# (matching where the real-chat-ui-smoke workflow's own second `actions/checkout`
+# puts it) since mcp-mock's volume mount below is relative to this compose
+# file's project directory two levels up.
 #
 # WEBUI_AUTH=False skips Open WebUI's signup/login screen entirely (verified against
 # its own source: backend/open_webui/routers/auths.py auto-authenticates a fixed
@@ -25,16 +33,65 @@
 # (tests/real_chat_ui/test_openwebui_mcp_tool_call.py drives that with Playwright,
 # the same click path a real user takes).
 services:
+  openai-mock:
+    image: python:3.12-slim
+    working_dir: /repo
+    volumes:
+      # The whole repo, read-only, mounted at the same relative layout
+      # openai_compat_mock.py already expects from its own __file__-relative
+      # sys.path setup (repo root + demos/) -- no path translation needed.
+      - ../..:/repo:ro
+    environment:
+      # 0.0.0.0, not 127.0.0.1: a container's own loopback is only reachable
+      # from inside that same container, never from another one on this
+      # network -- open-webui connects to this by service name instead.
+      HOST: "0.0.0.0"
+      PORT: "8090"
+    command: ["python", "demos/openai_compat_mock.py"]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/v1/models', timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 3s
+
+  mcp-mock:
+    image: python:3.12-slim
+    working_dir: /mock
+    volumes:
+      - ../../mcp-toolcall-lab:/mock:ro
+    environment:
+      MCP_HOST: "0.0.0.0"
+      MCP_PORT: "8000"
+    command: ["sh", "-c", "pip install --no-cache-dir --quiet 'fastmcp==3.4.7' && exec python openwebui_mcp_mock.py"]
+    healthcheck:
+      # A GET to a Streamable HTTP MCP endpoint answers 406 Not Acceptable
+      # (it requires a real session-establishing POST) -- still a real HTTP
+      # response, i.e. the server is up. http.client.getresponse() doesn't
+      # raise on a 4xx/5xx status the way urllib does by default, so this
+      # only fails (nonzero exit, via the uncaught exception) on an actual
+      # connection failure -- exactly the "not listening yet" case we want.
+      test: ["CMD", "python3", "-c", "import http.client; c = http.client.HTTPConnection('127.0.0.1', 8000, timeout=2); c.request('GET', '/mcp'); c.getresponse()"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
     ports:
       - "3000:8080"
+    depends_on:
+      openai-mock:
+        condition: service_healthy
+      mcp-mock:
+        condition: service_healthy
     environment:
       WEBUI_AUTH: "False"
       WEBUI_NAME: "markdown.py smoke"
       ENABLE_OLLAMA_API: "False"
       ENABLE_OPENAI_API: "True"
-      OPENAI_API_BASE_URLS: "http://host.docker.internal:8090/v1"
+      OPENAI_API_BASE_URLS: "http://openai-mock:8090/v1"
       OPENAI_API_KEYS: "sk-markdown-demo"
       # Skip the "you have no models" onboarding nag; this mock has exactly one model.
       DEFAULT_MODELS: "markdown-demo-model"
@@ -46,11 +103,7 @@ services:
       # config.enable=true to be listed at all, and info.id is the id used in
       # the "server:mcp:<id>" tool id the chat-completions request carries.
       TOOL_SERVER_CONNECTIONS: >-
-        [{"type":"mcp","url":"http://host.docker.internal:8000/mcp","auth_type":"none",
+        [{"type":"mcp","url":"http://mcp-mock:8000/mcp","auth_type":"none",
         "config":{"enable":true},
         "info":{"id":"mock-mcp","name":"Mock MCP (mcp-toolcall-lab)",
         "description":"Deterministic real-estate-style mock MCP tools: find_municipalities, find_transaction_prices, find_stations."}}]
-    extra_hosts:
-      # Lets the container reach the two host-side mocks above, the same way
-      # this works on Docker Desktop -- explicit here for Linux CI runners.
-      - "host.docker.internal:host-gateway"
