@@ -176,6 +176,68 @@ GitHub Actions run that produced it.
   actual parsed structure too (here, the request-logging line that was
   already added for a different reason turned out to be what caught this).
 
+## 5. Open WebUI renders code blocks with CodeMirror, never `<pre><code>`
+
+- **Product / run**: Open WebUI --
+  [run 35417244601](https://github.com/myon-bioinformatics/markdown/actions/runs/35417244601),
+  and the run before it once the SSE bug (entry 3) stopped masking it.
+- **What we tried**: `container.locator("pre code")` to find a rendered
+  fenced code block, the same selector any CommonMark-to-HTML renderer
+  would produce.
+- **What actually happened**: permanent timeout, every run, even after the
+  mock's reply content was confirmed correct. Root-caused (not guessed) by
+  adding a DOM-dump-to-stdout diagnostic to conftest.py and reading the
+  actual failing job's captured output: the response container held a full
+  CodeMirror 6 editor instance (`class="cm-editor"`, `.cm-content`,
+  `.cm-line` divs with syntax-highlighting `<span>`s), not a `<pre><code>`
+  element anywhere.
+- **Root cause**: Open WebUI renders fenced code blocks as a live,
+  interactive CodeMirror editor (it has Copy/Save/Run buttons and is
+  presumably editable) instead of static `<pre><code>` markup. This isn't a
+  timing issue or a race -- the element the test was waiting for was never
+  going to exist, in any amount of time.
+- **Fix**: assert against `.cm-content` (CodeMirror's own class, stable
+  across whichever exact code-block feature set Open WebUI has) instead of
+  `pre code`.
+- **Generalizable lesson**: a chat product that supports "Run" or "Save" on
+  a code block is not just running a Markdown-to-HTML renderer over the
+  reply -- it may be mounting a real editor component instead of the plain
+  markup a spec-compliant CommonMark renderer would produce. Verify the
+  actual DOM before assuming standard tags for anything the product treats
+  as more than static content.
+
+## 6. `wait_for_function` against a captured `element_handle()` can hang forever on live content
+
+- **Product / run**: our own test (`test_openwebui_docker.py`), not Open
+  WebUI -- [run 35417244601](https://github.com/myon-bioinformatics/markdown/actions/runs/35417244601).
+- **What we tried**: for the list test,
+  `page.wait_for_function("(el) => el.querySelectorAll('li').length >= 3", arg=container.element_handle(), timeout=30_000)`
+  -- poll a single captured element for enough `<li>` children to appear.
+- **What actually happened**: permanent timeout, even though the DOM dump
+  added for entry 5 showed the *finished* response already had all three
+  `<li>` items rendered correctly (`<ul dir="auto"><li class="text-start ">…`)
+  once the test gave up and the fixture inspected the live page afterward.
+  The content was right; the wait condition never saw it.
+- **Root cause**: `element_handle()` returns a handle bound to one specific
+  DOM node, captured once at call time. If Open WebUI's Svelte rendering
+  replaces that node while the response streams in (rather than mutating
+  it in place) -- plausible given the DOM dump also caught it mid-render at
+  least once (`<h2>Snippet</h2>` present but nothing streamed under it
+  yet) -- every later evaluation against the old handle keeps checking the
+  *original, now-detached* node, frozen at whatever child count it had the
+  moment it was replaced. The condition can look permanently false while
+  the visible, current DOM already satisfies it.
+- **Fix**: poll via a fresh `document.querySelectorAll(...)` lookup inside
+  the injected function itself (re-run on every poll tick) instead of a
+  captured handle -- `_wait_for_last_response()` in
+  `test_openwebui_docker.py`.
+- **Generalizable lesson**: `element_handle()` is a snapshot, not a live
+  reference -- safe for a condition checked once, but the wrong tool for a
+  `wait_for_function` poll against content a framework might still be
+  replacing wholesale rather than mutating. Prefer re-querying by selector
+  string inside the polled function itself when the target node's identity
+  isn't guaranteed stable across the wait.
+
 <!--
 ## N. <short title>
 

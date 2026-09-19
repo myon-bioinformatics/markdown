@@ -87,6 +87,30 @@ def _send_message(page, text: str) -> None:
     page.keyboard.press("Enter")
 
 
+def _wait_for_last_response(page, predicate_js: str, timeout: int = 30_000) -> None:
+    """Poll a condition against the *live*, re-queried last
+    #response-content-container element, not a captured element_handle().
+
+    element_handle() snapshots one specific DOM node. If Open WebUI's own
+    Svelte rendering replaces that node while streaming completes (rather
+    than mutating it in place), the handle goes stale: further evaluations
+    against it freeze at whatever child state existed at capture time, so a
+    condition like "has >= 3 <li>" can look permanently false even once the
+    live DOM (a new node occupying the same visual spot) already satisfies
+    it -- confirmed live: docs/antipatterns.md. predicate_js is a JS
+    arrow-function body string receiving that live element as `el`.
+    """
+    page.wait_for_function(
+        f"""() => {{
+            const containers = document.querySelectorAll('#response-content-container');
+            if (!containers.length) return false;
+            const el = containers[containers.length - 1];
+            return ({predicate_js})(el);
+        }}""",
+        timeout=timeout,
+    )
+
+
 def test_openwebui_renders_markdown_table_from_the_mock_backend(page) -> None:
     page.goto(OPEN_WEBUI_BASE_URL, wait_until="networkidle")
 
@@ -111,9 +135,12 @@ def test_openwebui_renders_markdown_code_block_from_the_mock_backend(page) -> No
 
     _send_message(page, "show me some code")
 
+    # Not "pre code": Open WebUI renders code blocks with a live CodeMirror 6
+    # editor (.cm-content/.cm-line), not plain <pre><code> -- confirmed from
+    # the actual rendered DOM (see docs/antipatterns.md), not assumed.
     container = page.locator("#response-content-container").last
-    container.locator("pre code").wait_for(timeout=30_000)
-    assert "md.bold" in container.locator("pre code").last.inner_text()
+    container.locator(".cm-content").wait_for(timeout=30_000)
+    assert "md.bold" in container.locator(".cm-content").last.inner_text()
 
 
 def test_openwebui_renders_markdown_list_from_the_mock_backend(page) -> None:
@@ -122,13 +149,8 @@ def test_openwebui_renders_markdown_list_from_the_mock_backend(page) -> None:
 
     _send_message(page, "give me a todo list")
 
-    container = page.locator("#response-content-container").last
-    page.wait_for_function(
-        """(el) => el.querySelectorAll('li').length >= 3""",
-        arg=container.element_handle(),
-        timeout=30_000,
-    )
-    items = container.locator("li").all_inner_texts()
+    _wait_for_last_response(page, "el => el.querySelectorAll('li').length >= 3")
+    items = page.locator("#response-content-container").last.locator("li").all_inner_texts()
     assert [item.strip() for item in items] == ["review the PR", "run the tests", "ship it"]
 
 
@@ -153,10 +175,5 @@ def test_openwebui_renders_a_custom_message_from_the_mock_backend(page) -> None:
 
     _send_message(page, CUSTOM_CHAT_MESSAGE)
 
-    container = page.locator("#response-content-container").last
-    page.wait_for_function(
-        """(el) => el.innerText.trim().length > 0""",
-        arg=container.element_handle(),
-        timeout=30_000,
-    )
-    assert container.inner_text().strip()
+    _wait_for_last_response(page, "el => el.innerText.trim().length > 0")
+    assert page.locator("#response-content-container").last.inner_text().strip()
