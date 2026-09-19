@@ -103,6 +103,18 @@ def test_section_joins_blocks() -> None:
     assert md.section("Top", ["body\n"], level=1) == "# Top\nbody\n"
 
 
+def test_section_inserts_a_newline_before_a_block_that_would_otherwise_run_on() -> None:
+    # A caller-supplied block with no trailing newline of its own (plain
+    # prose, unlike every builder above) must not run directly into the
+    # next block's leading syntax -- that used to turn a following bullet
+    # list's first "- item" into plain text glued onto the prior sentence.
+    out = md.section("Report", ["Intro sentence.", md.bullet_list(["one", "two"])])
+    assert out == "## Report\nIntro sentence.\n- one\n- two\n"
+    html = md.markdown_to_html(out)
+    assert "<li>one</li>" in html
+    assert "Intro sentence.- one" not in html
+
+
 def test_wrap_section_markers() -> None:
     out = md.wrap_section("PATHS_TRACE", "body\n")
     assert out == "<!-- BEGIN_SECTION:PATHS_TRACE -->\nbody\n<!-- END_SECTION:PATHS_TRACE -->\n"
