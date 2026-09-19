@@ -181,7 +181,12 @@ call out. `docker/openwebui-smoke/docker-compose.yml` runs Open WebUI with `WEBU
 that mock backend, so there's no interactive setup to automate.
 
 ```bash
-python demos/openai_compat_mock.py &
+# HOST=0.0.0.0 matters here: Open WebUI reaches this over
+# host.docker.internal:host-gateway, which resolves to the host's bridge/
+# gateway IP rather than 127.0.0.1 (notably on Linux) -- a loopback-only
+# bind is unreachable from the container even though curl from the host
+# itself would still work.
+HOST=0.0.0.0 python demos/openai_compat_mock.py &
 docker compose -f docker/openwebui-smoke/docker-compose.yml up -d
 # wait for http://127.0.0.1:3000/health
 OPEN_WEBUI_BASE_URL=http://127.0.0.1:3000 pytest tests/real_chat_ui/test_openwebui_docker.py -v
