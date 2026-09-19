@@ -49,6 +49,42 @@ GitHub Actions run that produced it.
   budget for dismissing it unconditionally rather than treating it as a
   one-time setup step.
 
+## 2. The failure-screenshot fixture never actually took a screenshot
+
+- **Product / run**: our own test harness, not Open WebUI --
+  [run 35410172298](https://github.com/myon-bioinformatics/markdown/actions/runs/35410172298)
+  (second live run, after fix #1 above; 3 of 4 tests also failed on real
+  content timeouts in that same run -- a separate, not yet diagnosed issue,
+  since this fixture bug meant no screenshot existed to debug it from).
+- **What we tried**: `tests/real_chat_ui/conftest.py`'s `_screenshot_on_failure`
+  autouse fixture was meant to save `test-results/<test name>.png` on any
+  failure, so a live-run failure would be fast to debug from the uploaded
+  artifact.
+- **What actually happened**: the failure artifact was 272 bytes both times
+  this ran for real (this run and the one before it) -- just the mock
+  backend's log, no screenshot ever present, despite 3 real test failures.
+- **Root cause**: the fixture read `page` via
+  `request.node.funcargs.get("page")` instead of declaring it as a real
+  fixture dependency. pytest instantiates autouse fixtures with no declared
+  dependency *before* the fixtures a test explicitly requests, and tears
+  them down in the reverse order -- so this fixture's post-`yield` code ran
+  *after* the `page` fixture's own teardown had already called `page.close()`.
+  `page.screenshot()` on an already-closed page raised, and the broad
+  `except Exception: pass` swallowed it silently. Confirmed with a minimal
+  standalone pytest reproduction (two dummy fixtures, one autouse without the
+  dependency, one with it) before changing the real file.
+- **Fix**: declare the dependency explicitly --
+  `def _screenshot_on_failure(request, page):` -- which flips the teardown
+  order so the screenshot is taken while the page is still open.
+- **Generalizable lesson**: an autouse fixture that reaches for another
+  fixture's value via `request.node.funcargs` instead of declaring it as a
+  parameter gets the *value* but not pytest's ordering guarantee -- and
+  teardown-order bugs like this fail silently instead of loudly whenever the
+  reached-for resource is closed/invalidated by its own teardown, which a
+  broad `except: pass` will hide indefinitely. Prefer the explicit
+  dependency; if a broad except around cleanup code is truly necessary, log
+  what it swallowed rather than passing silently.
+
 <!--
 ## N. <short title>
 
