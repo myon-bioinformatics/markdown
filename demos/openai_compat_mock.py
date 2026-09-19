@@ -226,6 +226,32 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_sse(self, chunks) -> None:
+        """Send an SSE stream, then force the connection closed.
+
+        An SSE body has neither Content-Length nor chunked Transfer-Encoding,
+        so under HTTP/1.1 keep-alive (this handler's default) the client has
+        no framing signal for where the body ends -- only a connection close
+        tells it. Claiming "Connection: keep-alive" anyway (the previous
+        behavior) worked for exactly one request per connection: the first
+        request on a fresh connection has nothing to get confused about, but
+        the *second* request the client tries to send on what it thinks is
+        the same still-open, still-idle connection lands on a socket whose
+        response the server never actually terminated -- confirmed live: two
+        CI runs in a row had every real-chat-ui-smoke test after the first
+        one time out waiting for content that was never going to arrive. See
+        docs/antipatterns.md.
+        """
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        for chunk in chunks:
+            self.wfile.write(chunk.encode("utf-8"))
+            self.wfile.flush()
+        self.close_connection = True
+
     def do_GET(self) -> None:  # noqa: N802 (stdlib method name)
         if self.path.rstrip("/").endswith("/models"):
             self._send_json(_models_payload())
@@ -270,14 +296,7 @@ class Handler(BaseHTTPRequestHandler):
             if function_name and TOOL_CALL_TRIGGER in _last_user_message(body).lower():
                 tool_call = _tool_call_payload(function_name, TOOL_CALL_ARGUMENTS)
                 if body.get("stream"):
-                    self.send_response(200)
-                    self.send_header("Content-Type", "text/event-stream")
-                    self.send_header("Cache-Control", "no-cache")
-                    self.send_header("Connection", "keep-alive")
-                    self.end_headers()
-                    for chunk in _stream_tool_call_chunks(tool_call):
-                        self.wfile.write(chunk.encode("utf-8"))
-                        self.wfile.flush()
+                    self._send_sse(_stream_tool_call_chunks(tool_call))
                     return
                 self._send_json(_tool_call_completion_payload(tool_call))
                 return
@@ -285,14 +304,7 @@ class Handler(BaseHTTPRequestHandler):
             reply_text = render_assistant_turn(_last_user_message(body))
 
         if body.get("stream"):
-            self.send_response(200)
-            self.send_header("Content-Type", "text/event-stream")
-            self.send_header("Cache-Control", "no-cache")
-            self.send_header("Connection", "keep-alive")
-            self.end_headers()
-            for chunk in _stream_chunks(reply_text):
-                self.wfile.write(chunk.encode("utf-8"))
-                self.wfile.flush()
+            self._send_sse(_stream_chunks(reply_text))
             return
 
         self._send_json(_completion_payload(reply_text))
