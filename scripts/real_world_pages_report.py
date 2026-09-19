@@ -67,6 +67,9 @@ def _screenshot(file_uri: str, png_path: Path) -> bool:
 
 
 def build_report(out_dir: Path) -> None:
+    # Playwright's file:// URI (and Path.as_uri()) require an absolute path.
+    # CI passes a relative --out (_site), so resolve once up front.
+    out_dir = out_dir.resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     fixtures = _load_html_fixtures()
     rows: list[dict[str, Any]] = []
@@ -89,8 +92,8 @@ def build_report(out_dir: Path) -> None:
         stats = {"id": fixture_id, "source": entry["source"], "before": before, "after": after}
         (case_dir / "stats.json").write_text(json.dumps(stats, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-        has_original_png = _screenshot((case_dir / "original.html").as_uri(), case_dir / "original.png")
-        has_roundtrip_png = _screenshot((case_dir / "roundtrip.html").as_uri(), case_dir / "roundtrip.png")
+        has_original_png = _screenshot((case_dir / "original.html").resolve().as_uri(), case_dir / "original.png")
+        has_roundtrip_png = _screenshot((case_dir / "roundtrip.html").resolve().as_uri(), case_dir / "roundtrip.png")
         rows.append({**stats, "has_original_png": has_original_png, "has_roundtrip_png": has_roundtrip_png})
 
     (out_dir / "index.html").write_text(_report_html(rows), encoding="utf-8")
