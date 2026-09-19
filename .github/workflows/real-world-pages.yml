@@ -4,7 +4,10 @@ name: real-world-pages
 # for every real, vendored HTML fixture in fixtures/provenance.yaml (see
 # tests/test_benchmark_html_roundtrip.py), a screenshot of the original
 # next to a screenshot of the html_to_markdown() -> markdown_to_html()
-# round trip, plus a before/after construct-count table.
+# round trip, plus a before/after construct-count table and a
+# build_meta.json revision identity (sha / shortSha / commitUrl) sourced
+# from git and GITHUB_* Actions env — same idea as
+# flutter_navigation_basic's `dart run tool/dev.dart meta`, in Python.
 #
 # Runs entirely against the vendored fixture -- no live fetch of the real
 # site happens here, so this never flakes on that site being slow, down,
@@ -47,6 +50,8 @@ jobs:
           pip install pyyaml playwright
           playwright install --with-deps chromium
       - name: Build the report
+        # GITHUB_SHA / GITHUB_REF_NAME / GITHUB_REPOSITORY / GITHUB_SERVER_URL
+        # are inherited automatically and preferred over local git for sha/ref/url.
         run: python scripts/real_world_pages_report.py --out _site
       - uses: actions/upload-pages-artifact@v3
         with:
