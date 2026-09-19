@@ -140,6 +140,42 @@ GitHub Actions run that produced it.
   client script) rather than only re-reading the same job log for clues
   it doesn't contain.
 
+## 4. Open WebUI wraps a tool's result in a `{"results": [...]}` envelope
+
+- **Product / run**: Open WebUI --
+  [run 35412247498](https://github.com/myon-bioinformatics/markdown/actions/runs/35412247498)
+  (first run where the MCP round trip actually completed end to end, after
+  fixing entry 3's SSE bug).
+- **What we tried**: `demos/openai_compat_mock.py`'s `_tool_result_records()`
+  unwrapped one specific nesting -- a JSON string of MCP content blocks
+  (`[{"type": "text", "text": "<json>"}]`) -- based on probing the real
+  `mcp` client SDK's `MCPClient.call_tool()` return value directly. That's
+  what the *low-level* SDK call returns; it is not what actually arrived in
+  the tool message's `content` once real Open WebUI middleware (not our own
+  probe script) built it.
+- **What actually happened**: the round trip completed and the Playwright
+  assertions on substring content even happened to pass (`has_text` matches
+  substrings, and the raw Python `repr()` of the result list still
+  contained "14109"/"Yokohama"/"Kanagawa" as text) -- but the rendered table
+  had one column named `results` with a single row holding the whole
+  result as one `str(list_of_dicts)`-formatted cell, not real
+  `code`/`name`/`prefecture` columns. Caught by actually reading the mock's
+  own new request-logging line in the job log, not by the test failing.
+- **Root cause**: Open WebUI's middleware wraps a tool's return value in its
+  own `{"results": [...]}` envelope before handing it to the model as the
+  tool message's `content` -- one level *above* the MCP content-block layer,
+  and present with or without that layer underneath it (both shapes were
+  seen for real). A probe against the SDK in isolation only shows what that
+  one layer returns, not what the full stack wraps it in afterward.
+- **Fix**: after unwrapping the MCP content-block layer (if present), also
+  check for a `results`/`result` key holding a list and use that.
+- **Generalizable lesson**: probing one library's return value in isolation
+  tells you that library's contract, not the shape a larger framework wraps
+  around it before the data reaches you -- a passing assertion is not proof
+  of correct handling when the assertion only checks substrings; watch the
+  actual parsed structure too (here, the request-logging line that was
+  already added for a different reason turned out to be what caught this).
+
 <!--
 ## N. <short title>
 

@@ -196,9 +196,19 @@ def _tool_result_records(tool_message: dict):
 
     if isinstance(parsed, list) and parsed and isinstance(parsed[0], dict) and {"type", "text"} <= set(parsed[0]):
         try:
-            return json.loads("".join(block.get("text", "") for block in parsed))
+            parsed = json.loads("".join(block.get("text", "") for block in parsed))
         except (json.JSONDecodeError, TypeError):
             return None
+
+    # Open WebUI's own middleware wraps a tool's return value in a small
+    # envelope dict (confirmed live: {"results": [...]}) before handing it
+    # to the model as the tool message's content -- one level up from the
+    # MCP content-block layer just unwrapped above, and present even when
+    # content was a flat JSON string with no content-block layer at all.
+    if isinstance(parsed, dict):
+        for key in ("results", "result"):
+            if isinstance(parsed.get(key), list):
+                return parsed[key]
 
     return parsed
 

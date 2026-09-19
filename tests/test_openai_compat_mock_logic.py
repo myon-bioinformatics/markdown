@@ -52,6 +52,23 @@ def test_tool_result_records_unwraps_mcp_content_block_layer() -> None:
     assert mock._tool_result_records(message) == [{"code": "14109", "name": "Yokohama"}]
 
 
+def test_tool_result_records_unwraps_open_webui_results_envelope() -> None:
+    # Confirmed live (real-chat-ui-smoke run 35412247498): Open WebUI's own
+    # middleware wraps the tool's return value in {"results": [...]} before
+    # handing it to the model as the tool message's content -- one level up
+    # from (and present even without) the MCP content-block layer above.
+    message = {"role": "tool", "content": '{"results": [{"code": "14109", "name": "Yokohama"}]}'}
+    assert mock._tool_result_records(message) == [{"code": "14109", "name": "Yokohama"}]
+
+
+def test_tool_result_records_unwraps_results_envelope_inside_content_block() -> None:
+    message = {
+        "role": "tool",
+        "content": '[{"type": "text", "text": "{\\"results\\": [{\\"code\\": \\"14109\\"}]}"}]',
+    }
+    assert mock._tool_result_records(message) == [{"code": "14109"}]
+
+
 def test_tool_result_records_none_on_unparseable_content() -> None:
     assert mock._tool_result_records({"role": "tool", "content": "not json"}) is None
 

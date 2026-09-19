@@ -41,3 +41,18 @@ def _screenshot_on_failure(request, page):
         page.screenshot(path=str(RESULTS_DIR / f"{safe_name}.png"), full_page=True)
     except Exception:
         pass
+
+    # Also print the actual rendered DOM to stdout, not just a screenshot:
+    # pytest captures stdout and shows it in a failed test's own section, so
+    # this reaches the job log directly, no artifact download required --
+    # the only channel this sandbox could reliably read from during earlier
+    # diagnosis (Azure Blob Storage, where GitHub Actions actually stores
+    # uploaded artifacts, is blocked by its own egress policy).
+    try:
+        containers = page.locator("#response-content-container").all()
+        print(f"[dom-dump] #response-content-container count={len(containers)}")
+        if containers:
+            html = containers[-1].evaluate("el => el.outerHTML")
+            print(f"[dom-dump] last container outerHTML (first 4000 chars):\n{html[:4000]}")
+    except Exception as exc:
+        print(f"[dom-dump] failed: {exc!r}")
