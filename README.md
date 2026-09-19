@@ -27,6 +27,7 @@ ironmate などで使っていた `markdown.py` を、そのままのファイ�
 | `demos/chat_ui_demo.py` | Optional: generic mock chat screen — assistant replies built with `markdown.py`'s generation helpers, rendered by Gradio's `Chatbot` |
 | `demos/openai_compat_mock.py` | Optional: OpenAI-compatible chat completions server (stdlib only) so a real chat product can be pointed at `render_assistant_turn()`'s output instead of a real LLM — also issues one real OpenAI-style tool call for the MCP round-trip test below |
 | `docs/antipatterns.md` | A running log of concrete ways a real chat product has broken the Docker/Playwright smoke tests in an actual CI run, with root cause and fix |
+| `scripts/real_world_pages_report.py` | Builds the `real-world-pages` GitHub Actions workflow's Pages report: original vs. `html_to_markdown()`→`markdown_to_html()` round-trip, screenshotted via Playwright's own CLI, for every real HTML fixture in `fixtures/provenance.yaml` |
 
 ## Quick use
 
@@ -133,6 +134,11 @@ Sources (full provenance — commit SHA, license, exact excerpted line ranges �
   contributing guide, close to verbatim
 - **axios/axios's `CHANGELOG.md`** (`fixtures/benchmark/changelog_example.md`) — the real first 400
   (of 1416) lines, for long-input stability with many headings/links/lists/version strings
+- **とほほのWWW入門** (`fixtures/benchmark/tohoho_web_home.html`) — the real, live top page (not a git
+  repo, so provenance is `fetched_at` + sha256 instead of a commit SHA): 1 `<h1>`, 24 `<h2>`, 263
+  `<a href>`, `<header>`/`<aside>`/`<main>`/`<footer>` semantic wrappers, a `<form>`, and inline
+  `<script>` ad blocks — a real, dense page for `html_to_markdown()` (the *other* direction), not
+  just the small synthetic snippet `test_benchmark_html_roundtrip.py` used to rely on alone
 
 Results, CommonMark spec examples:
 
@@ -163,6 +169,13 @@ pytest tests/test_benchmark_commonmark.py tests/test_benchmark_realworld.py test
 All three run in the default `pytest` — no extra dependency installs. `test_benchmark_html_roundtrip.py`
 is a separate, exploratory HTML → Markdown → HTML round trip; it's deliberately not part of the
 PASS/DEGRADED/UNSUPPORTED/FAIL grading above.
+
+Results, `html_to_markdown()` on the real とほほのWWW入門 page: every one of its 25 headings and 263
+links survives as a real Markdown construct (`test_tohoho_headings_and_links_survive_html_to_markdown`),
+and the round trip back to HTML keeps all of them too. `<header>`/`<aside>`/`<main>`/`<footer>` aren't
+in `_HTMLToMarkdownParser`'s handled-tag list, so they contribute no Markdown syntax of their own, but
+the real text they wrap still survives (same "unsupported tag, text not data" fallback as tables).
+`<script>` content is suppressed, not leaked, same as `<style>`.
 
 ## Real chat product smoke test (Open WebUI, in Docker)
 
