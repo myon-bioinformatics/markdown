@@ -21,6 +21,7 @@ __all__ = [
     "extract_code_blocks",
     "extract_raw_html",
     "extract_urls",
+    "classify_data_uri",
     "extract_section",
     "strip_prose_keep_structure",
     "minify_markdown",
@@ -103,6 +104,10 @@ SUPPORTED = {
         "reference-style link definitions [id]: url",
         "images ![alt](url)",
         "raw HTML tags (best-effort extraction)",
+        "extract_links / extract_images / extract_urls / extract_raw_html ignore "
+        "fenced code blocks and `inline code` spans consistently",
+        "classify_data_uri: RFC 2397 mime_type/is_base64/encoded_size classification "
+        "for data: URLs found by extract_links/extract_images (no decode/execute/fetch)",
         "horizontal rules (--- *** ___)",
         "context helpers: extract_section / strip_prose_keep_structure / minify_markdown / safe_truncate",
     ],
@@ -462,9 +467,26 @@ def _parse_attrs(attr_text: str) -> dict[str, str]:
     return attrs
 
 
+def _mask_code_context(content: str) -> str:
+    """Blank fenced-code lines and `inline code` spans for prose-only scanning.
+
+    Link/image/URL/HTML-like syntax written *about* Markdown inside a fenced
+    example or an inline code span is not real content. This composes the
+    shared ``_scan_lines`` / ``_mask_inline_code`` scanner primitives so every
+    extractor below applies the same fence/inline-code contract instead of
+    each re-deriving it.
+    """
+    lines = content.split("\n")
+    scanned = _scan_lines(lines)
+    return "\n".join(
+        " " * len(line) if scanned[index].in_fenced_code else _mask_inline_code(line)
+        for index, line in enumerate(lines)
+    )
+
+
 def _reference_map(content: str) -> dict[str, dict[str, str]]:
     refs: dict[str, dict[str, str]] = {}
-    for line in content.splitlines():
+    for line in _mask_code_context(content).splitlines():
         match = _REF_DEF_RE.match(line)
         if match:
             key = match.group(1).strip().lower()
@@ -475,35 +497,71 @@ def _reference_map(content: str) -> dict[str, dict[str, str]]:
     return refs
 
 
+def classify_data_uri(value: str) -> dict[str, Any] | None:
+    """Classify a ``data:`` URI without decoding, executing, or fetching it.
+
+    Returns ``None`` when ``value`` is not a ``data:`` URI. Otherwise a dict
+    with ``mime_type`` (RFC 2397 default ``text/plain`` when omitted),
+    ``is_base64``, and ``encoded_size`` (character length of the payload as
+    written — the payload itself is never decoded).
+    """
+    value = value.strip()
+    if not value.lower().startswith("data:"):
+        return None
+    header, comma, payload = value[len("data:") :].partition(",")
+    if not comma:
+        payload = ""
+    parts = header.split(";") if header else []
+    is_base64 = bool(parts) and parts[-1].strip().lower() == "base64"
+    if is_base64:
+        parts = parts[:-1]
+    mime_type = parts[0].strip() if parts and parts[0].strip() else "text/plain"
+    return {
+        "mime_type": mime_type,
+        "is_base64": is_base64,
+        "encoded_size": len(payload),
+    }
+
+
 def extract_links(content: str) -> list[dict[str, Any]]:
-    """Extract inline and reference-style links (not bare images)."""
+    """Extract inline and reference-style links (not bare images).
+
+    Link syntax inside fenced code blocks or `inline code` spans is ignored.
+    Each entry's ``data_uri`` key holds :func:`classify_data_uri` for
+    ``data:`` URLs, or ``None`` otherwise.
+    """
     refs = _reference_map(content)
+    prose = _mask_code_context(content)
     links: list[dict[str, Any]] = []
 
     # Linked images: [![alt](img)](href) — record the outer link.
-    for match in _LINKED_IMAGE_RE.finditer(content):
+    for match in _LINKED_IMAGE_RE.finditer(prose):
+        url = match.group(1)
         links.append(
             {
                 "text": "",
-                "url": match.group(1),
+                "url": url,
                 "title": match.group(2) or "",
                 "style": "linked-image",
+                "data_uri": classify_data_uri(url),
             }
         )
 
     # Mask constructs that would confuse the inline-link regex.
-    masked = _LINKED_IMAGE_RE.sub(lambda m: " " * len(m.group(0)), content)
+    masked = _LINKED_IMAGE_RE.sub(lambda m: " " * len(m.group(0)), prose)
     masked = _INLINE_IMAGE_RE.sub(lambda m: " " * len(m.group(0)), masked)
     masked = _REF_IMAGE_RE.sub(lambda m: " " * len(m.group(0)), masked)
 
     for match in _INLINE_LINK_RE.finditer(masked):
         text = match.group(1)
+        url = match.group(2)
         links.append(
             {
                 "text": text,
-                "url": match.group(2),
+                "url": url,
                 "title": match.group(3) or "",
                 "style": "inline",
+                "data_uri": classify_data_uri(url),
             }
         )
 
@@ -511,17 +569,19 @@ def extract_links(content: str) -> list[dict[str, Any]]:
         text = match.group(1)
         key = (match.group(2) or text).strip().lower()
         ref = refs.get(key, {})
+        url = ref.get("url", "")
         links.append(
             {
                 "text": text,
-                "url": ref.get("url", ""),
+                "url": url,
                 "title": ref.get("title", ""),
                 "style": "reference",
                 "ref": key,
+                "data_uri": classify_data_uri(url),
             }
         )
 
-    for match in _HTML_A_RE.finditer(content):
+    for match in _HTML_A_RE.finditer(prose):
         attrs = _parse_attrs(match.group(1))
         href = attrs.get("href", "")
         if href:
@@ -531,41 +591,52 @@ def extract_links(content: str) -> list[dict[str, Any]]:
                     "url": href,
                     "title": attrs.get("title", ""),
                     "style": "html",
+                    "data_uri": classify_data_uri(href),
                 }
             )
     return links
 
 
 def extract_images(content: str) -> list[dict[str, Any]]:
-    """Extract Markdown and HTML images."""
+    """Extract Markdown and HTML images.
+
+    Image syntax inside fenced code blocks or `inline code` spans is
+    ignored. Each entry's ``data_uri`` key holds :func:`classify_data_uri`
+    for ``data:`` URLs, or ``None`` otherwise.
+    """
     refs = _reference_map(content)
+    prose = _mask_code_context(content)
     images: list[dict[str, Any]] = []
 
-    for match in _INLINE_IMAGE_RE.finditer(content):
+    for match in _INLINE_IMAGE_RE.finditer(prose):
+        url = match.group(2)
         images.append(
             {
                 "alt": match.group(1),
-                "url": match.group(2),
+                "url": url,
                 "title": match.group(3) or "",
                 "style": "inline",
+                "data_uri": classify_data_uri(url),
             }
         )
 
-    for match in _REF_IMAGE_RE.finditer(content):
+    for match in _REF_IMAGE_RE.finditer(prose):
         alt = match.group(1)
         key = match.group(2).strip().lower()
         ref = refs.get(key, {})
+        url = ref.get("url", "")
         images.append(
             {
                 "alt": alt,
-                "url": ref.get("url", ""),
+                "url": url,
                 "title": ref.get("title", ""),
                 "style": "reference",
                 "ref": key,
+                "data_uri": classify_data_uri(url),
             }
         )
 
-    for match in _HTML_IMG_RE.finditer(content):
+    for match in _HTML_IMG_RE.finditer(prose):
         attrs = _parse_attrs(match.group(1))
         src = attrs.get("src", "")
         if src:
@@ -577,6 +648,7 @@ def extract_images(content: str) -> list[dict[str, Any]]:
                     "style": "html",
                     "width": attrs.get("width"),
                     "height": attrs.get("height"),
+                    "data_uri": classify_data_uri(src),
                 }
             )
     return images
@@ -615,19 +687,24 @@ def extract_code_blocks(content: str) -> list[dict[str, Any]]:
 
 
 def extract_raw_html(content: str) -> list[dict[str, Any]]:
-    """Best-effort list of raw HTML tags found in the document."""
+    """Best-effort list of raw HTML tags found in the document.
+
+    Tags inside fenced code blocks or `inline code` spans are ignored.
+    """
     found: list[dict[str, Any]] = []
-    for match in _HTML_TAG_RE.finditer(content):
+    for match in _HTML_TAG_RE.finditer(_mask_code_context(content)):
         tag = match.group(1).lower()
         snippet = match.group(0)
-        # Skip tags that appear inside fenced code by a cheap heuristic:
-        # handled via inventory after code stripping when needed.
         found.append({"tag": tag, "snippet": snippet})
     return found
 
 
 def extract_urls(content: str, *, base_url: str | None = None) -> list[str]:
-    """Collect unique URLs from links, images, autolinks, and bare URLs."""
+    """Collect unique URLs from links, images, autolinks, and bare URLs.
+
+    Ignores fenced code blocks and `inline code` spans, matching
+    extract_links / extract_images.
+    """
     urls: list[str] = []
     seen: set[str] = set()
 
@@ -645,9 +722,10 @@ def extract_urls(content: str, *, base_url: str | None = None) -> list[str]:
         add(item.get("url", ""))
     for item in extract_images(content):
         add(item.get("url", ""))
-    for match in _ANGLE_URL_RE.finditer(content):
+    prose = _mask_code_context(content)
+    for match in _ANGLE_URL_RE.finditer(prose):
         add(match.group(1))
-    for match in _BARE_URL_RE.finditer(content):
+    for match in _BARE_URL_RE.finditer(prose):
         add(match.group(1).rstrip(".,;:)"))
     return urls
 
@@ -658,11 +736,7 @@ def inventory(content: str) -> dict[str, Any]:
     links = extract_links(content)
     images = extract_images(content)
     codes = extract_code_blocks(content)
-    # Avoid counting HTML that only appears inside fenced code.
-    scrubbed = content
-    for block in codes:
-        scrubbed = scrubbed.replace(block["code"], "")
-    html_tags = extract_raw_html(scrubbed)
+    html_tags = extract_raw_html(content)
     hr_count = sum(1 for line in content.splitlines() if _HR_RE.match(line))
     return {
         "headings": sections,
