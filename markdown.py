@@ -1448,7 +1448,7 @@ class _HTMLToMarkdownParser(HTMLParser):
         elif tag == "input":
             if attr.get("type", "").lower() == "checkbox":
                 mark = "x" if "checked" in attr else " "
-                self._emit(f"[{mark}] ")
+                self._emit(f"[{mark}]")
         elif tag in {"ul", "ol"}:
             self._list_stack.append(tag)
             self._li_index.append(0)
@@ -1554,9 +1554,9 @@ def html_to_markdown(html: str) -> str:
     is escaped as ``\\|``. Nested tables flatten to cell text; ``colspan`` /
     ``rowspan`` and ``<caption>`` are ignored.
 
-    ``<del>`` becomes ``~~text~~``. A checkbox ``<input type="checkbox">``
-    (optional ``checked``) becomes ``[ ]`` / ``[x]``, which pairs with
-    ``<li>`` as ``- [ ]`` / ``- [x]``.
+    ``<del>`` (and ``<s>``) become ``~~text~~``. A checkbox
+    ``<input type="checkbox">`` (optional ``checked``) becomes ``[ ]`` /
+    ``[x]``, which pairs with ``<li>`` as ``- [ ]`` / ``- [x]``.
     """
     parser = _HTMLToMarkdownParser()
     parser.feed(html)
