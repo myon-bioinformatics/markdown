@@ -658,9 +658,15 @@ def extract_data_uris(content: str) -> list[dict[str, str]]:
     """List literal ``data:`` URIs without decoding or fetching their payloads."""
     found: list[dict[str, str]] = []
     for match in _DATA_URI_RE.finditer(content):
+        uri = match.group(0).rstrip("\"'>")
+        # The permissive payload pattern includes the closing parenthesis of a
+        # Markdown link.  Keep literal balanced parentheses in a data payload,
+        # but discard an unmatched Markdown delimiter.
+        while uri.endswith(")") and uri.count("(") < uri.count(")"):
+            uri = uri[:-1]
         meta = match.group(1)
         media_type = meta.split(";", 1)[0].lower()
-        found.append({"uri": match.group(0), "media_type": media_type, "metadata": meta})
+        found.append({"uri": uri, "media_type": media_type, "metadata": meta})
     return found
 
 
