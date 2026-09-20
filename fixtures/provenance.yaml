@@ -26,11 +26,16 @@ fixtures:
       has_horizontal_rule: true
 
 unsupported_examples:
-  - name: task_list
+  - name: footnote
     markdown: |
-      - [ ] todo
-      - [x] done
-    note: Task lists are not normalized; treated as plain list text at best.
+      footnote[^1]
+
+      [^1]: the note
+    note: Footnotes are not parsed; markers stay literal text.
+  - name: bare_url_autolink
+    markdown: |
+      Visit https://example.com
+    note: Bare URL autolinks are not recognized; only <https://...> angle autolinks and [text](url) links become <a>.
 
 supported_examples:
   - name: gfm_table
@@ -39,6 +44,19 @@ supported_examples:
       | --- | --- |
       | 1 | 2 |
     note: Simple GFM pipe tables (header + | --- | delimiter) render as HTML tables.
+  - name: task_list
+    markdown: |
+      - [ ] todo
+      - [x] done
+    note: Unordered -/*/ + task items render as disabled checkbox <input>s; mixed with ordinary bullets in the same <ul>.
+  - name: strikethrough
+    markdown: |
+      ~~mistake~~
+    note: ~~text~~ becomes <del>text</del>. Unmatched ~~ stays literal.
+  - name: angle_autolink
+    markdown: |
+      See <https://example.com>
+    note: Angle-bracket http(s) autolinks become <a href>. <script> and other tags stay escaped.
 
 # --- Benchmark fixtures (PR: "how far does this get on real Markdown?") ---
 #
@@ -76,7 +94,10 @@ benchmark_fixtures:
       are now supported markdown_to_html subsets (uppercase > [!NOTE] etc.
       render as <aside class="markdown-alert">; ordinary > quotes render as
       <blockquote>; the live Style/Syntax pipe table renders as <table>).
-      Task lists, footnotes, and autolinks in this fixture remain unsupported.
+      Angle-bracket autolinks, GFM task lists, and ~~strikethrough~~ parse
+      as HTML in this engine; this fixture's Task lists / URLs sections
+      only show those constructs inside inline code or as bare URLs, so they
+      stay literal here. Bare URLs and footnotes remain unsupported.
       The five-kind syntax examples inside the Alerts fenced code block stay
       code, not live alerts. The "First Header" table example stays inside a
       fenced code block.

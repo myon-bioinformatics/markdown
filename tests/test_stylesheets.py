@@ -37,6 +37,8 @@ def test_default_stylesheet_includes_alerts_and_common_blocks() -> None:
     assert "blockquote" in css
     assert "pre" in css
     assert "code" in css
+    assert "del" in css
+    assert "checkbox" in css
     assert re.search(r"\bh1\b", css)
     assert "url(" not in css
     assert "http://" not in css

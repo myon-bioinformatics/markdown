@@ -130,6 +130,8 @@ def test_github_docs_live_table_renders() -> None:
     assert "<table>" in html
     assert "<th>Style</th>" in html
     assert "<th>Syntax</th>" in html
+    # Live strikethrough in the last cell of that table.
+    assert "<del>This was mistaken text</del>" in html
     # The "Creating a table" fenced example stays code, not a second live table
     # of "First Header" as <th>.
     assert "First Header" in html

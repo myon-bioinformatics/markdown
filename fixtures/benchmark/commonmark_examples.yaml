@@ -18,7 +18,7 @@
 #                 (e.g. nesting collapsed, partial emphasis parsed).
 #   UNSUPPORTED - the construct isn't recognized at all; it safely falls
 #                 back to an escaped plain paragraph with no data loss
-#                 (the same fallback task lists already get).
+#                 (the same fallback footnotes and bare URLs still get).
 #   FAIL        - the output is actively wrong: missing conversions that
 #                 should have applied, or conversions applied that
 #                 shouldn't have (a false positive), not just "simpler".
