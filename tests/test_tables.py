@@ -213,3 +213,89 @@ def test_colspan_is_ignored_as_a_single_cell() -> None:
     )
     assert "| wide |" in md_out or "| wide |  |" in md_out
 
+
+def test_east_asian_width_counts_wide_characters_as_two() -> None:
+    assert md.east_asian_width("ab") == 2
+    assert md.east_asian_width("あい") == 4
+    assert md.east_asian_width("a") == 1
+
+
+def test_table_align_pads_columns_with_display_width() -> None:
+    out = md.table(["name", "val"], [["a", 1], ["bb", 22]], align=True)
+    lines = out.splitlines()
+    # Every row's cell region ends up the same total width, so the pipe
+    # boundaries line up column by column.
+    assert len({len(line) for line in lines}) == 1
+    assert lines[0] == "| name | val |"
+    assert lines[1] == "| ---- | --- |"
+
+
+def test_table_align_uses_east_asian_width_for_full_width_cells() -> None:
+    out = md.table(["名前", "値"], [["合計", "10"], ["a", "1"]], align=True)
+    lines = out.splitlines()
+    # Display width (not len(), which undercounts full-width characters)
+    # stays consistent across every row, so the columns line up visually.
+    assert len({md.east_asian_width(line) for line in lines}) == 1
+    # len() itself is *not* constant here -- that's the point: a
+    # len()-based padder would misalign these full-width columns.
+    assert len({len(line) for line in lines}) > 1
+
+
+def test_table_align_defaults_to_false_and_matches_plain_output() -> None:
+    assert md.table(["a", "b"], [[1, 2]]) == "| a | b |\n| --- | --- |\n| 1 | 2 |\n"
+
+
+def test_markdown_table_to_rows_parses_header_and_data() -> None:
+    rows = md.markdown_table_to_rows("| a | b |\n| --- | --- |\n| 1 | 2 |\n| 3 | 4 |\n")
+    assert rows == [["a", "b"], ["1", "2"], ["3", "4"]]
+
+
+def test_markdown_table_to_rows_returns_empty_list_without_a_table() -> None:
+    assert md.markdown_table_to_rows("just a paragraph\n") == []
+    assert md.markdown_table_to_rows("| a | b |\n| 1 | 2 |\n") == []
+
+
+def test_markdown_table_to_rows_ignores_a_fenced_code_example() -> None:
+    content = "```markdown\n| a | b |\n| --- | --- |\n| 1 | 2 |\n```\n"
+    assert md.markdown_table_to_rows(content) == []
+
+
+def test_markdown_table_to_rows_stops_at_the_table_boundary() -> None:
+    content = "| a | b |\n| --- | --- |\n| 1 | 2 |\n\nafter the table\n"
+    rows = md.markdown_table_to_rows(content)
+    assert rows == [["a", "b"], ["1", "2"]]
+
+
+def test_markdown_table_to_records_builds_dicts_from_the_header_row() -> None:
+    content = "| name | val |\n| --- | --- |\n| loss | 0.01 |\n| iou | 0.85 |\n"
+    records = md.markdown_table_to_records(content)
+    assert records == [
+        {"name": "loss", "val": "0.01"},
+        {"name": "iou", "val": "0.85"},
+    ]
+
+
+def test_markdown_table_to_records_returns_empty_list_without_a_table() -> None:
+    assert md.markdown_table_to_records("no table here") == []
+
+
+def test_markdown_table_to_csv_and_back_round_trips() -> None:
+    content = md.table(["name", "val"], [["loss", "0.01"], ["iou", "0.85"]])
+    csv_text = md.markdown_table_to_csv(content)
+    assert csv_text == "name,val\r\nloss,0.01\r\niou,0.85\r\n"
+    back = md.csv_to_markdown_table(csv_text)
+    assert md.markdown_table_to_rows(back) == md.markdown_table_to_rows(content)
+
+
+def test_markdown_table_to_csv_quotes_cells_containing_commas() -> None:
+    content = "| a | b |\n| --- | --- |\n| x,y | z |\n"
+    csv_text = md.markdown_table_to_csv(content)
+    assert csv_text == 'a,b\r\n"x,y",z\r\n'
+
+
+def test_csv_to_markdown_table_supports_align() -> None:
+    out = md.csv_to_markdown_table("name,val\na,1\nbb,22\n", align=True)
+    lines = out.splitlines()
+    assert len({len(line) for line in lines}) == 1
+    assert lines[0] == "| name | val |"
+

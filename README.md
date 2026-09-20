@@ -324,7 +324,15 @@ shared `<aside class="markdown-alert" data-alert-flavor="…">` shape. Embed
 no external URLs. Ordinary `>` blockquotes render as `<blockquote>` (multi-line;
 blank `>` lines split paragraphs). Simple GFM pipe tables from `table()` /
 `key_value_table()` / `md_table()` round-trip through `markdown_to_html()` into
-`<table>`. `~~text~~` becomes `<del>`. GFM task lists (`task_item()` /
+`<table>`. `markdown_table_to_rows()` / `markdown_table_to_records()` parse a
+pipe table back into `list[list[str]]` / `list[dict[str, str]]` (skipping
+tables inside fenced code), and `markdown_table_to_csv()` /
+`csv_to_markdown_table()` round-trip a table through CSV text. Pass
+`align=True` to `table()` (or `csv_to_markdown_table()`) to pad columns to
+their widest cell using `east_asian_width()` — a display-width count where
+Wide/Fullwidth characters (most CJK text) count as 2, so full-width and
+half-width cells stay lined up in the raw Markdown source, unlike `len()`.
+`~~text~~` becomes `<del>`. GFM task lists (`task_item()` /
 `task_list()`, or hand-written `- [ ]` / `- [x]`) render as disabled
 checkboxes. Angle-bracket `<https://…>` / `<http://…>` autolinks become
 `<a href>` (bare URLs stay literal). `details(summary, body)` emits

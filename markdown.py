@@ -65,6 +65,11 @@ __all__ = [
     "wrap_section",
     "md_table",
     "md_kv",
+    "east_asian_width",
+    "markdown_table_to_rows",
+    "markdown_table_to_records",
+    "markdown_table_to_csv",
+    "csv_to_markdown_table",
     "ALERT_FLAVORS",
     "GITHUB_ALERT_KINDS",
     "QIITA_NOTE_KINDS",
@@ -73,9 +78,12 @@ __all__ = [
     "UNSUPPORTED",
 ]
 
+import csv
 import html as html_module
+import io
 import json
 import re
+import unicodedata
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import Path
@@ -137,9 +145,19 @@ SUPPORTED = {
         "inline_code / code_block / json_block",
         "table / key_value_table",
         "md_table / md_kv (*args-friendly wrappers, no list/dict pre-building needed)",
+        "table(..., align=True) / csv_to_markdown_table(..., align=True) pad columns "
+        "to their widest cell using east_asian_width() display width",
         "status_line",
         "section (heading + blocks) / wrap_section (tool-detectable markers)",
         "ial / with_attributes (Kramdown {: #id .class key=\"value\"} lines)",
+    ],
+    "tables": [
+        "markdown_table_to_rows / markdown_table_to_records parse the first GFM "
+        "pipe table in a document (fenced-code examples are skipped)",
+        "markdown_table_to_csv / csv_to_markdown_table round-trip a table through "
+        "CSV text",
+        "east_asian_width computes display width (Wide/Fullwidth = 2) for "
+        "CJK-aware column padding",
     ],
 }
 
@@ -1261,7 +1279,23 @@ def json_block(obj: Any, indent: int = 2) -> str:
     return code_block(text, lang="json")
 
 
-def table(headers: Any, rows: Any) -> str:
+def east_asian_width(text: str) -> int:
+    """Return the display width of ``text`` per ``unicodedata.east_asian_width``.
+
+    Wide and Fullwidth characters (most CJK text) count as 2 columns instead
+    of ``len()``'s 1, so column padding built on this stays lined up when
+    full-width text is mixed with ASCII. ``len()``-based padding drifts as
+    soon as any wide character appears.
+
+    >>> east_asian_width("ab")
+    2
+    >>> east_asian_width("あい")
+    4
+    """
+    return sum(2 if unicodedata.east_asian_width(ch) in "WF" else 1 for ch in text)
+
+
+def table(headers: Any, rows: Any, *, align: bool = False) -> str:
     """Build a Markdown (GFM-style) table.
 
     ``headers`` is a sequence of column names; ``rows`` is a sequence of
@@ -1271,17 +1305,44 @@ def table(headers: Any, rows: Any) -> str:
     ``markdown_to_html()`` parses this pipe-table form into
     ``<table>/<thead>/<th>/<tbody>/<td>``.
 
+    Pass ``align=True`` to pad every column to its widest cell, measured
+    with ``east_asian_width`` rather than ``len()``, so the raw Markdown
+    source lines up visually even when cells mix full-width (CJK) and
+    half-width text. GFM ignores the extra padding, so parsed output is
+    unaffected either way -- this only changes the source formatting.
+
     >>> table(["a", "b"], [[1, 2], [3, 4]])
     '| a | b |\\n| --- | --- |\\n| 1 | 2 |\\n| 3 | 4 |\\n'
+    >>> table(["name", "val"], [["a", 1], ["bb", 22]], align=True)
+    '| name | val |\\n| ---- | --- |\\n| a    | 1   |\\n| bb   | 22  |\\n'
     """
     headers = [str(h) for h in headers]
     if not headers:
         return ""
-    out = ["| " + " | ".join(headers) + " |", "| " + " | ".join(["---"] * len(headers)) + " |"]
+    str_rows = []
     for row in rows:
         cells = [str(v) for v in row][: len(headers)]
         cells += [""] * (len(headers) - len(cells))
-        out.append("| " + " | ".join(cells) + " |")
+        str_rows.append(cells)
+
+    if not align:
+        out = ["| " + " | ".join(headers) + " |", "| " + " | ".join(["---"] * len(headers)) + " |"]
+        for cells in str_rows:
+            out.append("| " + " | ".join(cells) + " |")
+        return "\n".join(out) + "\n"
+
+    widths = [max(3, east_asian_width(h)) for h in headers]
+    for cells in str_rows:
+        for i, cell in enumerate(cells):
+            widths[i] = max(widths[i], east_asian_width(cell))
+
+    def pad_row(cells: list[str]) -> str:
+        padded = [cell + " " * (widths[i] - east_asian_width(cell)) for i, cell in enumerate(cells)]
+        return "| " + " | ".join(padded) + " |"
+
+    out = [pad_row(headers), "| " + " | ".join("-" * w for w in widths) + " |"]
+    for cells in str_rows:
+        out.append(pad_row(cells))
     return "\n".join(out) + "\n"
 
 
@@ -1357,6 +1418,89 @@ def md_kv(*pairs: Any, key_label: str = "Key", value_label: str = "Value") -> st
         else:
             merged[str(item)] = next(it, "")
     return key_value_table(merged, key_label=key_label, value_label=value_label)
+
+
+def markdown_table_to_rows(content: str) -> list[list[str]]:
+    """Parse the first GFM pipe table in ``content`` into raw string rows.
+
+    Reuses the scanner's fenced-code state (:func:`_scan_lines`) so a table
+    example inside a fenced code block is not mistaken for a live table --
+    the same detection ``markdown_to_html`` applies. The header row is
+    ``rows[0]``; the ``| --- |`` delimiter line is consumed but not
+    returned. Returns ``[]`` if no table is found.
+
+    >>> markdown_table_to_rows("| a | b |\\n| --- | --- |\\n| 1 | 2 |\\n")
+    [['a', 'b'], ['1', '2']]
+    >>> markdown_table_to_rows("no table here")
+    []
+    """
+    lines = content.splitlines()
+    scanned = _scan_lines(lines)
+    for i, scanned_line in enumerate(scanned):
+        if scanned_line.in_fenced_code or not _is_table_start(lines, i):
+            continue
+        rows = [_split_table_row(lines[i])]
+        j = i + 2
+        while j < len(lines) and not scanned[j].in_fenced_code:
+            line = lines[j]
+            if not line.strip() or not _looks_like_table_row(line):
+                break
+            rows.append(_split_table_row(line))
+            j += 1
+        return rows
+    return []
+
+
+def markdown_table_to_records(content: str) -> list[dict[str, str]]:
+    """Parse the first GFM pipe table in ``content`` into ``dict`` records.
+
+    The header row supplies each record's keys via :func:`markdown_table_to_rows`.
+    Short data rows are padded with empty strings; extra cells beyond the
+    header count are dropped, matching :func:`table`'s own padding rule.
+
+    >>> markdown_table_to_records("| a | b |\\n| --- | --- |\\n| 1 | 2 |\\n")
+    [{'a': '1', 'b': '2'}]
+    """
+    rows = markdown_table_to_rows(content)
+    if not rows:
+        return []
+    headers, data_rows = rows[0], rows[1:]
+    records = []
+    for row in data_rows:
+        cells = row[: len(headers)] + [""] * (len(headers) - len(row))
+        records.append(dict(zip(headers, cells)))
+    return records
+
+
+def markdown_table_to_csv(content: str) -> str:
+    """Convert the first GFM pipe table in ``content`` to CSV text.
+
+    Pairs with :func:`csv_to_markdown_table` for a round trip through CSV
+    tools; the header row becomes the CSV header.
+
+    >>> markdown_table_to_csv("| a | b |\\n| --- | --- |\\n| 1 | 2 |\\n")
+    'a,b\\r\\n1,2\\r\\n'
+    """
+    rows = markdown_table_to_rows(content)
+    buf = io.StringIO()
+    csv.writer(buf).writerows(rows)
+    return buf.getvalue()
+
+
+def csv_to_markdown_table(csv_text: str, *, align: bool = False) -> str:
+    """Convert CSV text (header row + data rows) to a Markdown table.
+
+    The first CSV row becomes the table's headers. Pass ``align=True`` to
+    visually pad columns, see :func:`table`.
+
+    >>> csv_to_markdown_table("a,b\\n1,2\\n")
+    '| a | b |\\n| --- | --- |\\n| 1 | 2 |\\n'
+    """
+    rows = list(csv.reader(io.StringIO(csv_text)))
+    if not rows:
+        return ""
+    headers, data_rows = rows[0], rows[1:]
+    return table(headers, data_rows, align=align)
 
 
 def status_line(ok: bool, msg_ok: str, msg_ng: str) -> str:
