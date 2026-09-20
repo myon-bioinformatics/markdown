@@ -30,6 +30,29 @@ unsupported_examples:
     markdown: |
       Visit https://example.com
     note: Bare URL autolinks are not recognized; only <https://...> angle autolinks and [text](url) links become <a>.
+  - name: kramdown_extension_and_toc
+    markdown: |
+      {::comment}
+      hidden
+      {:/comment}
+
+      * TOC
+      {:toc}
+    note: >
+      Full Kramdown is out of scope. {::comment} / {::options} / {::nomarkdown}
+      and the {:toc} TOC macro are left literal (safe degrade).
+  - name: liquid_and_front_matter
+    markdown: |
+      ---
+      title: Page
+      ---
+
+      {% include header.html %}
+      {{ page.title }}
+    note: >
+      Liquid {% %} / {{ }}, YAML front matter, Jekyll includes, tags, and baseurl
+      stay out of markdown.py (those belong in mcp-toolcall-lab). Conversion
+      leaves them unchanged.
 
 supported_examples:
   - name: gfm_table
@@ -63,6 +86,15 @@ supported_examples:
       Hidden body
       :::
     note: Zenn-style :::details summary containers render as <details><summary>. Raw HTML <details> in Markdown stays escaped.
+  - name: kramdown_ial
+    markdown: |
+      # Title {#intro .hero}
+    note: >
+      Pandoc/PHP-Extra {#id .class} on a heading or paragraph becomes a Kramdown
+      block IAL via markdown_to_kramdown() ({: #intro .hero}). html_to_markdown()
+      emits the same Pandoc form from heading/paragraph id+class. kramdown_to_markdown()
+      strips known IAL (lossy — attributes are dropped). markdown_to_html() does
+      not apply IAL as HTML attributes.
 
 # --- Benchmark fixtures (PR: "how far does this get on real Markdown?") ---
 #

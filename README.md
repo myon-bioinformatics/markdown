@@ -57,6 +57,10 @@ print(report)
 # library-side HTML + CSS (no separate .css asset required)
 html = "<style>" + md.default_stylesheet() + "</style>\n" + md.markdown_to_html(report)
 print(html)
+
+# thin Markdown ↔ Kramdown IAL (headings / paragraphs only)
+print(md.with_attributes(md.heading("Intro"), id="intro", classes="hero"))
+print(md.markdown_to_kramdown("# Title {#intro .hero}"))
 ```
 
 
@@ -329,9 +333,15 @@ Zenn-style `:::details` which `markdown_to_html()` turns into
 `[^id]` plus `[^id]:` definitions become superscript footnote links and
 a `.footnotes` section. `html_to_markdown()` maps simple `<table>` trees
 back to GFM pipes, `<del>` to `~~…~~`, and checkbox `<li><input>` to
-`- [ ]` / `- [x]`. Wikipedia infoboxes, Math, mermaid,
-Jekyll/Kramdown/Liquid/front matter, and full CommonMark/GFM remain out of
-scope.
+`- [ ]` / `- [x]`. Heading / paragraph `id` / `class` become a trailing
+Pandoc-style `{#id .class}`; `markdown_to_kramdown()` turns that into a
+Kramdown block IAL (`{: #id .class key="value"}`), and
+`kramdown_to_markdown()` strips known IAL back to plain Markdown
+(attributes dropped). `ial()` / `with_attributes()` write those IAL
+lines. Wikipedia infoboxes, Math, mermaid, Liquid `{% %}` / `{{ }}`,
+YAML front matter, Jekyll includes / tags / baseurl, and full Kramdown
+(extensions, math, TOC macros, span IAL) remain out of scope, as does
+full CommonMark/GFM.
 
 `code_block()`'s fence length is adaptive: plain content still gets a triple-backtick fence, but
 content that itself contains a run of backticks (e.g. Markdown-about-Markdown, like a fenced example
