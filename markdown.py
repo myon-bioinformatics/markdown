@@ -2596,9 +2596,27 @@ def _split_table_row(line: str) -> list[str]:
     stripped = line.strip()
     if stripped.startswith("|"):
         stripped = stripped[1:]
-    if stripped.endswith("|") and not stripped.endswith("\\|"):
+    before_last = stripped[:-1] if stripped.endswith("|") else stripped
+    trailing_slashes = len(before_last) - len(before_last.rstrip("\\"))
+    if stripped.endswith("|") and trailing_slashes % 2 == 0:
         stripped = stripped[:-1]
-    return [cell.strip().replace("\\|", "|") for cell in re.split(r"(?<!\\)\|", stripped)]
+    cells: list[str] = []
+    cell: list[str] = []
+    index = 0
+    while index < len(stripped):
+        char = stripped[index]
+        if char == "\\" and index + 1 < len(stripped) and stripped[index + 1] in {"\\", "|"}:
+            cell.append(stripped[index + 1])
+            index += 2
+            continue
+        if char == "|":
+            cells.append("".join(cell).strip())
+            cell = []
+        else:
+            cell.append(char)
+        index += 1
+    cells.append("".join(cell).strip())
+    return cells
 
 
 def _looks_like_table_row(line: str) -> bool:
