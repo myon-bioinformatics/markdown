@@ -14,6 +14,7 @@ from __future__ import annotations
 __all__ = [
     "save_markdown",
     "read_markdown",
+    "run_markdown_doctest",
     "extract_sections",
     "split_sections",
     "extract_links",
@@ -80,6 +81,7 @@ __all__ = [
 
 import html as html_module
 import csv
+import doctest
 import io
 import json
 import re
@@ -397,6 +399,59 @@ def read_markdown(filepath: str, count_hashtags: bool = False) -> dict:
     except OSError as e:
         result["content"] = f"Error reading file: {e}"
     return result
+
+
+def run_markdown_doctest(content: str, name: str = "<markdown>", globs: Any = None) -> doctest.TestResults:
+    """Run Python doctest prompts found in fenced Markdown code blocks.
+
+    Only python, py and pycon fenced blocks participate. All other Markdown
+    is replaced with blank lines before parsing so doctest failure locations
+    continue to point at the original Markdown line.
+
+    This helper deliberately executes the doctest examples it is given. It
+    is intended for trusted project documentation and test suites, not for
+    untrusted Markdown supplied by an end user.
+    """
+    source = _markdown_doctest_source(content)
+    test = doctest.DocTestParser().get_doctest(
+        source, dict(globs or {}), name, name, 0,
+    )
+    runner = doctest.DocTestRunner()
+    runner.run(test)
+    return runner.summarize(verbose=False)
+
+
+def _markdown_doctest_source(content: str) -> str:
+    """Keep Python fence contents while preserving Markdown line numbers."""
+    output: list[str] = []
+    fence: tuple[str, int] | None = None
+    opener = re.compile(
+        r"^ {0,3}(`{3,}|~{3,})\s*(?:python|python3|py|pycon)\s*$",
+        re.I,
+    )
+
+
+    for line in content.splitlines(keepends=True):
+        if fence is None:
+            match = opener.match(line.rstrip("\r\n"))
+            if match:
+                marker = match.group(1)
+                fence = (marker[0], len(marker))
+            output.append("\n" if line.endswith("\n") else "")
+            continue
+
+
+        character, width = fence
+        close = re.match(
+            r"^ {0,3}(%s{%d,})\s*$" % (re.escape(character), width),
+            line.rstrip("\r\n"),
+        )
+        if close:
+            fence = None
+            output.append("\n" if line.endswith("\n") else "")
+        else:
+            output.append(line)
+    return "".join(output)
 
 
 # ---------------------------------------------------------------------------
