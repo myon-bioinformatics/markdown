@@ -76,6 +76,7 @@ __all__ = [
 import html as html_module
 import json
 import re
+from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
@@ -269,6 +270,81 @@ _TRAILING_PANDOC_ATTR_RE = re.compile(
     r"^(?P<body>.*?)(?P<list>\{(?![%{:])(?P<inner>[^{}]*)\})\s*$"
 )
 _HTML_ATTR_SKIP = frozenset({"id", "class", "style"})
+
+
+# === SECTION: scanner ===
+# Shared lexical helpers. New format converters should use these helpers
+# instead of re-implementing fence state or treating inline code as prose.
+
+@dataclass(frozen=True)
+class _ScannedLine:
+    """One physical Markdown line with its code-context classification."""
+
+    text: str
+    in_fenced_code: bool
+    is_fence_open: bool = False
+    is_fence_close: bool = False
+
+
+def _advance_fence(active_fence: str | None, line: str) -> tuple[str | None, bool, bool]:
+    """Return next fence state, plus whether ``line`` opens or closes it."""
+    match = _FENCE_RE.match(line)
+    if active_fence is not None:
+        if match and line.startswith(active_fence):
+            return None, False, True
+        return active_fence, False, False
+    if match:
+        return match.group(1), True, False
+    return None, False, False
+
+
+def _scan_lines(lines: list[str]) -> list[_ScannedLine]:
+    """Classify lines as ordinary text or fenced-code context.
+
+    This is deliberately lexical and dependency-free. It preserves the
+    repository's existing ``_FENCE_RE`` contract.
+    """
+    active_fence: str | None = None
+    scanned: list[_ScannedLine] = []
+    for line in lines:
+        next_fence, opened, closed = _advance_fence(active_fence, line)
+        scanned.append(
+            _ScannedLine(
+                text=line,
+                in_fenced_code=active_fence is not None or opened,
+                is_fence_open=opened,
+                is_fence_close=closed,
+            )
+        )
+        active_fence = next_fence
+    return scanned
+
+
+def _mask_inline_code(text: str) -> str:
+    """Replace balanced backtick code spans with spaces, preserving indexes.
+
+    This conservative helper is for scanners/extractors, not an inline
+    renderer. Unbalanced runs stay untouched; fenced code is handled by
+    ``_scan_lines`` first.
+    """
+    chars = list(text)
+    index = 0
+    while index < len(text):
+        if text[index] != "`":
+            index += 1
+            continue
+        end = index
+        while end < len(text) and text[end] == "`":
+            end += 1
+        marker = text[index:end]
+        close = text.find(marker, end)
+        if close < 0:
+            index = end
+            continue
+        for masked_index in range(index, close + len(marker)):
+            chars[masked_index] = " "
+        index = close + len(marker)
+    return "".join(chars)
 
 
 # ---------------------------------------------------------------------------
@@ -502,20 +578,20 @@ def extract_code_blocks(content: str) -> list[dict[str, Any]]:
     """Extract fenced code blocks (``` or ~~~)."""
     blocks: list[dict[str, Any]] = []
     lines = content.splitlines()
+    scanned = _scan_lines(lines)
     i = 0
     while i < len(lines):
-        match = _FENCE_RE.match(lines[i])
-        if not match:
+        if not scanned[i].is_fence_open:
             i += 1
             continue
+        match = _FENCE_RE.match(lines[i])
+        assert match is not None  # guaranteed by _scan_lines
         fence = match.group(1)
         info = match.group(2).strip()
         lang = info.split()[0] if info else ""
         body: list[str] = []
         i += 1
-        while i < len(lines):
-            if lines[i].startswith(fence):
-                break
+        while i < len(lines) and not scanned[i].is_fence_close:
             body.append(lines[i])
             i += 1
         blocks.append(
@@ -525,7 +601,8 @@ def extract_code_blocks(content: str) -> list[dict[str, Any]]:
                 "code": "\n".join(body),
             }
         )
-        i += 1
+        if i < len(lines):
+            i += 1
     return blocks
 
 
