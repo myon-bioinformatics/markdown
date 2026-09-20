@@ -100,3 +100,17 @@ def test_fenced_task_example_stays_code() -> None:
     html = md.markdown_to_html("```\n- [ ] nope\n```\n")
     assert "<input" not in html
     assert "- [ ] nope" in html
+
+
+def test_html_checkbox_li_becomes_task_markdown() -> None:
+    md_out = md.html_to_markdown(
+        "<ul>"
+        '<li><input type="checkbox" disabled /> todo</li>'
+        '<li><input type="checkbox" disabled checked /> done</li>'
+        "</ul>"
+    )
+    assert "- [ ] todo" in md_out
+    assert "- [x] done" in md_out
+    html = md.markdown_to_html(md_out)
+    assert '<input type="checkbox" disabled /> todo' in html
+    assert '<input type="checkbox" disabled checked /> done' in html

@@ -39,6 +39,9 @@ def test_default_stylesheet_includes_alerts_and_common_blocks() -> None:
     assert "code" in css
     assert "del" in css
     assert "checkbox" in css
+    assert "details" in css
+    assert "summary" in css
+    assert "footnotes" in css
     assert re.search(r"\bh1\b", css)
     assert "url(" not in css
     assert "http://" not in css

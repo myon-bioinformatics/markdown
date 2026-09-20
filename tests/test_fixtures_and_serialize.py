@@ -41,15 +41,30 @@ def test_real_world_fixtures_against_provenance() -> None:
 def test_unsupported_constructs_are_documented() -> None:
     data = _load_provenance()
     notes = {row["name"]: row["note"] for row in data["unsupported_examples"]}
-    assert "footnote" in notes
     assert "bare_url_autolink" in notes
-    footnote = next(row for row in data["unsupported_examples"] if row["name"] == "footnote")
-    html = md.markdown_to_html(footnote["markdown"])
-    assert "footnote[^1]" in html
+    assert "footnote" not in notes
     bare = next(row for row in data["unsupported_examples"] if row["name"] == "bare_url_autolink")
     bare_html = md.markdown_to_html(bare["markdown"])
     assert "<a " not in bare_html
     assert "https://example.com" in bare_html
+
+
+def test_footnote_example_now_renders() -> None:
+    data = _load_provenance()
+    example = next(row for row in data["supported_examples"] if row["name"] == "footnote")
+    html = md.markdown_to_html(example["markdown"])
+    assert '<sup class="footnote-ref">' in html
+    assert "the note" in html
+    assert "footnotes" in html
+
+
+def test_details_example_now_renders() -> None:
+    data = _load_provenance()
+    example = next(row for row in data["supported_examples"] if row["name"] == "details")
+    html = md.markdown_to_html(example["markdown"])
+    assert "<details>" in html
+    assert "<summary>Summary</summary>" in html
+    assert "Hidden body" in html
 
 
 def test_task_list_example_now_renders() -> None:

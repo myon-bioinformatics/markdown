@@ -48,6 +48,9 @@ __all__ = [
     "numbered_list",
     "task_item",
     "task_list",
+    "details",
+    "footnote_ref",
+    "footnote",
     "code_block",
     "table",
     "key_value_table",
@@ -105,6 +108,12 @@ SUPPORTED = {
         "(- [ ] / - [x] / - [X], also * and +; disabled checkbox <input>; mixed with ordinary <li> in one <ul>)",
         "angle-bracket autolinks in markdown_to_html "
         "(<https://...> / <http://...> -> <a href>; bare URLs stay literal)",
+        ":::details summary containers in markdown_to_html "
+        "(Zenn-style :::details ... ::: -> <details><summary>; raw HTML <details> stays escaped)",
+        "GFM/Pandoc-like footnotes in markdown_to_html "
+        "([^id] refs + [^id]: definitions -> <sup><a> + <section class=\"footnotes\">)",
+        "simple HTML <table> in html_to_markdown (GFM pipe table; headerless rows use an empty header)",
+        "HTML <del> -> ~~text~~ and <li><input type=checkbox> -> - [ ] / - [x] in html_to_markdown",
         "alert_stylesheet / default_stylesheet (compact CSS strings for markdown_to_html output)",
     ],
     "generation": [
@@ -112,6 +121,8 @@ SUPPORTED = {
         "alert (GitHub > [!NOTE], Qiita :::note, Zenn :::message, Obsidian callouts; "
         "GitLab > [!note] generation)",
         "bullet_list / numbered_list / task_item / task_list",
+        "details (Zenn :::details summary / body; markdown_to_html -> <details><summary>)",
+        "footnote_ref / footnote ([^id] inline ref and [^id]: definition)",
         "inline_code / code_block / json_block",
         "table / key_value_table",
         "md_table / md_kv (*args-friendly wrappers, no list/dict pre-building needed)",
@@ -135,11 +146,14 @@ UNSUPPORTED = {
         "delimiters -- see fixtures/benchmark/commonmark_examples.yaml)",
         "GFM tables without a delimiter row of 3+ hyphens (header-only pipe lines "
         "stay paragraphs; alignment colons are accepted but not emitted as HTML attributes)",
-        "html_to_markdown() for <table> (Markdown -> HTML is supported; the reverse is not)",
-        "html_to_markdown() for <del> / task-list checkboxes "
-        "(Markdown -> HTML is supported; the reverse is not)",
+        "html_to_markdown nested tables / colspan / rowspan / <caption> "
+        "(nested tables flatten to cell text; extra spans are ignored; caption text is dropped)",
         "numbered-list task items (1. [ ] stays ordinary <li> text; only -/*/ + markers are tasks)",
-        "footnotes",
+        "raw HTML <details> in Markdown (escaped, not passed through; use details() / :::details)",
+        "nested :::details / ::::details containers (the first ::: closes the block)",
+        "footnote lazy continuation (unindented wrapping stays a new paragraph; "
+        "only 2+ space / tab indented continuation is kept). Unused definitions are "
+        "dropped. Undefined [^id] stays literal. Duplicate ids: first definition wins",
         "bare URL autolinks (https://example.com stays literal; only <https://...> / "
         "<http://...> and [text](url) become <a>)",
         "angle autolinks with schemes other than http/https (mailto:, ftp:, uppercase HTTP://)",
@@ -211,7 +225,14 @@ _ZENN_MESSAGE_OPEN_RE = re.compile(
     r"^\s{0,3}:::message(?:\s+(alert))?\s*$",
     re.IGNORECASE,
 )
+_DETAILS_OPEN_RE = re.compile(
+    r"^\s{0,3}:::details(?:[ \t]+(.*))?\s*$",
+    re.IGNORECASE,
+)
 _COLON_CONTAINER_CLOSE_RE = re.compile(r"^\s{0,3}:::\s*$")
+_FOOTNOTE_DEF_RE = re.compile(r"^\[\^([^\]\s]+)\]:[ \t]?(.*)$")
+_FOOTNOTE_CONT_RE = re.compile(r"^(?: {2,}|\t)(.*)$")
+_FOOTNOTE_REF_RE = re.compile(r"\[\^([^\]\s]+)\]")
 _TABLE_SEP_CELL_RE = re.compile(r"^:?-{3,}:?$")
 _LIST_ITEM_RE = re.compile(r"^(\s*)(?:[-*+]|\d+\.)\s+")
 _TASK_ITEM_RE = re.compile(r"^\[([ xX])\](?:[ \t]+(.*))?$")
@@ -1032,6 +1053,48 @@ def task_list(items: Any) -> str:
     return "\n".join(lines) + ("\n" if lines else "")
 
 
+def details(summary: str, body: str = "") -> str:
+    """Build a collapsible section using Zenn's ``:::details`` form.
+
+    ``markdown_to_html()`` turns this into ``<details><summary>…</summary>…``.
+    Summary and body inlines (bold / italic / code / links) are parsed; nested
+    block constructs inside the body stay paragraph text (small contract).
+    Raw HTML ``<details>`` in Markdown input stays escaped — this helper is
+    the supported way to emit the element.
+
+    Nested ``:::details`` / ``::::details`` is unsupported: the first ``:::``
+    closer ends the block.
+    """
+    summary_line = str(summary).replace("\n", " ").strip()
+    opener = f":::details {summary_line}" if summary_line else ":::details"
+    body_text = str(body)
+    if not body_text.strip():
+        return f"{opener}\n:::\n"
+    if not body_text.endswith("\n"):
+        body_text += "\n"
+    return f"{opener}\n{body_text}:::\n"
+
+
+def footnote_ref(ident: str) -> str:
+    """Build an inline footnote reference (``[^id]``).
+
+    ``markdown_to_html()`` turns a defined ref into a superscript link.
+    Undefined ids stay literal (documented degrade).
+    """
+    return f"[^{ident}]"
+
+
+def footnote(ident: str, text: str = "") -> str:
+    """Build a footnote definition line (``[^id]: text``).
+
+    Pair with :func:`footnote_ref` (or a hand-written ``[^id]``) in the
+    body. Duplicate ids: first definition wins. Unused definitions are
+    dropped from HTML. Continuation lines may be indented with 2+ spaces
+    or a tab; unindented wrapping is a new paragraph, not a continuation.
+    """
+    return f"[^{ident}]: {text}\n"
+
+
 def inline_code(text: str) -> str:
     """Wrap ``text`` in single backticks for inline code."""
     return f"`{text}`"
@@ -1240,6 +1303,68 @@ class _HTMLToMarkdownParser(HTMLParser):
         self._link_href = ""
         self._link_title = ""
         self._link_open = False
+        self._table_depth = 0
+        self._table_header: list[str] | None = None
+        self._table_rows: list[list[str]] = []
+        self._table_row: list[str] | None = None
+        self._table_cell: list[str] | None = None
+        self._table_row_is_header = False
+        self._in_thead = False
+
+    def _emit(self, text: str) -> None:
+        if self._table_cell is not None:
+            self._table_cell.append(text)
+        elif self._table_depth:
+            return
+        else:
+            self.parts.append(text)
+
+    def _flush_cell(self) -> None:
+        if self._table_cell is None or self._table_row is None:
+            self._table_cell = None
+            return
+        text = re.sub(r"\s+", " ", "".join(self._table_cell)).strip()
+        text = text.replace("|", r"\|")
+        self._table_row.append(text)
+        self._table_cell = None
+
+    def _flush_row(self) -> None:
+        self._flush_cell()
+        if self._table_row is None:
+            return
+        if self._in_thead or self._table_row_is_header:
+            if self._table_header is None:
+                self._table_header = self._table_row
+            else:
+                self._table_rows.append(self._table_row)
+        else:
+            self._table_rows.append(self._table_row)
+        self._table_row = None
+        self._table_row_is_header = False
+
+    def _table_to_markdown(self) -> str:
+        self._flush_row()
+        rows = self._table_rows
+        header = self._table_header
+        if header is None:
+            if not rows:
+                return ""
+            width = max(len(row) for row in rows)
+            if width == 0:
+                return ""
+            header = [""] * width
+        width = len(header)
+        if width == 0:
+            return ""
+
+        def fmt(cells: list[str]) -> str:
+            padded = list(cells[:width]) + [""] * (width - min(len(cells), width))
+            return "| " + " | ".join(padded) + " |"
+
+        lines = [fmt(header), "| " + " | ".join(["---"] * width) + " |"]
+        for row in rows:
+            lines.append(fmt(row))
+        return "\n\n" + "\n".join(lines) + "\n\n"
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
@@ -1249,42 +1374,85 @@ class _HTMLToMarkdownParser(HTMLParser):
             return
         if self._suppress:
             return
+        if tag == "table":
+            self._table_depth += 1
+            if self._table_depth == 1:
+                self._table_header = None
+                self._table_rows = []
+                self._table_row = None
+                self._table_cell = None
+                self._table_row_is_header = False
+                self._in_thead = False
+            return
+        if self._table_depth > 1 and tag in {
+            "thead", "tbody", "tfoot", "tr", "td", "th", "caption", "colgroup", "col",
+        }:
+            return
+        if tag == "thead":
+            if self._table_depth == 1:
+                self._in_thead = True
+            return
+        if tag == "tr":
+            if self._table_depth == 1:
+                self._flush_row()
+                self._table_row = []
+                self._table_row_is_header = False
+            return
+        if tag in {"td", "th"}:
+            if self._table_depth != 1:
+                return
+            if self._table_row is None:
+                self._table_row = []
+                self._table_row_is_header = False
+            self._flush_cell()
+            self._table_cell = []
+            if tag == "th":
+                self._table_row_is_header = True
+            return
+        if tag in {"tbody", "tfoot", "caption", "colgroup", "col"}:
+            return
         if tag in {"h1", "h2", "h3", "h4", "h5", "h6"}:
             level = int(tag[1])
-            self.parts.append("\n\n" + ("#" * level) + " ")
+            self._emit("\n\n" + ("#" * level) + " ")
         elif tag == "p":
-            self.parts.append("\n\n")
+            self._emit("\n\n")
         elif tag == "br":
-            self.parts.append("  \n")
+            self._emit("  \n")
         elif tag == "hr":
-            self.parts.append("\n\n---\n\n")
+            self._emit("\n\n---\n\n")
         elif tag in {"strong", "b"}:
-            self.parts.append("**")
+            self._emit("**")
         elif tag in {"em", "i"}:
-            self.parts.append("*")
+            self._emit("*")
+        elif tag in {"del", "s"}:
+            self._emit("~~")
         elif tag == "code" and not self._in_pre:
-            self.parts.append("`")
+            self._emit("`")
             self._in_code = True
         elif tag == "pre":
             self._in_pre = True
-            self.parts.append("\n\n```\n")
+            self._emit("\n\n```\n")
         elif tag == "a":
-            self.parts.append("[")
+            self._emit("[")
             self._link_href = attr.get("href", "")
             self._link_title = attr.get("title", "")
             self._link_open = True
         elif tag == "img":
-            self.parts.append(
+            self._emit(
                 make_image(
                     attr.get("alt", ""),
                     attr.get("src", ""),
                     attr.get("title") or None,
                 )
             )
+        elif tag == "input":
+            if attr.get("type", "").lower() == "checkbox":
+                mark = "x" if "checked" in attr else " "
+                self._emit(f"[{mark}]")
         elif tag in {"ul", "ol"}:
             self._list_stack.append(tag)
             self._li_index.append(0)
-            self.parts.append("\n")
+            self._emit("\n")
         elif tag == "li":
             depth = max(len(self._list_stack) - 1, 0)
             indent = "  " * depth
@@ -1294,9 +1462,9 @@ class _HTMLToMarkdownParser(HTMLParser):
                 bullet = f"{self._li_index[-1]}."
             else:
                 bullet = "-"
-            self.parts.append(f"\n{indent}{bullet} ")
+            self._emit(f"\n{indent}{bullet} ")
         elif tag == "blockquote":
-            self.parts.append("\n\n> ")
+            self._emit("\n\n> ")
 
     def handle_endtag(self, tag: str) -> None:
         tag = tag.lower()
@@ -1305,38 +1473,70 @@ class _HTMLToMarkdownParser(HTMLParser):
             return
         if self._suppress:
             return
+        if tag == "table":
+            if self._table_depth == 1:
+                markdown = self._table_to_markdown()
+                self._table_depth = 0
+                self._table_cell = None
+                self._table_row = None
+                if markdown:
+                    self.parts.append(markdown)
+            elif self._table_depth > 1:
+                self._table_depth -= 1
+            return
+        if self._table_depth > 1 and tag in {
+            "thead", "tbody", "tfoot", "tr", "td", "th", "caption", "colgroup", "col",
+        }:
+            return
+        if tag == "thead":
+            if self._table_depth == 1:
+                self._flush_row()
+                self._in_thead = False
+            return
+        if tag == "tr":
+            if self._table_depth == 1:
+                self._flush_row()
+            return
+        if tag in {"td", "th"}:
+            if self._table_depth == 1:
+                self._flush_cell()
+            return
         if tag in {"h1", "h2", "h3", "h4", "h5", "h6", "p"}:
-            self.parts.append("\n\n")
+            self._emit("\n\n")
         elif tag in {"strong", "b"}:
-            self.parts.append("**")
+            self._emit("**")
         elif tag in {"em", "i"}:
-            self.parts.append("*")
+            self._emit("*")
+        elif tag in {"del", "s"}:
+            self._emit("~~")
         elif tag == "code" and not self._in_pre:
-            self.parts.append("`")
+            self._emit("`")
             self._in_code = False
         elif tag == "pre":
-            self.parts.append("\n```\n\n")
+            self._emit("\n```\n\n")
             self._in_pre = False
         elif tag == "a" and self._link_open:
             if self._link_title:
-                self.parts.append(f']({self._link_href} "{self._link_title}")')
+                self._emit(f']({self._link_href} "{self._link_title}")')
             else:
-                self.parts.append(f"]({self._link_href})")
+                self._emit(f"]({self._link_href})")
             self._link_open = False
         elif tag in {"ul", "ol"}:
             if self._list_stack:
                 self._list_stack.pop()
             if self._li_index:
                 self._li_index.pop()
-            self.parts.append("\n")
+            self._emit("\n")
 
     def handle_data(self, data: str) -> None:
         if self._suppress:
             return
+        if self._table_depth and self._table_cell is None:
+            return
         if self._in_pre or self._in_code:
-            self.parts.append(data)
+            self._emit(data)
         else:
-            self.parts.append(re.sub(r"\s+", " ", data))
+            self._emit(re.sub(r"\s+", " ", data))
 
     def output(self) -> str:
         text = "".join(self.parts)
@@ -1345,7 +1545,19 @@ class _HTMLToMarkdownParser(HTMLParser):
 
 
 def html_to_markdown(html: str) -> str:
-    """Conservatively convert common HTML tags to Markdown."""
+    """Conservatively convert common HTML tags to Markdown.
+
+    Simple ``<table>`` trees become GFM pipe tables (``| a | b |`` plus a
+    ``| --- |`` separator). ``<thead>`` / ``<th>`` rows are headers;
+    headerless tables use an empty header row so every ``<td>`` row stays
+    data (GFM cannot represent a table with no header). ``|`` inside cells
+    is escaped as ``\\|``. Nested tables flatten to cell text; ``colspan`` /
+    ``rowspan`` and ``<caption>`` are ignored.
+
+    ``<del>`` (and ``<s>``) become ``~~text~~``. A checkbox
+    ``<input type="checkbox">`` (optional ``checked``) becomes ``[ ]`` /
+    ``[x]``, which pairs with ``<li>`` as ``- [ ]`` / ``- [x]``.
+    """
     parser = _HTMLToMarkdownParser()
     parser.feed(html)
     parser.close()
@@ -1435,7 +1647,143 @@ def _is_alert_block_open(line: str) -> bool:
         _blockquote_alert_info(line)
         or _qiita_note_kind(line) is not None
         or _zenn_message_kind(line) is not None
+        or _details_open_summary(line) is not None
     )
+
+
+def _details_open_summary(line: str) -> str | None:
+    """Return the summary text if ``line`` opens a ``:::details`` block."""
+    match = _DETAILS_OPEN_RE.match(line)
+    if not match:
+        return None
+    return (match.group(1) or "").strip()
+
+
+def _footnote_slug(ident: str) -> str:
+    slug = re.sub(r"[^A-Za-z0-9_-]+", "-", ident).strip("-")
+    return slug or "note"
+
+
+def _collect_footnote_definitions(lines: list[str]) -> tuple[list[str], dict[str, str]]:
+    """Strip ``[^id]:`` definitions (except inside fences); first id wins.
+
+    Indented (2+ spaces or a tab) lines immediately after a definition are
+    continuations. A blank line or a non-indented line ends the note.
+    """
+    defs: dict[str, str] = {}
+    kept: list[str] = []
+    i = 0
+    in_fence: str | None = None
+    while i < len(lines):
+        line = lines[i]
+        fence = _FENCE_RE.match(line)
+        if fence:
+            mark = fence.group(1)
+            if in_fence is None:
+                in_fence = mark
+            elif line.startswith(in_fence):
+                in_fence = None
+            kept.append(line)
+            i += 1
+            continue
+        if in_fence:
+            kept.append(line)
+            i += 1
+            continue
+        match = _FOOTNOTE_DEF_RE.match(line)
+        if match:
+            ident = match.group(1)
+            parts = [match.group(2)]
+            i += 1
+            while i < len(lines):
+                nxt = lines[i]
+                if not nxt.strip():
+                    break
+                if _FOOTNOTE_DEF_RE.match(nxt):
+                    break
+                cont = _FOOTNOTE_CONT_RE.match(nxt)
+                if not cont:
+                    break
+                parts.append(cont.group(1).strip())
+                i += 1
+            if ident not in defs:
+                defs[ident] = " ".join(p for p in parts if p).strip()
+            continue
+        kept.append(line)
+        i += 1
+    return kept, defs
+
+
+def _footnote_ref_html(ident: str, number: int, *, with_id: bool) -> str:
+    slug = html_module.escape(_footnote_slug(ident), quote=True)
+    label = html_module.escape(str(number))
+    if with_id:
+        return (
+            f'<sup class="footnote-ref">'
+            f'<a href="#fn-{slug}" id="fnref-{slug}">{label}</a>'
+            f"</sup>"
+        )
+    return (
+        f'<sup class="footnote-ref">'
+        f'<a href="#fn-{slug}">{label}</a>'
+        f"</sup>"
+    )
+
+
+def _footnotes_section_html(
+    order: list[str],
+    defs: dict[str, str],
+    render_inline,
+) -> str:
+    items: list[str] = ['<section class="footnotes">', "<ol>"]
+    for ident in order:
+        slug = html_module.escape(_footnote_slug(ident), quote=True)
+        note = render_inline(defs.get(ident, ""))
+        items.append(
+            f'<li id="fn-{slug}">{note}'
+            f' <a href="#fnref-{slug}" class="footnote-backref">↩</a></li>'
+        )
+    items.append("</ol>")
+    items.append("</section>")
+    return "\n".join(items)
+
+
+def _consume_details(
+    lines: list[str],
+    start: int,
+    summary: str,
+    render_inline,
+) -> tuple[str, int]:
+    """Collect a ``:::details`` block into ``<details><summary>``.
+
+    Body lines become paragraphs (blank lines split them). Inner ATX /
+    lists / nested ``:::details`` stay paragraph text — the first ``:::``
+    closer ends the block.
+    """
+    i = start + 1
+    body_lines: list[str] = []
+    while i < len(lines) and not _COLON_CONTAINER_CLOSE_RE.match(lines[i]):
+        body_lines.append(lines[i])
+        i += 1
+    if i < len(lines) and _COLON_CONTAINER_CLOSE_RE.match(lines[i]):
+        i += 1
+
+    paragraphs: list[list[str]] = [[]]
+    for raw in body_lines:
+        if not raw.strip():
+            if paragraphs[-1]:
+                paragraphs.append([])
+            continue
+        paragraphs[-1].append(raw)
+
+    parts = ["<details>", f"<summary>{render_inline(summary)}</summary>"]
+    for para in paragraphs:
+        if not para:
+            continue
+        text = " ".join(s.strip() for s in para)
+        parts.append(f"<p>{render_inline(text)}</p>")
+    parts.append("</details>")
+    return "\n".join(parts), i
 
 
 def _alert_aside_html(
@@ -1669,8 +2017,9 @@ def markdown_to_html(content: str) -> str:
     Handles ATX headings, fenced code, paragraphs, inline code, bold/italic,
     strikethrough (``~~text~~`` → ``<del>``), links, images, angle-bracket
     http(s) autolinks, thematic breaks, simple bullet/numbered lists, GFM
-    task lists, ordinary ``>`` blockquotes, simple GFM pipe tables, and
-    GitHub / Qiita / Zenn / Obsidian alerts.
+    task lists, ordinary ``>`` blockquotes, simple GFM pipe tables,
+    GitHub / Qiita / Zenn / Obsidian alerts, Zenn-style ``:::details``
+    collapsible sections, and a small GFM/Pandoc-like footnote subset.
 
     Alerts render to a shared ``<aside>`` shape. Pair with
     ``default_stylesheet()`` (or ``alert_stylesheet()``) if you want CSS::
@@ -1692,14 +2041,17 @@ def markdown_to_html(content: str) -> str:
       not recognized.
     - ``:::note`` / ``:::note info|warn|alert`` … ``:::`` is ``qiita``.
     - ``:::message`` / ``:::message alert`` … ``:::`` is ``zenn``.
+    - ``:::details Summary`` … ``:::`` becomes ``<details><summary>``.
+      Nested inlines in the summary and body are parsed; nested blocks
+      stay paragraph text. Raw HTML ``<details>`` stays escaped.
     - Ordinary ``>`` lines that are not an alert opener become
       ``<blockquote>`` (multi-line; blank ``>`` lines split paragraphs).
       Nested block constructs inside the quote are not parsed.
     - A header row followed by a ``| --- |`` delimiter row becomes
       ``<table>``. Cell text is escaped, then the same inline renderer
       used for paragraphs is applied (bold / italic / code / links / images
-      / strikethrough / angle autolinks). Pipe rows without that delimiter
-      stay paragraphs.
+      / strikethrough / angle autolinks / footnotes). Pipe rows without
+      that delimiter stay paragraphs.
     - ``~~text~~`` becomes ``<del>text</del>``. Unmatched ``~~`` stays
       literal; ``~~a~~b~~`` takes the first pair. Nested bold/italic
       inside or around a pair is applied.
@@ -1713,12 +2065,20 @@ def markdown_to_html(content: str) -> str:
       Bare URLs, ``mailto:``, and ordinary ``<tag>`` (including
       ``<script>``) are not autolinks; non-URL angle brackets stay
       escaped. ``[text](url)`` links still win when both forms appear.
+    - ``[^id]`` plus a ``[^id]: note`` definition become a superscript
+      link and a trailing ``<section class="footnotes">``. Undefined
+      refs stay literal. Duplicate ids: first definition wins. Unused
+      defs are dropped. Only indented (2+ spaces / tab) continuation
+      is kept; unindented wrapping is a new paragraph.
 
     Unknown GitHub/Qiita/Zenn kinds are not generated (``alert()`` raises);
     unknown Obsidian types still parse as Obsidian callouts (matching
     Obsidian's custom-type support).
     """
-    lines = content.splitlines()
+    source_lines = content.splitlines()
+    lines, footnote_defs = _collect_footnote_definitions(source_lines)
+    footnote_order: list[str] = []
+    footnote_ref_seen: set[str] = set()
     out: list[str] = []
     i = 0
     in_list: str | None = None
@@ -1735,6 +2095,18 @@ def markdown_to_html(content: str) -> str:
         def stash(snippet: str) -> str:
             placeholders.append(snippet)
             return f"\x00PH{len(placeholders) - 1}\x00"
+
+        def replace_footnote(match: re.Match[str]) -> str:
+            ident = match.group(1)
+            if ident not in footnote_defs:
+                return match.group(0)
+            if ident not in footnote_order:
+                footnote_order.append(ident)
+            number = footnote_order.index(ident) + 1
+            with_id = ident not in footnote_ref_seen
+            if with_id:
+                footnote_ref_seen.add(ident)
+            return stash(_footnote_ref_html(ident, number, with_id=with_id))
 
         text = _INLINE_IMAGE_RE.sub(
             lambda m: stash(markdown_image_to_html(m.group(0))),
@@ -1753,6 +2125,7 @@ def markdown_to_html(content: str) -> str:
             lambda m: stash(_angle_autolink_html(m.group(1))),
             text,
         )
+        text = _FOOTNOTE_REF_RE.sub(replace_footnote, text)
         text = _escape_html_text(text)
         text = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", text)
         text = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"<em>\1</em>", text)
@@ -1845,6 +2218,13 @@ def markdown_to_html(content: str) -> str:
             out.append(html)
             continue
 
+        details_summary = _details_open_summary(line)
+        if details_summary is not None:
+            close_list()
+            html, i = _consume_details(lines, i, details_summary, render_inline)
+            out.append(html)
+            continue
+
         if _unquote_blockquote_line(line) is not None:
             close_list()
             html, i = _consume_blockquote(lines, i, render_inline)
@@ -1894,8 +2274,9 @@ def markdown_to_html(content: str) -> str:
         out.append(f"<p>{render_inline(' '.join(s.strip() for s in para))}</p>")
 
     close_list()
+    if footnote_order:
+        out.append(_footnotes_section_html(footnote_order, footnote_defs, render_inline))
     return "\n".join(out) + ("\n" if out else "")
-
 
 _ALERT_STYLESHEET = """\
 .markdown-alert {
@@ -1943,6 +2324,22 @@ pre {
 h1, h2, h3, h4, h5, h6 { margin-top: 1.25em; margin-bottom: 0.5em; }
 del { text-decoration: line-through; }
 li input[type="checkbox"] { margin: 0 0.35em 0 0; vertical-align: middle; }
+details {
+  margin: 1em 0;
+  border: 1px solid #d0d7de;
+  border-radius: 0.25em;
+  padding: 0.5em 0.8em;
+}
+summary { cursor: pointer; font-weight: 600; }
+.footnotes {
+  margin-top: 2em;
+  padding-top: 0.75em;
+  border-top: 1px solid #d0d7de;
+  font-size: 0.9em;
+}
+.footnotes ol { padding-left: 1.5em; }
+sup.footnote-ref { font-size: 0.75em; line-height: 0; }
+.footnote-backref { text-decoration: none; }
 """
 
 
@@ -1963,8 +2360,9 @@ def default_stylesheet() -> str:
     """Return compact CSS for ``markdown_to_html`` output, including alerts.
 
     Includes :func:`alert_stylesheet` plus defaults for tables, blockquotes,
-    fenced/inline code, headings, strikethrough (``del``), and task-list
-    checkboxes. Stdlib string only; no external URLs.
+    fenced/inline code, headings, strikethrough (``del``), task-list
+    checkboxes, ``details``/``summary``, and ``.footnotes``. Stdlib string
+    only; no external URLs.
     Typical embedding::
 
         html = "<style>" + default_stylesheet() + "</style>\\n" + markdown_to_html(src)

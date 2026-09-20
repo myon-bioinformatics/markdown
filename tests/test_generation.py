@@ -45,6 +45,12 @@ def test_task_item_and_task_list() -> None:
     assert md.task_list([]) == ""
 
 
+def test_details_and_footnote_generators() -> None:
+    assert md.details("More", "hidden") == ":::details More\nhidden\n:::\n"
+    assert md.footnote_ref("1") == "[^1]"
+    assert md.footnote("1", "note") == "[^1]: note\n"
+
+
 def test_inline_code() -> None:
     assert md.inline_code("x = 1") == "`x = 1`"
 
@@ -140,6 +146,9 @@ def test_generation_functions_exposed_in_all() -> None:
         "numbered_list",
         "task_item",
         "task_list",
+        "details",
+        "footnote_ref",
+        "footnote",
         "inline_code",
         "code_block",
         "json_block",
