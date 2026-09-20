@@ -62,6 +62,11 @@ __all__ = [
     "markdown_table_to_records",
     "csv_to_markdown_table",
     "markdown_table_to_csv",
+    "json_to_markdown",
+    "markdown_to_json",
+    "redis_snapshot_to_markdown",
+    "sql_ddl_to_markdown",
+    "markdown_to_sql_ddl",
     "key_value_table",
     "section",
     "inline_code",
@@ -1407,6 +1412,55 @@ def markdown_table_to_csv(content: str) -> str:
     writer.writerow(headers)
     writer.writerows(rows)
     return out.getvalue()
+
+
+# === SECTION: structured snapshots ===
+
+def json_to_markdown(value: Any, title: str = "JSON") -> str:
+    """Wrap JSON data as a lossless Markdown document; no I/O is performed."""
+    return heading(title) + json_block(value)
+
+
+def markdown_to_json(content: str) -> Any:
+    """Read the first fenced ``json`` block emitted by :func:`json_to_markdown`."""
+    for block in extract_code_blocks(content):
+        if block["language"].lower() == "json":
+            return json.loads(block["code"])
+    raise ValueError("No fenced JSON block found")
+
+
+def redis_snapshot_to_markdown(snapshot: Any, title: str = "Redis snapshot") -> str:
+    """Document an already-obtained Redis/RedisJSON snapshot without connecting.
+
+    Hashes, lists, sets, TTLs, and module-specific values are retained as
+    JSON data only; this helper never interprets, executes, or fetches keys.
+    """
+    return json_to_markdown(snapshot, title)
+
+
+_CREATE_TABLE_NAME_RE = re.compile(
+    r"\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([\w\"`\[\].]+)", re.IGNORECASE
+)
+
+
+def sql_ddl_to_markdown(sql: str, title: str = "SQL schema") -> str:
+    """Document CREATE TABLE names and preserve the original DDL losslessly.
+
+    Dialect-specific clauses are intentionally not interpreted. The complete
+    input remains in a fenced ``sql`` block so reverse-engineering notes can
+    be edited around it without turning this module into a SQL executor.
+    """
+    names = _CREATE_TABLE_NAME_RE.findall(sql)
+    outline = bullet_list([f"Table: {name}" for name in names]) if names else ""
+    return heading(title) + outline + code_block(sql.rstrip("\n"), lang="sql")
+
+
+def markdown_to_sql_ddl(content: str) -> str:
+    """Return the first fenced ``sql`` block; never validate or execute it."""
+    for block in extract_code_blocks(content):
+        if block["language"].lower() == "sql":
+            return block["code"] + "\n"
+    raise ValueError("No fenced SQL block found")
 
 
 def key_value_table(
