@@ -7,10 +7,11 @@ docs, a real project's CONTRIBUTING.md, and a real project's CHANGELOG.md
 
 The goal here (per the benchmark's own brief) is not "make everything
 pass" -- it's proving these don't crash, and pinning down exactly which
-known-unsupported constructs (tables, task lists, footnotes, alerts,
+known-unsupported constructs (tables, task lists, footnotes,
 blockquotes, backslash escaping -- see test_benchmark_commonmark.py and
 markdown.py's UNSUPPORTED) show up, unmangled, inside a real document
-rather than only in an isolated one-liner.
+rather than only in an isolated one-liner. GitHub-style alerts in the
+GitHub Docs excerpt are now a supported subset (see test_alerts.py).
 """
 
 from __future__ import annotations
@@ -82,13 +83,15 @@ def test_github_docs_task_lists_keep_the_checkbox_text_literally() -> None:
     assert "Optional" in html  # the task-list example text survives as plain text
 
 
-def test_github_docs_alerts_degrade_like_plain_blockquotes() -> None:
+def test_github_docs_alerts_render_as_asides() -> None:
     content = _github_docs_content()
     html = md.markdown_to_html(content)
-    # [!NOTE]/[!TIP]/etc. aren't recognized as alert boxes; the marker text
-    # itself survives as escaped paragraph content (same as a plain blockquote).
-    assert "[!NOTE]" in html
+    # Real > [!NOTE] blocks in the excerpt become <aside> alerts.
+    # The five-kind syntax examples still appear inside a fenced code block.
+    assert 'data-alert-flavor="github"' in html
+    assert 'class="markdown-alert markdown-alert-note"' in html
     assert "[!WARNING]" in html
+    assert "[!CAUTION]" in html
 
 
 def test_github_docs_footnote_markers_survive_as_literal_text() -> None:
@@ -103,6 +106,14 @@ def test_github_docs_nested_fence_example_is_a_single_correctly_closed_block() -
     blocks = md.extract_code_blocks(content)
     nested = next(b for b in blocks if "git status" in b["code"] and "```" in b["code"])
     assert nested["code"].count("```") == 2  # the inner fence's own open+close, preserved verbatim
+
+
+def test_contributing_escaped_tip_callout_is_not_an_alert() -> None:
+    """nodejs CONTRIBUTING.md uses `> \\[!TIP]`, not a GitHub alert opener."""
+    content = (BENCHMARK / "contributing_example.md").read_text(encoding="utf-8")
+    html = md.markdown_to_html(content)
+    assert "markdown-alert" not in html
+    assert "[!TIP]" in html
 
 
 def test_contributing_fixture_has_expected_constructs() -> None:

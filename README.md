@@ -40,6 +40,9 @@ inv = md.inventory(open("README.md", encoding="utf-8").read())
 print(md.html_image_to_markdown('<img src="a.png" alt="A" />'))
 print(md.make_link("Docs", "https://example.com"))
 
+# GitHub alert (also flavor="qiita" / "zenn" / "obsidian" / "gitlab")
+print(md.alert("NOTE", "Useful information that users should know"))
+
 # build Markdown from scratch
 report = md.section(
     "Summary",
@@ -176,7 +179,7 @@ Results, GitHub-flavored constructs found inside the real GitHub Docs excerpt:
 | nested lists | DEGRADED |
 | tables, task lists, footnotes | UNSUPPORTED (matches the pre-existing `unsupported_examples` note) |
 | autolinks (`<url>`, bare URLs) | UNSUPPORTED |
-| alerts (`> [!NOTE]`) | UNSUPPORTED — built on the same unsupported blockquote syntax |
+| alerts (`> [!NOTE]`) | PASS — GitHub uppercase `[!NOTE]`/`[!TIP]`/`[!IMPORTANT]`/`[!WARNING]`/`[!CAUTION]` (no same-line title) render as `<aside class="markdown-alert">`. Qiita `:::note`, Zenn `:::message`, and Obsidian callouts are also supported. Ordinary `> blockquotes` stay flattened. |
 | inline HTML | UNSUPPORTED — escaped, not passed through |
 
 ```bash
@@ -292,10 +295,19 @@ capture.
 This is **not** a full CommonMark/GFM engine (see `SUPPORTED` / `UNSUPPORTED` in `markdown.py`, and
 the benchmark above for what that looks like on real documents).
 It shines at I/O, inventory, URL/image/HTML helpers, conservative conversions, and generating
-Markdown from scratch (`heading`, `bold`/`italic`/`strikethrough`, `blockquote`, `horizontal_rule`,
+Markdown from scratch (`heading`, `bold`/`italic`/`strikethrough`, `blockquote`, `alert`, `horizontal_rule`,
 `bullet_list`/`numbered_list`, `inline_code`/`code_block`/`json_block`, `table`/`key_value_table`,
 `md_table`/`md_kv` (`*args`-friendly, no list/dict pre-building needed), `status_line`,
 `section`/`wrap_section`) — all of which you can reason about.
+
+`alert()` emits GitHub `> [!NOTE]` by default (`kind` is case-insensitive, emitted uppercase).
+Pass `flavor="qiita"` for `:::note info|warn|alert`, `flavor="zenn"` for `:::message` /
+`:::message alert`, `flavor="obsidian"` for lowercase callouts with optional `title=` / `fold=`,
+or `flavor="gitlab"` for GitLab's lowercase five-kind form (optional `title=`). Unknown GitHub /
+Qiita / Zenn / GitLab kinds raise `ValueError`. `markdown_to_html()` renders those blocks to a
+shared `<aside class="markdown-alert" data-alert-flavor="…">` shape; class names are enough for
+consumers to style — this module ships no CSS. Ordinary `> blockquotes` are still flattened.
+GFM table HTML and Wikipedia infoboxes remain out of scope.
 
 `code_block()`'s fence length is adaptive: plain content still gets a triple-backtick fence, but
 content that itself contains a run of backticks (e.g. Markdown-about-Markdown, like a fenced example
