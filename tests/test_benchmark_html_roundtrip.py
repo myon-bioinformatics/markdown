@@ -82,6 +82,8 @@ def test_markdown_from_html_then_back_to_html_round_trips_structure() -> None:
     assert '<a href="https://example.com">link</a>' in final_html
     assert "<li>First feature" in final_html and "</li>" in final_html
     assert "<pre><code>" in final_html
+    assert "<blockquote>" in final_html
+    assert "quoted remark" in final_html.lower()
 
 
 def test_round_trip_does_not_crash_on_the_repos_own_readme() -> None:

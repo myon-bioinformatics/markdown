@@ -34,6 +34,8 @@ __all__ = [
     "markdown_link_to_html",
     "html_to_markdown",
     "markdown_to_html",
+    "alert_stylesheet",
+    "default_stylesheet",
     "is_probably_url",
     "heading",
     "bold",
@@ -91,7 +93,12 @@ SUPPORTED = {
         "HTML <a>/<img> <-> Markdown link/image",
         "conservative html_to_markdown / markdown_to_html for common tags",
         "GitHub / Qiita / Zenn / Obsidian alerts and callouts in markdown_to_html "
-        "(shared <aside class=\"markdown-alert\"> HTML; ordinary > blockquotes stay flattened)",
+        "(shared <aside class=\"markdown-alert\"> HTML; alerts win over ordinary > quotes)",
+        "ordinary > blockquotes in markdown_to_html (multi-line, blank > lines; "
+        "inner ATX/lists/tables stay paragraph text)",
+        "simple GFM pipe tables in markdown_to_html "
+        "(header + | --- | separator + rows -> <table>/<thead>/<th>/<tbody>/<td>)",
+        "alert_stylesheet / default_stylesheet (compact CSS strings for markdown_to_html output)",
     ],
     "generation": [
         "heading / bold / italic / strikethrough / blockquote / horizontal_rule",
@@ -110,15 +117,18 @@ UNSUPPORTED = {
     "parser": [
         "full CommonMark / GFM compliance",
         "backslash escaping (\\* stays literal, does not suppress emphasis)",
-        "blockquotes (> lines are not parsed into <blockquote>; they escape "
-        "and flatten into a plain paragraph, same fallback as tables/task lists -- "
-        "except GitHub/Obsidian [!type] alert openers, which render as <aside>)",
+        "lazy blockquote continuation (a quoted paragraph must keep > on every line)",
+        "nested blockquotes / inner block constructs inside > quotes "
+        "(headings, lists, and tables inside a quote stay paragraph text; "
+        "GitHub/Obsidian [!type] openers still render as <aside> and win over quotes)",
         "GitLab >>> multiline alert blockquotes (the > [!note] form is generated; "
         "title-less lowercase five-kind markers parse as Obsidian, not a separate GitLab flavor)",
         "nested alert/callout containers (Obsidian > > [!type], Zenn ::::details, Qiita nested :::)",
         "nested emphasis edge cases (asymmetric delimiter runs, whitespace-adjacent "
         "delimiters -- see fixtures/benchmark/commonmark_examples.yaml)",
-        "tables (GFM)",
+        "GFM tables without a delimiter row of 3+ hyphens (header-only pipe lines "
+        "stay paragraphs; alignment colons are accepted but not emitted as HTML attributes)",
+        "html_to_markdown() for <table> (Markdown -> HTML is supported; the reverse is not)",
         "task lists",
         "footnotes",
         "autolinks (bare URLs and <url>; only [text](url) is recognized)",
@@ -192,6 +202,8 @@ _ZENN_MESSAGE_OPEN_RE = re.compile(
     re.IGNORECASE,
 )
 _COLON_CONTAINER_CLOSE_RE = re.compile(r"^\s{0,3}:::\s*$")
+_TABLE_SEP_CELL_RE = re.compile(r"^:?-{3,}:?$")
+_LIST_ITEM_RE = re.compile(r"^(\s*)(?:[-*+]|\d+\.)\s+")
 
 
 # ---------------------------------------------------------------------------
@@ -775,7 +787,12 @@ def strikethrough(text: str) -> str:
 
 
 def blockquote(text: str) -> str:
-    """Prefix every line of ``text`` with ``> `` to form a blockquote."""
+    """Prefix every line of ``text`` with ``> `` to form a blockquote.
+
+    ``markdown_to_html()`` turns this into ``<blockquote>``. Blank lines
+    become blank ``>`` lines and split paragraphs. A ``> [!TYPE]`` opener
+    is an alert, not a quote.
+    """
     lines = str(text).splitlines() or [""]
     return "\n".join(f"> {line}" if line else ">" for line in lines) + "\n"
 
@@ -1026,6 +1043,9 @@ def table(headers: Any, rows: Any) -> str:
     ``headers`` is a sequence of column names; ``rows`` is a sequence of
     sequences of cell values (converted with ``str``). Short rows are padded
     with empty cells; extra cells beyond ``len(headers)`` are dropped.
+
+    ``markdown_to_html()`` parses this pipe-table form into
+    ``<table>/<thead>/<th>/<tbody>/<td>``.
 
     >>> table(["a", "b"], [[1, 2], [3, 4]])
     '| a | b |\\n| --- | --- |\\n| 1 | 2 |\\n| 3 | 4 |\\n'
@@ -1425,15 +1445,156 @@ def _consume_colon_alert(
     return html, i
 
 
+def _split_table_row(line: str) -> list[str]:
+    """Split a GFM pipe row into cells.
+
+    Leading/trailing pipes are optional. A ``\\|`` sequence stays one cell
+    (the backslash is dropped). This is the same split ``table()`` output
+    round-trips through; it is not a full GFM cell lexer.
+    """
+    stripped = line.strip()
+    if stripped.startswith("|"):
+        stripped = stripped[1:]
+    if stripped.endswith("|") and not stripped.endswith("\\|"):
+        stripped = stripped[:-1]
+    return [cell.strip().replace("\\|", "|") for cell in re.split(r"(?<!\\)\|", stripped)]
+
+
+def _looks_like_table_row(line: str) -> bool:
+    return "|" in line.strip()
+
+
+def _is_table_separator(line: str) -> bool:
+    if "|" not in line:
+        return False
+    cells = _split_table_row(line)
+    if not cells:
+        return False
+    return all(_TABLE_SEP_CELL_RE.match(cell.replace(" ", "")) for cell in cells)
+
+
+def _is_table_start(lines: list[str], index: int) -> bool:
+    """True when ``lines[index]`` is a header row followed by a ``| --- |`` delimiter.
+
+    List markers, headings, fences, thematic breaks, and ``>`` quotes are
+    not treated as headers, so a malformed ``- a | b`` line stays a list.
+    A pipe row with no delimiter after it stays a paragraph (safe degrade).
+    """
+    if index + 1 >= len(lines):
+        return False
+    header = lines[index]
+    if not header.strip() or not _looks_like_table_row(header):
+        return False
+    if (
+        _HEADING_RE.match(header)
+        or _FENCE_RE.match(header)
+        or _HR_RE.match(header)
+        or _unquote_blockquote_line(header) is not None
+        or _LIST_ITEM_RE.match(header)
+        or _is_alert_block_open(header)
+    ):
+        return False
+    return _is_table_separator(lines[index + 1])
+
+
+def _table_html(
+    headers: list[str],
+    rows: list[list[str]],
+    render_inline,
+) -> str:
+    width = len(headers)
+
+    def row_html(tag: str, cells: list[str]) -> str:
+        padded = list(cells[:width]) + [""] * (width - min(len(cells), width))
+        inner = "".join(f"<{tag}>{render_inline(cell)}</{tag}>" for cell in padded)
+        return f"<tr>{inner}</tr>"
+
+    parts = ["<table>", "<thead>", row_html("th", headers), "</thead>", "<tbody>"]
+    for row in rows:
+        parts.append(row_html("td", row))
+    parts.append("</tbody>")
+    parts.append("</table>")
+    return "\n".join(parts)
+
+
+def _consume_table(
+    lines: list[str],
+    start: int,
+    render_inline,
+) -> tuple[str, int]:
+    headers = _split_table_row(lines[start])
+    i = start + 2
+    rows: list[list[str]] = []
+    while i < len(lines):
+        line = lines[i]
+        if not line.strip() or not _looks_like_table_row(line):
+            break
+        if (
+            _HEADING_RE.match(line)
+            or _FENCE_RE.match(line)
+            or _HR_RE.match(line)
+            or _unquote_blockquote_line(line) is not None
+            or _is_alert_block_open(line)
+        ):
+            break
+        rows.append(_split_table_row(line))
+        i += 1
+    return _table_html(headers, rows, render_inline), i
+
+
+def _consume_blockquote(
+    lines: list[str],
+    start: int,
+    render_inline,
+) -> tuple[str, int]:
+    """Collect consecutive ``>`` lines into a ``<blockquote>``.
+
+    Blank ``>`` / ``> `` lines split paragraphs. Inner ATX headings, lists,
+    nested quotes, and tables are **not** re-parsed as blocks -- they stay
+    paragraph text -- so GitLab ``>>>`` openers cannot collapse into alerts.
+    A later ``> [!TYPE]`` line ends this quote so the alert handler can win.
+    """
+    i = start
+    body_lines: list[str] = []
+    while i < len(lines):
+        unquoted = _unquote_blockquote_line(lines[i])
+        if unquoted is None:
+            break
+        if i > start and _blockquote_alert_info(lines[i]):
+            break
+        body_lines.append(unquoted)
+        i += 1
+
+    paragraphs: list[list[str]] = [[]]
+    for raw in body_lines:
+        if not raw.strip():
+            if paragraphs[-1]:
+                paragraphs.append([])
+            continue
+        paragraphs[-1].append(raw)
+
+    parts = ["<blockquote>"]
+    for para in paragraphs:
+        if not para:
+            continue
+        text = " ".join(s.strip() for s in para)
+        parts.append(f"<p>{render_inline(text)}</p>")
+    parts.append("</blockquote>")
+    return "\n".join(parts), i
+
+
 def markdown_to_html(content: str) -> str:
     """Conservatively convert a Markdown *subset* to HTML.
 
     Handles ATX headings, fenced code, paragraphs, inline code, bold/italic,
-    links, images, thematic breaks, simple bullet/numbered lists, and
-    GitHub / Qiita / Zenn / Obsidian alerts.
+    links, images, thematic breaks, simple bullet/numbered lists, ordinary
+    ``>`` blockquotes, simple GFM pipe tables, and GitHub / Qiita / Zenn /
+    Obsidian alerts.
 
-    Alerts render to a shared ``<aside>`` shape (no CSS is shipped)::
+    Alerts render to a shared ``<aside>`` shape. Pair with
+    ``default_stylesheet()`` (or ``alert_stylesheet()``) if you want CSS::
 
+        <style>{default_stylesheet()}</style>
         <aside class="markdown-alert markdown-alert-note"
                data-alert="NOTE" data-alert-flavor="github">
         <p class="markdown-alert-title">NOTE</p>
@@ -1450,11 +1611,17 @@ def markdown_to_html(content: str) -> str:
       not recognized.
     - ``:::note`` / ``:::note info|warn|alert`` … ``:::`` is ``qiita``.
     - ``:::message`` / ``:::message alert`` … ``:::`` is ``zenn``.
+    - Ordinary ``>`` lines that are not an alert opener become
+      ``<blockquote>`` (multi-line; blank ``>`` lines split paragraphs).
+      Nested block constructs inside the quote are not parsed.
+    - A header row followed by a ``| --- |`` delimiter row becomes
+      ``<table>``. Cell text is escaped, then the same inline renderer
+      used for paragraphs is applied (bold / italic / code / links / images).
+      Pipe rows without that delimiter stay paragraphs.
 
-    Ordinary ``> blockquote`` lines that are not an alert opener still
-    flatten to an escaped paragraph. Unknown GitHub/Qiita/Zenn kinds are
-    not generated (``alert()`` raises); unknown Obsidian types still
-    parse as Obsidian callouts (matching Obsidian's custom-type support).
+    Unknown GitHub/Qiita/Zenn kinds are not generated (``alert()`` raises);
+    unknown Obsidian types still parse as Obsidian callouts (matching
+    Obsidian's custom-type support).
     """
     lines = content.splitlines()
     out: list[str] = []
@@ -1494,7 +1661,8 @@ def markdown_to_html(content: str) -> str:
             text = text.replace(f"\x00PH{index}\x00", snippet)
         return text
 
-    def paragraph_interrupt(line: str) -> bool:
+    def paragraph_interrupt(index: int) -> bool:
+        line = lines[index]
         if not line.strip():
             return True
         if (
@@ -1502,6 +1670,8 @@ def markdown_to_html(content: str) -> str:
             or _FENCE_RE.match(line)
             or _HR_RE.match(line)
             or _is_alert_block_open(line)
+            or _unquote_blockquote_line(line) is not None
+            or _is_table_start(lines, index)
         ):
             return True
         if re.match(r"^(\s*)[-*+]\s+", line) or re.match(r"^(\s*)\d+\.\s+", line):
@@ -1575,6 +1745,18 @@ def markdown_to_html(content: str) -> str:
             out.append(html)
             continue
 
+        if _unquote_blockquote_line(line) is not None:
+            close_list()
+            html, i = _consume_blockquote(lines, i, render_inline)
+            out.append(html)
+            continue
+
+        if _is_table_start(lines, i):
+            close_list()
+            html, i = _consume_table(lines, i, render_inline)
+            out.append(html)
+            continue
+
         ul = re.match(r"^(\s*)[-*+]\s+(.*)$", line)
         ol = re.match(r"^(\s*)\d+\.\s+(.*)$", line)
         if ul or ol:
@@ -1596,13 +1778,85 @@ def markdown_to_html(content: str) -> str:
         close_list()
         para = [line]
         i += 1
-        while i < len(lines) and not paragraph_interrupt(lines[i]):
+        while i < len(lines) and not paragraph_interrupt(i):
             para.append(lines[i])
             i += 1
         out.append(f"<p>{render_inline(' '.join(s.strip() for s in para))}</p>")
 
     close_list()
     return "\n".join(out) + ("\n" if out else "")
+
+
+_ALERT_STYLESHEET = """\
+.markdown-alert {
+  padding: 0.75em 1em;
+  margin: 1em 0;
+  border-left: 0.25em solid #57606a;
+  background: #f6f8fa;
+}
+.markdown-alert-title {
+  font-weight: 700;
+  margin: 0 0 0.35em;
+}
+.markdown-alert-note,
+.markdown-alert-info,
+.markdown-alert-message { border-left-color: #0969da; }
+.markdown-alert-tip { border-left-color: #1a7f37; }
+.markdown-alert-important { border-left-color: #8250df; }
+.markdown-alert-warning,
+.markdown-alert-warn { border-left-color: #9a6700; }
+.markdown-alert-caution,
+.markdown-alert-alert { border-left-color: #cf222e; }
+.markdown-alert[data-alert-flavor="github"] { background: #f6f8fa; }
+.markdown-alert[data-alert-flavor="obsidian"] { border-radius: 0.25em; }
+.markdown-alert[data-alert-flavor="qiita"] { border-left-width: 0.35em; }
+.markdown-alert[data-alert-flavor="zenn"] { background: #fff8f0; }
+"""
+
+_DEFAULT_STYLESHEET_REST = """\
+table { border-collapse: collapse; margin: 1em 0; }
+th, td { border: 1px solid #d0d7de; padding: 0.4em 0.8em; }
+th { background: #f6f8fa; font-weight: 600; }
+blockquote {
+  margin: 1em 0;
+  padding: 0 1em;
+  border-left: 0.25em solid #d0d7de;
+  color: #656d76;
+}
+pre, code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+pre {
+  padding: 0.8em;
+  overflow: auto;
+  background: #f6f8fa;
+  border-radius: 0.25em;
+}
+h1, h2, h3, h4, h5, h6 { margin-top: 1.25em; margin-bottom: 0.5em; }
+"""
+
+
+def alert_stylesheet() -> str:
+    """Return compact CSS for ``.markdown-alert`` HTML from ``markdown_to_html``.
+
+    Covers the shared ``.markdown-alert`` / ``.markdown-alert-title`` hooks,
+    kind colors (``note`` / ``tip`` / ``warning`` / Qiita ``warn`` / Zenn
+    ``alert``, …), and ``data-alert-flavor`` distinctions. No external
+    URLs or font files. Embed next to converted HTML::
+
+        <style>{alert_stylesheet()}</style>
+    """
+    return _ALERT_STYLESHEET
+
+
+def default_stylesheet() -> str:
+    """Return compact CSS for ``markdown_to_html`` output, including alerts.
+
+    Includes :func:`alert_stylesheet` plus defaults for tables, blockquotes,
+    fenced/inline code, and headings. Stdlib string only; no external URLs.
+    Typical embedding::
+
+        html = "<style>" + default_stylesheet() + "</style>\\n" + markdown_to_html(src)
+    """
+    return _ALERT_STYLESHEET + _DEFAULT_STYLESHEET_REST
 
 
 def is_probably_url(value: str) -> bool:

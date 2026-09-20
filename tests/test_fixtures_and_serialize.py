@@ -41,10 +41,20 @@ def test_real_world_fixtures_against_provenance() -> None:
 def test_unsupported_constructs_are_documented() -> None:
     data = _load_provenance()
     notes = {row["name"]: row["note"] for row in data["unsupported_examples"]}
-    assert "gfm_table" in notes
-    table_html = md.markdown_to_html(data["unsupported_examples"][0]["markdown"])
-    # Conservative converter should not invent <table>.
-    assert "<table" not in table_html.lower()
+    assert "task_list" in notes
+    task = next(row for row in data["unsupported_examples"] if row["name"] == "task_list")
+    task_html = md.markdown_to_html(task["markdown"])
+    # Task lists stay literal list text; no checkbox <input>.
+    assert "<input" not in task_html.lower()
+
+
+def test_gfm_table_example_now_renders() -> None:
+    data = _load_provenance()
+    example = next(row for row in data["supported_examples"] if row["name"] == "gfm_table")
+    html = md.markdown_to_html(example["markdown"])
+    assert "<table>" in html
+    assert "<th>a</th>" in html
+    assert "<td>1</td>" in html
 
 
 def test_json_fixture_roundtrip_helpers() -> None:

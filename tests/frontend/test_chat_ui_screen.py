@@ -52,9 +52,9 @@ def test_initial_conversation_renders_a_real_table(chat_ui_url, browser) -> None
         page.goto(chat_ui_url, wait_until="networkidle")
         assert page.get_by_text("Show me a results table").count() >= 1
 
-        # Assert actual <table> DOM structure, not just visible text — this repo's own
-        # markdown_to_html() does NOT emit <table> by design (see test_chat_ui_demo_logic.py),
-        # so text-only assertions here would also pass for an unparsed plain-text fallback.
+        # Assert actual <table> DOM structure, not just visible text. Gradio's
+        # Chatbot renders the generated Markdown; markdown_to_html() now emits
+        # <table> too (see tests/test_tables.py / test_chat_ui_demo_logic.py).
         table = page.locator("table").first
         assert table.locator("th").all_inner_texts() == ["metric", "value"]
         assert table.locator("tbody tr").count() == 3

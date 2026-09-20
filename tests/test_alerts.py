@@ -189,10 +189,9 @@ def test_multiline_alert_body_and_adjacent_paragraphs() -> None:
     assert "line two" in html
 
 
-def test_ordinary_blockquote_still_flattens() -> None:
+def test_ordinary_blockquote_renders() -> None:
     html = md.markdown_to_html("> quoted\n> lines\n")
-    assert html == "<p>&gt; quoted &gt; lines</p>\n"
-    assert "<blockquote" not in html
+    assert html == "<blockquote>\n<p>quoted lines</p>\n</blockquote>\n"
     assert "markdown-alert" not in html
 
 
@@ -230,7 +229,11 @@ def test_fenced_github_alert_examples_stay_code() -> None:
 def test_gitlab_multiline_triple_gt_is_unsupported() -> None:
     html = md.markdown_to_html(">>> [!note] Things to consider\nbody\n>>>\n")
     assert "markdown-alert" not in html
-    assert "&gt;&gt;&gt;" in html
+    assert "<aside" not in html
+    # Leading > lines parse as an ordinary quote; leftover > stays escaped
+    # paragraph text so this cannot collapse into an Obsidian alert.
+    assert "<blockquote>" in html
+    assert "[!note]" in html
 
 
 def test_github_docs_fixture_real_alerts_render() -> None:

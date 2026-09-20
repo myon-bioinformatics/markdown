@@ -26,17 +26,19 @@ fixtures:
       has_horizontal_rule: true
 
 unsupported_examples:
-  - name: gfm_table
-    markdown: |
-      | a | b |
-      | --- | --- |
-      | 1 | 2 |
-    note: Tables are intentionally unsupported by markdown_to_html.
   - name: task_list
     markdown: |
       - [ ] todo
       - [x] done
     note: Task lists are not normalized; treated as plain list text at best.
+
+supported_examples:
+  - name: gfm_table
+    markdown: |
+      | a | b |
+      | --- | --- |
+      | 1 | 2 |
+    note: Simple GFM pipe tables (header + | --- | delimiter) render as HTML tables.
 
 # --- Benchmark fixtures (PR: "how far does this get on real Markdown?") ---
 #
@@ -70,11 +72,14 @@ benchmark_fixtures:
       curl -sS "https://raw.githubusercontent.com/github/docs/2320b38e746de554f7f3d2b83520bc0f26485abc/content/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax.md"
     covers: [headings, links, images, fenced_code, nested_lists, tables, task_lists, autolinks, alerts, footnotes, inline_html]
     note: >
-      GitHub Docs' own Alerts section is now a supported markdown_to_html
-      subset (uppercase > [!NOTE] etc. render as <aside class="markdown-alert">).
-      Ordinary blockquotes, GFM tables, task lists, footnotes, and autolinks
-      in this fixture remain unsupported. The five-kind syntax examples inside
-      the Alerts fenced code block stay code, not live alerts.
+      GitHub Docs' own Alerts, Quoting text, and Creating a table sections
+      are now supported markdown_to_html subsets (uppercase > [!NOTE] etc.
+      render as <aside class="markdown-alert">; ordinary > quotes render as
+      <blockquote>; the live Style/Syntax pipe table renders as <table>).
+      Task lists, footnotes, and autolinks in this fixture remain unsupported.
+      The five-kind syntax examples inside the Alerts fenced code block stay
+      code, not live alerts. The "First Header" table example stays inside a
+      fenced code block.
 
   - id: commonmark_examples
     path: benchmark/commonmark_examples.yaml

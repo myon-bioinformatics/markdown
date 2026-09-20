@@ -24,8 +24,9 @@ def test_table_reply_renders_a_real_markdown_table() -> None:
     assert "| metric | value |" in reply
     assert "| loss | 0.041 |" in reply
     html = md.markdown_to_html(reply)
-    assert "<table" not in html  # this repo's markdown_to_html doesn't render GFM tables (by design)
-    assert "loss" in html
+    assert "<table>" in html
+    assert "<th>metric</th>" in html
+    assert "<td>loss</td>" in html
 
 
 def test_code_reply_renders_a_fenced_block() -> None:

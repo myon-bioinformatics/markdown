@@ -18,7 +18,7 @@
 #                 (e.g. nesting collapsed, partial emphasis parsed).
 #   UNSUPPORTED - the construct isn't recognized at all; it safely falls
 #                 back to an escaped plain paragraph with no data loss
-#                 (the same fallback tables/task lists already get).
+#                 (the same fallback task lists already get).
 #   FAIL        - the output is actively wrong: missing conversions that
 #                 should have applied, or conversions applied that
 #                 shouldn't have (a false positive), not just "simpler".
@@ -84,14 +84,15 @@ examples:
     spec_example: 230
     markdown: "> # Foo\n> bar\n> baz"
     commonmark_html: "<blockquote>\n<h1>Foo</h1>\n<p>bar\nbaz</p>\n</blockquote>"
-    our_html: "<p>&gt; # Foo &gt; bar &gt; baz</p>"
-    classification: UNSUPPORTED
+    our_html: "<blockquote>\n<p># Foo bar baz</p>\n</blockquote>"
+    classification: DEGRADED
     note: >
-      Blockquotes are not a recognized block type in markdown_to_html:
-      every line (including the heading inside it) is escaped and
-      flattened into one plain paragraph -- the same safe "not
-      recognized, falls back to escaped text" behavior as tables and
-      task lists, just not previously named in UNSUPPORTED.
+      Ordinary > quotes now render as <blockquote>. Inner ATX headings and
+      other nested blocks are not re-parsed (this engine's blockquote
+      contract is consecutive > lines as paragraphs, with blank > lines
+      splitting them). Consecutive quoted lines join with a space, the
+      same way other paragraph lines join, so this is not CommonMark's
+      <h1> plus a newline-preserving <p>.
 
   - id: nested_list
     category: nested_list
