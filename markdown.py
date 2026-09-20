@@ -21,6 +21,7 @@ __all__ = [
     "extract_code_blocks",
     "extract_raw_html",
     "extract_urls",
+    "extract_data_uris",
     "extract_section",
     "strip_prose_keep_structure",
     "minify_markdown",
@@ -212,6 +213,7 @@ _REF_LINK_RE = re.compile(r"(?<!!)\[([^\]]+)\]\[([^\]]*)\]")
 _REF_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\[([^\]]+)\]")
 _ANGLE_URL_RE = re.compile(r"<(https?://[^>\s]+)>")
 _BARE_URL_RE = re.compile(r"(?<![\"'(\\[])(https?://[^\s)<>\"]+)")
+_DATA_URI_RE = re.compile(r"data:([^,\s]+),([^\s]*)", re.IGNORECASE)
 _HTML_TAG_RE = re.compile(r"</?([A-Za-z][A-Za-z0-9]*)\b[^>]*>", re.DOTALL)
 _HTML_IMG_RE = re.compile(
     r"<img\b([^>]*)/?>",
@@ -650,6 +652,22 @@ def extract_urls(content: str, *, base_url: str | None = None) -> list[str]:
     for match in _BARE_URL_RE.finditer(content):
         add(match.group(1).rstrip(".,;:)"))
     return urls
+
+
+def extract_data_uris(content: str) -> list[dict[str, str]]:
+    """List literal ``data:`` URIs without decoding or fetching their payloads."""
+    found: list[dict[str, str]] = []
+    for match in _DATA_URI_RE.finditer(content):
+        uri = match.group(0).rstrip("\"'>")
+        # The permissive payload pattern includes the closing parenthesis of a
+        # Markdown link.  Keep literal balanced parentheses in a data payload,
+        # but discard an unmatched Markdown delimiter.
+        while uri.endswith(")") and uri.count("(") < uri.count(")"):
+            uri = uri[:-1]
+        meta = match.group(1)
+        media_type = meta.split(";", 1)[0].lower()
+        found.append({"uri": uri, "media_type": media_type, "metadata": meta})
+    return found
 
 
 def inventory(content: str) -> dict[str, Any]:
