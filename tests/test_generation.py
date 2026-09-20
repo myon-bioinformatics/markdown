@@ -38,6 +38,13 @@ def test_bullet_and_numbered_list() -> None:
     assert md.numbered_list(["a", "b"]) == "1. a\n2. b\n"
 
 
+def test_task_item_and_task_list() -> None:
+    assert md.task_item("todo") == "- [ ] todo\n"
+    assert md.task_item("done", checked=True) == "- [x] done\n"
+    assert md.task_list(["a", ("b", True)]) == "- [ ] a\n- [x] b\n"
+    assert md.task_list([]) == ""
+
+
 def test_inline_code() -> None:
     assert md.inline_code("x = 1") == "`x = 1`"
 
@@ -131,6 +138,8 @@ def test_generation_functions_exposed_in_all() -> None:
         "horizontal_rule",
         "bullet_list",
         "numbered_list",
+        "task_item",
+        "task_list",
         "inline_code",
         "code_block",
         "json_block",

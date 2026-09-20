@@ -7,13 +7,14 @@ docs, a real project's CONTRIBUTING.md, and a real project's CHANGELOG.md
 
 The goal here (per the benchmark's own brief) is not "make everything
 pass" -- it's proving these don't crash, and pinning down exactly which
-known-unsupported constructs (task lists, footnotes, autolinks,
+known-unsupported constructs (footnotes, bare URL autolinks,
 backslash escaping -- see test_benchmark_commonmark.py and
 markdown.py's UNSUPPORTED) show up, unmangled, inside a real document
 rather than only in an isolated one-liner. GitHub-style alerts, simple
-GFM pipe tables, and ordinary > blockquotes in the GitHub Docs excerpt
-are now supported subsets (see test_alerts.py, test_tables.py,
-test_blockquotes.py).
+GFM pipe tables, ordinary > blockquotes, ~~strikethrough~~, GFM task
+lists, and <http(s)://...> autolinks are now supported subsets (see
+test_alerts.py, test_tables.py, test_blockquotes.py,
+test_strikethrough.py, test_task_lists.py, test_autolinks.py).
 """
 
 from __future__ import annotations
@@ -78,11 +79,28 @@ def test_github_docs_tables_render_as_html_tables() -> None:
     assert "First Header" in html
 
 
-def test_github_docs_task_lists_keep_the_checkbox_text_literally() -> None:
+def test_github_docs_live_strikethrough_renders() -> None:
+    """The Style/Syntax table's last cell is live ``~~text~~``, not a code span."""
     content = _github_docs_content()
     html = md.markdown_to_html(content)
-    assert "<input" not in html  # no GFM checkbox rendering
-    assert "Optional" in html  # the task-list example text survives as plain text
+    assert "<del>This was mistaken text</del>" in html
+
+
+def test_github_docs_task_list_example_is_inline_code_not_a_live_list() -> None:
+    """The excerpt's Task lists section only shows the syntax inside inline code."""
+    content = _github_docs_content()
+    html = md.markdown_to_html(content)
+    assert "<input" not in html
+    assert "Optional" in html
+
+
+def test_github_docs_bare_urls_are_not_autolinked() -> None:
+    """Bare URLs in this excerpt stay text; only the ``<url>`` form is linked."""
+    content = _github_docs_content()
+    html = md.markdown_to_html(content)
+    assert "https://github.com/jlord/sheetsee.js/issues/26" in html
+    # The table's own [text](url) links still render as <a>.
+    assert "<a href=" in html
 
 
 def test_github_docs_alerts_render_as_asides() -> None:

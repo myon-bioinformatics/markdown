@@ -46,6 +46,8 @@ __all__ = [
     "horizontal_rule",
     "bullet_list",
     "numbered_list",
+    "task_item",
+    "task_list",
     "code_block",
     "table",
     "key_value_table",
@@ -98,13 +100,18 @@ SUPPORTED = {
         "inner ATX/lists/tables stay paragraph text)",
         "simple GFM pipe tables in markdown_to_html "
         "(header + | --- | separator + rows -> <table>/<thead>/<th>/<tbody>/<td>)",
+        "strikethrough in markdown_to_html (~~text~~ -> <del>text</del>)",
+        "GFM task lists in markdown_to_html "
+        "(- [ ] / - [x] / - [X], also * and +; disabled checkbox <input>; mixed with ordinary <li> in one <ul>)",
+        "angle-bracket autolinks in markdown_to_html "
+        "(<https://...> / <http://...> -> <a href>; bare URLs stay literal)",
         "alert_stylesheet / default_stylesheet (compact CSS strings for markdown_to_html output)",
     ],
     "generation": [
         "heading / bold / italic / strikethrough / blockquote / horizontal_rule",
         "alert (GitHub > [!NOTE], Qiita :::note, Zenn :::message, Obsidian callouts; "
         "GitLab > [!note] generation)",
-        "bullet_list / numbered_list",
+        "bullet_list / numbered_list / task_item / task_list",
         "inline_code / code_block / json_block",
         "table / key_value_table",
         "md_table / md_kv (*args-friendly wrappers, no list/dict pre-building needed)",
@@ -129,11 +136,14 @@ UNSUPPORTED = {
         "GFM tables without a delimiter row of 3+ hyphens (header-only pipe lines "
         "stay paragraphs; alignment colons are accepted but not emitted as HTML attributes)",
         "html_to_markdown() for <table> (Markdown -> HTML is supported; the reverse is not)",
-        "task lists",
+        "html_to_markdown() for <del> / task-list checkboxes "
+        "(Markdown -> HTML is supported; the reverse is not)",
+        "numbered-list task items (1. [ ] stays ordinary <li> text; only -/*/ + markers are tasks)",
         "footnotes",
-        "autolinks (bare URLs and <url>; only [text](url) is recognized)",
-        "strikethrough parsing in markdown_to_html (~~x~~ stays literal; "
-        "the strikethrough() generator still produces valid ~~x~~ output)",
+        "bare URL autolinks (https://example.com stays literal; only <https://...> / "
+        "<http://...> and [text](url) become <a>)",
+        "angle autolinks with schemes other than http/https (mailto:, ftp:, uppercase HTTP://)",
+        "unmatched strikethrough (a lone ~~ stays literal; ~~a~~b~~ takes the first pair)",
         "Math / mermaid rendering",
     ],
     "conversion": [
@@ -204,6 +214,8 @@ _ZENN_MESSAGE_OPEN_RE = re.compile(
 _COLON_CONTAINER_CLOSE_RE = re.compile(r"^\s{0,3}:::\s*$")
 _TABLE_SEP_CELL_RE = re.compile(r"^:?-{3,}:?$")
 _LIST_ITEM_RE = re.compile(r"^(\s*)(?:[-*+]|\d+\.)\s+")
+_TASK_ITEM_RE = re.compile(r"^\[([ xX])\](?:[ \t]+(.*))?$")
+_STRIKETHROUGH_RE = re.compile(r"~~((?:(?!~~)[^\n])+?)~~")
 
 
 # ---------------------------------------------------------------------------
@@ -782,7 +794,11 @@ def italic(text: str) -> str:
 
 
 def strikethrough(text: str) -> str:
-    """Wrap ``text`` in ``~~strikethrough~~`` markers."""
+    """Wrap ``text`` in ``~~strikethrough~~`` markers.
+
+    ``markdown_to_html()`` turns this into ``<del>``. Unmatched ``~~``
+    stays literal; a run like ``~~a~~b~~`` takes the first pair.
+    """
     return f"~~{text}~~"
 
 
@@ -977,6 +993,42 @@ def bullet_list(items: Any) -> str:
 def numbered_list(items: Any) -> str:
     """Build an ordered (``1.``) list from an iterable of strings."""
     lines = [f"{i}. {item}" for i, item in enumerate(items, start=1)]
+    return "\n".join(lines) + ("\n" if lines else "")
+
+
+def task_item(text: str = "", *, checked: bool = False) -> str:
+    """Build one GFM task-list line (``- [ ] text`` / ``- [x] text``).
+
+    ``markdown_to_html()`` turns this into a ``<ul>`` item with a
+    disabled checkbox (``checked`` when ``checked`` is true). The box
+    is not interactive.
+    """
+    mark = "x" if checked else " "
+    body = str(text)
+    if body:
+        return f"- [{mark}] {body}\n"
+    return f"- [{mark}]\n"
+
+
+def task_list(items: Any) -> str:
+    """Build a GFM task list from strings or ``(text, checked)`` pairs.
+
+    A bare string is an unchecked item. Empty ``items`` yields ``""``.
+    Mixed task and ordinary bullets in one source list stay one ``<ul>``
+    with mixed ``<li>`` shapes (see ``markdown_to_html``).
+    """
+    lines: list[str] = []
+    for item in items:
+        if isinstance(item, (tuple, list)):
+            if len(item) >= 2:
+                text, checked = item[0], bool(item[1])
+            elif len(item) == 1:
+                text, checked = item[0], False
+            else:
+                text, checked = "", False
+            lines.append(task_item(text, checked=checked).rstrip("\n"))
+        else:
+            lines.append(task_item(item, checked=False).rstrip("\n"))
     return "\n".join(lines) + ("\n" if lines else "")
 
 
@@ -1304,6 +1356,34 @@ def _escape_html_text(text: str) -> str:
     return html_module.escape(text, quote=False)
 
 
+def _angle_autolink_html(url: str) -> str:
+    """Render a stashed ``<http(s)://...>`` autolink as ``<a href>``."""
+    href = html_module.escape(url, quote=True)
+    text = html_module.escape(url)
+    return f'<a href="{href}">{text}</a>'
+
+
+def _parse_task_item(item: str) -> tuple[bool, str] | None:
+    """Return ``(checked, rest)`` for a GFM task marker, else ``None``.
+
+    Only the item body is inspected (list marker already stripped).
+    ``[ ]`` is unchecked; ``[x]`` / ``[X]`` are checked. A following
+    description needs whitespace after ``]``; ``- [x]done`` is not a task.
+    """
+    match = _TASK_ITEM_RE.match(item)
+    if not match:
+        return None
+    checked = match.group(1) in "xX"
+    rest = match.group(2) or ""
+    return checked, rest
+
+
+def _task_checkbox_html(checked: bool) -> str:
+    if checked:
+        return '<input type="checkbox" disabled checked />'
+    return '<input type="checkbox" disabled />'
+
+
 def _unquote_blockquote_line(line: str) -> str | None:
     match = _BLOCKQUOTE_PREFIX_RE.match(line)
     if not match:
@@ -1587,9 +1667,10 @@ def markdown_to_html(content: str) -> str:
     """Conservatively convert a Markdown *subset* to HTML.
 
     Handles ATX headings, fenced code, paragraphs, inline code, bold/italic,
-    links, images, thematic breaks, simple bullet/numbered lists, ordinary
-    ``>`` blockquotes, simple GFM pipe tables, and GitHub / Qiita / Zenn /
-    Obsidian alerts.
+    strikethrough (``~~text~~`` → ``<del>``), links, images, angle-bracket
+    http(s) autolinks, thematic breaks, simple bullet/numbered lists, GFM
+    task lists, ordinary ``>`` blockquotes, simple GFM pipe tables, and
+    GitHub / Qiita / Zenn / Obsidian alerts.
 
     Alerts render to a shared ``<aside>`` shape. Pair with
     ``default_stylesheet()`` (or ``alert_stylesheet()``) if you want CSS::
@@ -1616,8 +1697,22 @@ def markdown_to_html(content: str) -> str:
       Nested block constructs inside the quote are not parsed.
     - A header row followed by a ``| --- |`` delimiter row becomes
       ``<table>``. Cell text is escaped, then the same inline renderer
-      used for paragraphs is applied (bold / italic / code / links / images).
-      Pipe rows without that delimiter stay paragraphs.
+      used for paragraphs is applied (bold / italic / code / links / images
+      / strikethrough / angle autolinks). Pipe rows without that delimiter
+      stay paragraphs.
+    - ``~~text~~`` becomes ``<del>text</del>``. Unmatched ``~~`` stays
+      literal; ``~~a~~b~~`` takes the first pair. Nested bold/italic
+      inside or around a pair is applied.
+    - Unordered ``-`` / ``*`` / ``+`` items whose body is ``[ ]`` /
+      ``[x]`` / ``[X]`` (optional description after whitespace) become
+      ``<li>`` with ``<input type="checkbox" disabled>`` (``checked``
+      for x/X). The box is not interactive. Task items and ordinary
+      bullets in the same list stay one ``<ul>`` with mixed ``<li>``
+      shapes. ``1. [ ]`` stays ordinary ordered-list text.
+    - ``<https://...>`` / ``<http://...>`` become ``<a href="...">``.
+      Bare URLs, ``mailto:``, and ordinary ``<tag>`` (including
+      ``<script>``) are not autolinks; non-URL angle brackets stay
+      escaped. ``[text](url)`` links still win when both forms appear.
 
     Unknown GitHub/Qiita/Zenn kinds are not generated (``alert()`` raises);
     unknown Obsidian types still parse as Obsidian callouts (matching
@@ -1654,9 +1749,14 @@ def markdown_to_html(content: str) -> str:
             lambda m: stash(f"<code>{_escape_html_text(m.group(1))}</code>"),
             text,
         )
+        text = _ANGLE_URL_RE.sub(
+            lambda m: stash(_angle_autolink_html(m.group(1))),
+            text,
+        )
         text = _escape_html_text(text)
         text = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", text)
         text = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"<em>\1</em>", text)
+        text = _STRIKETHROUGH_RE.sub(r"<del>\1</del>", text)
         for index, snippet in enumerate(placeholders):
             text = text.replace(f"\x00PH{index}\x00", snippet)
         return text
@@ -1766,7 +1866,17 @@ def markdown_to_html(content: str) -> str:
                 close_list()
                 out.append(f"<{kind}>")
                 in_list = kind
-            out.append(f"<li>{render_inline(item)}</li>")
+            task = _parse_task_item(item) if ul else None
+            if task is not None:
+                checked, rest = task
+                box = _task_checkbox_html(checked)
+                body = render_inline(rest)
+                if body:
+                    out.append(f"<li>{box} {body}</li>")
+                else:
+                    out.append(f"<li>{box}</li>")
+            else:
+                out.append(f"<li>{render_inline(item)}</li>")
             i += 1
             continue
 
@@ -1831,6 +1941,8 @@ pre {
   border-radius: 0.25em;
 }
 h1, h2, h3, h4, h5, h6 { margin-top: 1.25em; margin-bottom: 0.5em; }
+del { text-decoration: line-through; }
+li input[type="checkbox"] { margin: 0 0.35em 0 0; vertical-align: middle; }
 """
 
 
@@ -1851,7 +1963,8 @@ def default_stylesheet() -> str:
     """Return compact CSS for ``markdown_to_html`` output, including alerts.
 
     Includes :func:`alert_stylesheet` plus defaults for tables, blockquotes,
-    fenced/inline code, and headings. Stdlib string only; no external URLs.
+    fenced/inline code, headings, strikethrough (``del``), and task-list
+    checkboxes. Stdlib string only; no external URLs.
     Typical embedding::
 
         html = "<style>" + default_stylesheet() + "</style>\\n" + markdown_to_html(src)

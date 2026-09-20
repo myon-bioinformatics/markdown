@@ -41,11 +41,39 @@ def test_real_world_fixtures_against_provenance() -> None:
 def test_unsupported_constructs_are_documented() -> None:
     data = _load_provenance()
     notes = {row["name"]: row["note"] for row in data["unsupported_examples"]}
-    assert "task_list" in notes
-    task = next(row for row in data["unsupported_examples"] if row["name"] == "task_list")
-    task_html = md.markdown_to_html(task["markdown"])
-    # Task lists stay literal list text; no checkbox <input>.
-    assert "<input" not in task_html.lower()
+    assert "footnote" in notes
+    assert "bare_url_autolink" in notes
+    footnote = next(row for row in data["unsupported_examples"] if row["name"] == "footnote")
+    html = md.markdown_to_html(footnote["markdown"])
+    assert "footnote[^1]" in html
+    bare = next(row for row in data["unsupported_examples"] if row["name"] == "bare_url_autolink")
+    bare_html = md.markdown_to_html(bare["markdown"])
+    assert "<a " not in bare_html
+    assert "https://example.com" in bare_html
+
+
+def test_task_list_example_now_renders() -> None:
+    data = _load_provenance()
+    example = next(row for row in data["supported_examples"] if row["name"] == "task_list")
+    html = md.markdown_to_html(example["markdown"])
+    assert "<input" in html
+    assert "disabled" in html
+    assert "todo" in html
+    assert "checked" in html
+
+
+def test_strikethrough_example_now_renders() -> None:
+    data = _load_provenance()
+    example = next(row for row in data["supported_examples"] if row["name"] == "strikethrough")
+    html = md.markdown_to_html(example["markdown"])
+    assert "<del>mistake</del>" in html
+
+
+def test_angle_autolink_example_now_renders() -> None:
+    data = _load_provenance()
+    example = next(row for row in data["supported_examples"] if row["name"] == "angle_autolink")
+    html = md.markdown_to_html(example["markdown"])
+    assert '<a href="https://example.com">https://example.com</a>' in html
 
 
 def test_gfm_table_example_now_renders() -> None:
