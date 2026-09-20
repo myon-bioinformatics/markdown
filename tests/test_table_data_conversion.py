@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import csv
+import io
 import sys
 from pathlib import Path
 
@@ -21,6 +23,12 @@ def test_csv_table_csv_round_trip_handles_quotes_and_pipes() -> None:
     assert "妙本" in table
     assert "a, b \\| c" in table
     assert md.markdown_table_to_csv(table) == source
+
+
+def test_csv_table_csv_round_trip_preserves_backslashes() -> None:
+    source = 'path,note\n"C:\\work\\demo","literal \\| pipe"\n'
+    result = md.markdown_table_to_csv(md.csv_to_markdown_table(source))
+    assert list(csv.reader(io.StringIO(result))) == list(csv.reader(io.StringIO(source)))
 
 
 def test_aligned_table_uses_cjk_display_width() -> None:
