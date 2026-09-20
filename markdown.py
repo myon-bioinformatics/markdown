@@ -57,6 +57,11 @@ __all__ = [
     "footnote",
     "code_block",
     "table",
+    "aligned_table",
+    "markdown_table_to_rows",
+    "markdown_table_to_records",
+    "csv_to_markdown_table",
+    "markdown_table_to_csv",
     "key_value_table",
     "section",
     "inline_code",
@@ -74,8 +79,11 @@ __all__ = [
 ]
 
 import html as html_module
+import csv
+import io
 import json
 import re
+import unicodedata
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import Path
@@ -1274,15 +1282,131 @@ def table(headers: Any, rows: Any) -> str:
     >>> table(["a", "b"], [[1, 2], [3, 4]])
     '| a | b |\\n| --- | --- |\\n| 1 | 2 |\\n| 3 | 4 |\\n'
     """
-    headers = [str(h) for h in headers]
+    headers = [_escape_table_cell(h) for h in headers]
     if not headers:
         return ""
     out = ["| " + " | ".join(headers) + " |", "| " + " | ".join(["---"] * len(headers)) + " |"]
     for row in rows:
-        cells = [str(v) for v in row][: len(headers)]
+        cells = [_escape_table_cell(v) for v in row][: len(headers)]
         cells += [""] * (len(headers) - len(cells))
         out.append("| " + " | ".join(cells) + " |")
     return "\n".join(out) + "\n"
+
+
+# === SECTION: table ===
+
+def _display_width(value: Any) -> int:
+    """Return a terminal-style display width for a Markdown table cell.
+
+    Combining marks take no column; full-width and wide East Asian characters
+    take two. Ambiguous-width characters deliberately stay one column so the
+    result is stable across common Western and Japanese terminals.
+    """
+    width = 0
+    for char in str(value):
+        if unicodedata.combining(char):
+            continue
+        width += 2 if unicodedata.east_asian_width(char) in {"F", "W"} else 1
+    return width
+
+
+def _escape_table_cell(value: Any) -> str:
+    """Escape a cell for the small GFM pipe-table subset used by this module."""
+    return str(value).replace("\\", "\\\\").replace("|", "\\|").replace("\n", "<br>")
+
+
+def aligned_table(headers: Any, rows: Any) -> str:
+    """Build a pipe table aligned by display width, including CJK cells.
+
+    This is presentation-oriented: parsing it with :func:`markdown_table_to_rows`
+    recovers the escaped cell text, but physical padding is not preserved.
+    """
+    header_cells = [_escape_table_cell(header) for header in headers]
+    if not header_cells:
+        return ""
+    body = []
+    for row in rows:
+        cells = [_escape_table_cell(value) for value in row][: len(header_cells)]
+        body.append(cells + [""] * (len(header_cells) - len(cells)))
+    widths = [
+        max(3, _display_width(header_cells[index]), *(_display_width(row[index]) for row in body))
+        for index in range(len(header_cells))
+    ]
+
+    def render(cells: list[str]) -> str:
+        return "| " + " | ".join(
+            cell + " " * (widths[index] - _display_width(cell))
+            for index, cell in enumerate(cells)
+        ) + " |"
+
+    out = [render(header_cells), "| " + " | ".join("-" * width for width in widths) + " |"]
+    out.extend(render(row) for row in body)
+    return "\n".join(out) + "\n"
+
+
+def markdown_table_to_rows(content: str) -> tuple[list[str], list[list[str]]]:
+    """Read the first live GFM pipe table as ``(headers, rows)``.
+
+    A table must have a header and a ``| --- |`` delimiter row. Fenced
+    examples, malformed tables, and all text after the first table are
+    ignored. Escaped pipes become literal pipes.
+    """
+    lines = content.splitlines()
+    scanned = _scan_lines(lines)
+    for index, line in enumerate(lines):
+        if scanned[index].in_fenced_code or not _is_table_start(lines, index):
+            continue
+        headers = _split_table_row(line)
+        rows: list[list[str]] = []
+        cursor = index + 2
+        while cursor < len(lines):
+            candidate = lines[cursor]
+            if not candidate.strip() or not _looks_like_table_row(candidate):
+                break
+            if scanned[cursor].in_fenced_code or _is_table_separator(candidate):
+                break
+            cells = _split_table_row(candidate)[: len(headers)]
+            rows.append(cells + [""] * (len(headers) - len(cells)))
+            cursor += 1
+        return headers, rows
+    return [], []
+
+
+def markdown_table_to_records(content: str) -> list[dict[str, str]]:
+    """Read the first GFM pipe table as dictionaries keyed by its headers.
+
+    Duplicate headers have no lossless dictionary representation and raise
+    ``ValueError`` rather than silently overwriting a column.
+    """
+    headers, rows = markdown_table_to_rows(content)
+    if len(set(headers)) != len(headers):
+        raise ValueError("Markdown table headers must be unique for records")
+    return [dict(zip(headers, row)) for row in rows]
+
+
+def csv_to_markdown_table(content: str, *, align: bool = False) -> str:
+    """Convert CSV text to a GFM pipe table using the first row as headers.
+
+    CSV quoting is handled by :mod:`csv`; a blank CSV document produces an
+    empty result. Set ``align=True`` for East Asian display-width padding.
+    """
+    rows = list(csv.reader(io.StringIO(content)))
+    if not rows:
+        return ""
+    renderer = aligned_table if align else table
+    return renderer(rows[0], rows[1:])
+
+
+def markdown_table_to_csv(content: str) -> str:
+    """Convert the first live GFM pipe table to RFC-style CSV text."""
+    headers, rows = markdown_table_to_rows(content)
+    if not headers:
+        return ""
+    out = io.StringIO(newline="")
+    writer = csv.writer(out, lineterminator="\n")
+    writer.writerow(headers)
+    writer.writerows(rows)
+    return out.getvalue()
 
 
 def key_value_table(
