@@ -40,6 +40,7 @@ __all__ = [
     "italic",
     "strikethrough",
     "blockquote",
+    "alert",
     "horizontal_rule",
     "bullet_list",
     "numbered_list",
@@ -53,6 +54,10 @@ __all__ = [
     "wrap_section",
     "md_table",
     "md_kv",
+    "ALERT_FLAVORS",
+    "GITHUB_ALERT_KINDS",
+    "QIITA_NOTE_KINDS",
+    "ZENN_MESSAGE_KINDS",
     "SUPPORTED",
     "UNSUPPORTED",
 ]
@@ -85,9 +90,13 @@ SUPPORTED = {
         "link/image builders",
         "HTML <a>/<img> <-> Markdown link/image",
         "conservative html_to_markdown / markdown_to_html for common tags",
+        "GitHub / Qiita / Zenn / Obsidian alerts and callouts in markdown_to_html "
+        "(shared <aside class=\"markdown-alert\"> HTML; ordinary > blockquotes stay flattened)",
     ],
     "generation": [
         "heading / bold / italic / strikethrough / blockquote / horizontal_rule",
+        "alert (GitHub > [!NOTE], Qiita :::note, Zenn :::message, Obsidian callouts; "
+        "GitLab > [!note] generation)",
         "bullet_list / numbered_list",
         "inline_code / code_block / json_block",
         "table / key_value_table",
@@ -102,8 +111,11 @@ UNSUPPORTED = {
         "full CommonMark / GFM compliance",
         "backslash escaping (\\* stays literal, does not suppress emphasis)",
         "blockquotes (> lines are not parsed into <blockquote>; they escape "
-        "and flatten into a plain paragraph, same fallback as tables/task lists)",
-        "GitHub-style alerts (> [!NOTE] etc. -- built on the same unsupported blockquote syntax)",
+        "and flatten into a plain paragraph, same fallback as tables/task lists -- "
+        "except GitHub/Obsidian [!type] alert openers, which render as <aside>)",
+        "GitLab >>> multiline alert blockquotes (the > [!note] form is generated; "
+        "title-less lowercase five-kind markers parse as Obsidian, not a separate GitLab flavor)",
+        "nested alert/callout containers (Obsidian > > [!type], Zenn ::::details, Qiita nested :::)",
         "nested emphasis edge cases (asymmetric delimiter runs, whitespace-adjacent "
         "delimiters -- see fixtures/benchmark/commonmark_examples.yaml)",
         "tables (GFM)",
@@ -154,6 +166,32 @@ _ATTR_RE = re.compile(
     r"""([^\s=]+)\s*=\s*(?:\"([^\"]*)\"|'([^']*)'|([^\s\"'>]+))""",
     re.DOTALL,
 )
+
+# GitHub docs: https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax#alerts
+# Qiita cheat sheet (Note): https://qiita.com/Qiita/items/c686397e4a0f4f11683d
+# Zenn Markdown guide (メッセージ): https://zenn.dev/zenn/articles/markdown-guide
+# Obsidian Help (Callouts): https://help.obsidian.md/callouts
+# GitLab GLFM alerts: https://docs.gitlab.com/ee/user/markdown/#alerts
+ALERT_FLAVORS = ("github", "qiita", "zenn", "obsidian", "gitlab")
+GITHUB_ALERT_KINDS = ("NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION")
+QIITA_NOTE_KINDS = ("info", "warn", "alert")
+ZENN_MESSAGE_KINDS = ("message", "alert")
+_GITHUB_ALERT_KIND_SET = frozenset(GITHUB_ALERT_KINDS)
+_QIITA_NOTE_KIND_SET = frozenset(QIITA_NOTE_KINDS)
+_OBSIDIAN_KIND_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
+_BLOCKQUOTE_ALERT_RE = re.compile(
+    r"^\s{0,3}>\s*\[!([A-Za-z][A-Za-z0-9_-]*)\]([+-]?)(?:[ \t]+(\S.*?))?[ \t]*$"
+)
+_BLOCKQUOTE_PREFIX_RE = re.compile(r"^\s{0,3}>( ?)?(.*)$")
+_QIITA_NOTE_OPEN_RE = re.compile(
+    r"^\s{0,3}:::note(?:\s+(info|warn|alert))?\s*$",
+    re.IGNORECASE,
+)
+_ZENN_MESSAGE_OPEN_RE = re.compile(
+    r"^\s{0,3}:::message(?:\s+(alert))?\s*$",
+    re.IGNORECASE,
+)
+_COLON_CONTAINER_CLOSE_RE = re.compile(r"^\s{0,3}:::\s*$")
 
 
 # ---------------------------------------------------------------------------
@@ -742,6 +780,172 @@ def blockquote(text: str) -> str:
     return "\n".join(f"> {line}" if line else ">" for line in lines) + "\n"
 
 
+def _normalize_alert_flavor(flavor: str) -> str:
+    name = str(flavor).strip().lower()
+    if name not in ALERT_FLAVORS:
+        raise ValueError(
+            f"unknown alert flavor {flavor!r}; expected one of {ALERT_FLAVORS}"
+        )
+    return name
+
+
+def _colon_container(open_line: str, text: str) -> str:
+    body = str(text)
+    if body and not body.endswith("\n"):
+        body += "\n"
+    return f"{open_line}\n{body}:::\n"
+
+
+def _blockquote_alert_markdown(marker: str, text: str) -> str:
+    body = str(text)
+    if not body:
+        return marker + "\n"
+    return marker + "\n" + blockquote(body)
+
+
+def alert(
+    kind: str,
+    text: str = "",
+    *,
+    flavor: str = "github",
+    title: str | None = None,
+    fold: str | None = None,
+) -> str:
+    """Build a site-flavored Markdown alert / callout / note block.
+
+    ``flavor`` selects the syntax (default GitHub). ``kind`` is
+    case-insensitive for the fixed vocabularies; unknown kinds raise
+    ``ValueError`` except Obsidian, which allows custom type identifiers
+    (Obsidian itself falls unknown types back to ``note`` visually).
+
+    GitHub (docs.github.com, Alerts)::
+
+        > [!NOTE]
+        > Useful information that users should know
+
+    Kinds: ``NOTE``, ``TIP``, ``IMPORTANT``, ``WARNING``, ``CAUTION``.
+    Emitted uppercase. Same-line titles and fold markers are not part of
+    GitHub's syntax and raise ``ValueError``.
+
+    Qiita (qiita.com/Qiita/items/c686397e4a0f4f11683d, Note)::
+
+        :::note info
+        インフォメーション
+        :::
+
+    Kinds: ``info`` (also ``note``), ``warn``, ``alert``. ``info`` is
+    optional in Qiita's parser; this helper emits ``:::note info`` for
+    the info kind so the type is explicit.
+
+    Zenn (zenn.dev/zenn/articles/markdown-guide, メッセージ)::
+
+        :::message
+        メッセージをここに
+        :::
+
+        :::message alert
+        警告メッセージをここに
+        :::
+
+    Kinds: ``message`` (also ``info`` / empty) or ``alert``.
+
+    Obsidian (help.obsidian.md/callouts)::
+
+        > [!note]
+        > body
+
+        > [!warning] Custom title
+        > body
+
+    Kind identifiers are emitted lowercase. Optional ``title`` is written
+    on the marker line. Optional ``fold`` is ``+`` (expanded) or ``-``
+    (collapsed), immediately after ``[!type]``. Custom types matching
+    ``[A-Za-z][A-Za-z0-9_-]*`` are allowed.
+
+    GitLab (docs.gitlab.com, GLFM Alerts) is generation-only: the same
+    five kinds as GitHub, emitted lowercase, with optional ``title``.
+    GitLab's ``>>>`` multiline blockquote alerts are not generated.
+    Parsed title-less lowercase five-kind markers are classified as
+    Obsidian (see ``markdown_to_html``); uppercase title-less five-kind
+    markers are classified as GitHub.
+
+    Multi-line ``text``: GitHub/Obsidian/GitLab prefix each line with
+    ``> `` (blank lines become ``>``); Qiita/Zenn keep the body verbatim
+    between the opening and closing ``:::``.
+    """
+    flavor_name = _normalize_alert_flavor(flavor)
+    if fold is not None and fold not in {"+", "-"}:
+        raise ValueError("fold must be '+' or '-' when set")
+    if title is not None:
+        title = str(title)
+    kind_raw = str(kind).strip()
+
+    if flavor_name == "github":
+        if title is not None:
+            raise ValueError("GitHub alerts do not support a same-line title")
+        if fold is not None:
+            raise ValueError("GitHub alerts do not support Obsidian fold markers")
+        canonical = kind_raw.upper()
+        if canonical not in _GITHUB_ALERT_KIND_SET:
+            raise ValueError(
+                f"unknown GitHub alert kind {kind!r}; "
+                f"expected one of {GITHUB_ALERT_KINDS}"
+            )
+        return _blockquote_alert_markdown(f"> [!{canonical}]", text)
+
+    if flavor_name == "gitlab":
+        if fold is not None:
+            raise ValueError("GitLab alerts do not support Obsidian fold markers")
+        canonical = kind_raw.upper()
+        if canonical not in _GITHUB_ALERT_KIND_SET:
+            raise ValueError(
+                f"unknown GitLab alert kind {kind!r}; "
+                f"expected one of {GITHUB_ALERT_KINDS}"
+            )
+        marker = f"> [!{canonical.lower()}]"
+        if title:
+            marker += f" {title}"
+        return _blockquote_alert_markdown(marker, text)
+
+    if flavor_name == "qiita":
+        if title is not None or fold is not None:
+            raise ValueError("Qiita notes do not support title= or fold=")
+        qiita_kind = kind_raw.lower()
+        if qiita_kind in {"", "note"}:
+            qiita_kind = "info"
+        if qiita_kind not in _QIITA_NOTE_KIND_SET:
+            raise ValueError(
+                f"unknown Qiita note kind {kind!r}; "
+                f"expected one of {QIITA_NOTE_KINDS}"
+            )
+        return _colon_container(f":::note {qiita_kind}", text)
+
+    if flavor_name == "zenn":
+        if title is not None or fold is not None:
+            raise ValueError("Zenn messages do not support title= or fold=")
+        zenn_kind = kind_raw.lower()
+        if zenn_kind in {"", "message", "info"}:
+            return _colon_container(":::message", text)
+        if zenn_kind == "alert":
+            return _colon_container(":::message alert", text)
+        raise ValueError(
+            f"unknown Zenn message kind {kind!r}; "
+            f"expected one of {ZENN_MESSAGE_KINDS}"
+        )
+
+    # obsidian
+    if not _OBSIDIAN_KIND_RE.fullmatch(kind_raw):
+        raise ValueError(
+            f"invalid Obsidian callout type {kind!r}; "
+            "expected a letter followed by letters, digits, '_' or '-'"
+        )
+    fold_mark = fold or ""
+    marker = f"> [!{kind_raw.lower()}]{fold_mark}"
+    if title:
+        marker += f" {title}"
+    return _blockquote_alert_markdown(marker, text)
+
+
 def horizontal_rule() -> str:
     """Return a thematic break (``---``)."""
     return "---\n"
@@ -1080,11 +1284,177 @@ def _escape_html_text(text: str) -> str:
     return html_module.escape(text, quote=False)
 
 
+def _unquote_blockquote_line(line: str) -> str | None:
+    match = _BLOCKQUOTE_PREFIX_RE.match(line)
+    if not match:
+        return None
+    return match.group(2)
+
+
+def _blockquote_alert_info(line: str) -> dict[str, str] | None:
+    match = _BLOCKQUOTE_ALERT_RE.match(line)
+    if not match:
+        return None
+    raw_kind = match.group(1)
+    fold = match.group(2) or ""
+    title = (match.group(3) or "").strip()
+    github_shaped = (
+        raw_kind in _GITHUB_ALERT_KIND_SET and not fold and not title
+    )
+    if github_shaped:
+        return {
+            "flavor": "github",
+            "kind": raw_kind,
+            "title": raw_kind,
+            "fold": "",
+        }
+    return {
+        "flavor": "obsidian",
+        "kind": raw_kind.lower(),
+        "title": title,
+        "fold": fold,
+    }
+
+
+def _qiita_note_kind(line: str) -> str | None:
+    match = _QIITA_NOTE_OPEN_RE.match(line)
+    if not match:
+        return None
+    return (match.group(1) or "info").lower()
+
+
+def _zenn_message_kind(line: str) -> str | None:
+    match = _ZENN_MESSAGE_OPEN_RE.match(line)
+    if not match:
+        return None
+    return (match.group(1) or "message").lower()
+
+
+def _is_alert_block_open(line: str) -> bool:
+    return bool(
+        _blockquote_alert_info(line)
+        or _qiita_note_kind(line) is not None
+        or _zenn_message_kind(line) is not None
+    )
+
+
+def _alert_aside_html(
+    *,
+    flavor: str,
+    kind: str,
+    title: str,
+    body_markdown: str,
+    fold: str = "",
+    render_inline,
+) -> str:
+    kind_slug = kind.lower()
+    kind_token = html_module.escape(kind.upper(), quote=True)
+    flavor_token = html_module.escape(flavor, quote=True)
+    css_kind = html_module.escape(kind_slug, quote=True)
+    attrs = [
+        f'class="markdown-alert markdown-alert-{css_kind}"',
+        f'data-alert="{kind_token}"',
+        f'data-alert-flavor="{flavor_token}"',
+    ]
+    if fold == "+":
+        attrs.append('data-alert-fold="open"')
+    elif fold == "-":
+        attrs.append('data-alert-fold="closed"')
+    display_title = title if title else kind.upper()
+    parts = [
+        f"<aside {' '.join(attrs)}>",
+        f'<p class="markdown-alert-title">{render_inline(display_title)}</p>',
+    ]
+    body = body_markdown.strip("\n")
+    if body.strip():
+        body_html = markdown_to_html(body).rstrip("\n")
+        if body_html:
+            parts.append(body_html)
+    parts.append("</aside>")
+    return "\n".join(parts)
+
+
+def _consume_blockquote_alert(
+    lines: list[str],
+    start: int,
+    info: dict[str, str],
+    render_inline,
+) -> tuple[str, int]:
+    i = start + 1
+    body_lines: list[str] = []
+    while i < len(lines):
+        unquoted = _unquote_blockquote_line(lines[i])
+        if unquoted is None:
+            break
+        body_lines.append(unquoted)
+        i += 1
+    html = _alert_aside_html(
+        flavor=info["flavor"],
+        kind=info["kind"],
+        title=info["title"],
+        body_markdown="\n".join(body_lines),
+        fold=info["fold"],
+        render_inline=render_inline,
+    )
+    return html, i
+
+
+def _consume_colon_alert(
+    lines: list[str],
+    start: int,
+    *,
+    flavor: str,
+    kind: str,
+    render_inline,
+) -> tuple[str, int]:
+    i = start + 1
+    body_lines: list[str] = []
+    while i < len(lines) and not _COLON_CONTAINER_CLOSE_RE.match(lines[i]):
+        body_lines.append(lines[i])
+        i += 1
+    if i < len(lines) and _COLON_CONTAINER_CLOSE_RE.match(lines[i]):
+        i += 1
+    title = kind.upper()
+    html = _alert_aside_html(
+        flavor=flavor,
+        kind=kind,
+        title=title,
+        body_markdown="\n".join(body_lines),
+        render_inline=render_inline,
+    )
+    return html, i
+
+
 def markdown_to_html(content: str) -> str:
     """Conservatively convert a Markdown *subset* to HTML.
 
     Handles ATX headings, fenced code, paragraphs, inline code, bold/italic,
-    links, images, thematic breaks, and simple bullet/numbered lists.
+    links, images, thematic breaks, simple bullet/numbered lists, and
+    GitHub / Qiita / Zenn / Obsidian alerts.
+
+    Alerts render to a shared ``<aside>`` shape (no CSS is shipped)::
+
+        <aside class="markdown-alert markdown-alert-note"
+               data-alert="NOTE" data-alert-flavor="github">
+        <p class="markdown-alert-title">NOTE</p>
+        <p>…body…</p>
+        </aside>
+
+    Classification:
+
+    - ``> [!NOTE]`` (uppercase GitHub kinds, no same-line title, no fold)
+      is ``data-alert-flavor="github"``.
+    - Other ``> [!type]`` markers (lowercase, extra types, optional title,
+      ``+``/``-`` fold) are ``obsidian``. GitLab's lowercase five-kind
+      form therefore parses as Obsidian; its ``>>>`` multiline alerts are
+      not recognized.
+    - ``:::note`` / ``:::note info|warn|alert`` … ``:::`` is ``qiita``.
+    - ``:::message`` / ``:::message alert`` … ``:::`` is ``zenn``.
+
+    Ordinary ``> blockquote`` lines that are not an alert opener still
+    flatten to an escaped paragraph. Unknown GitHub/Qiita/Zenn kinds are
+    not generated (``alert()`` raises); unknown Obsidian types still
+    parse as Obsidian callouts (matching Obsidian's custom-type support).
     """
     lines = content.splitlines()
     out: list[str] = []
@@ -1124,6 +1494,20 @@ def markdown_to_html(content: str) -> str:
             text = text.replace(f"\x00PH{index}\x00", snippet)
         return text
 
+    def paragraph_interrupt(line: str) -> bool:
+        if not line.strip():
+            return True
+        if (
+            _HEADING_RE.match(line)
+            or _FENCE_RE.match(line)
+            or _HR_RE.match(line)
+            or _is_alert_block_open(line)
+        ):
+            return True
+        if re.match(r"^(\s*)[-*+]\s+", line) or re.match(r"^(\s*)\d+\.\s+", line):
+            return True
+        return False
+
     while i < len(lines):
         line = lines[i]
         fence = _FENCE_RE.match(line)
@@ -1158,6 +1542,39 @@ def markdown_to_html(content: str) -> str:
             i += 1
             continue
 
+        alert_info = _blockquote_alert_info(line)
+        if alert_info:
+            close_list()
+            html, i = _consume_blockquote_alert(lines, i, alert_info, render_inline)
+            out.append(html)
+            continue
+
+        qiita_kind = _qiita_note_kind(line)
+        if qiita_kind is not None:
+            close_list()
+            html, i = _consume_colon_alert(
+                lines,
+                i,
+                flavor="qiita",
+                kind=qiita_kind,
+                render_inline=render_inline,
+            )
+            out.append(html)
+            continue
+
+        zenn_kind = _zenn_message_kind(line)
+        if zenn_kind is not None:
+            close_list()
+            html, i = _consume_colon_alert(
+                lines,
+                i,
+                flavor="zenn",
+                kind=zenn_kind,
+                render_inline=render_inline,
+            )
+            out.append(html)
+            continue
+
         ul = re.match(r"^(\s*)[-*+]\s+(.*)$", line)
         ol = re.match(r"^(\s*)\d+\.\s+(.*)$", line)
         if ul or ol:
@@ -1179,7 +1596,7 @@ def markdown_to_html(content: str) -> str:
         close_list()
         para = [line]
         i += 1
-        while i < len(lines) and lines[i].strip() and not _HEADING_RE.match(lines[i]) and not _FENCE_RE.match(lines[i]) and not _HR_RE.match(lines[i]) and not re.match(r"^(\s*)[-*+]\s+", lines[i]) and not re.match(r"^(\s*)\d+\.\s+", lines[i]):
+        while i < len(lines) and not paragraph_interrupt(lines[i]):
             para.append(lines[i])
             i += 1
         out.append(f"<p>{render_inline(' '.join(s.strip() for s in para))}</p>")

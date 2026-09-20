@@ -69,6 +69,12 @@ benchmark_fixtures:
     fetch_example: |
       curl -sS "https://raw.githubusercontent.com/github/docs/2320b38e746de554f7f3d2b83520bc0f26485abc/content/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax.md"
     covers: [headings, links, images, fenced_code, nested_lists, tables, task_lists, autolinks, alerts, footnotes, inline_html]
+    note: >
+      GitHub Docs' own Alerts section is now a supported markdown_to_html
+      subset (uppercase > [!NOTE] etc. render as <aside class="markdown-alert">).
+      Ordinary blockquotes, GFM tables, task lists, footnotes, and autolinks
+      in this fixture remain unsupported. The five-kind syntax examples inside
+      the Alerts fenced code block stay code, not live alerts.
 
   - id: commonmark_examples
     path: benchmark/commonmark_examples.yaml

@@ -127,6 +127,7 @@ def test_generation_functions_exposed_in_all() -> None:
         "italic",
         "strikethrough",
         "blockquote",
+        "alert",
         "horizontal_rule",
         "bullet_list",
         "numbered_list",
