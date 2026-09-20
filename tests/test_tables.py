@@ -62,6 +62,16 @@ def test_inline_formatting_inside_cells() -> None:
     assert "<code>c</code>" in html
 
 
+def test_escaped_pipe_in_markdown_source_stays_one_cell() -> None:
+    """A ``\\|`` in the Markdown source (not just html_to_markdown output)
+    stays inside its cell instead of splitting it, mirroring what
+    ``table()`` itself generates for a value containing ``|``."""
+    html = md.markdown_to_html("| a | b |\n| --- | --- |\n| x\\|y | z |\n")
+    assert html.count("<tr>") == 2
+    assert "<td>x|y</td>" in html
+    assert "<td>z</td>" in html
+
+
 def test_cell_html_is_escaped() -> None:
     html = md.markdown_to_html("| x |\n| --- |\n| <script>alert(1)</script> |\n")
     assert "<script>" not in html
