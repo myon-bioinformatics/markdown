@@ -42,6 +42,8 @@ def test_unsupported_constructs_are_documented() -> None:
     data = _load_provenance()
     notes = {row["name"]: row["note"] for row in data["unsupported_examples"]}
     assert "bare_url_autolink" in notes
+    assert "kramdown_extension_and_toc" in notes
+    assert "liquid_and_front_matter" in notes
     assert "footnote" not in notes
     bare = next(row for row in data["unsupported_examples"] if row["name"] == "bare_url_autolink")
     bare_html = md.markdown_to_html(bare["markdown"])
@@ -89,6 +91,23 @@ def test_angle_autolink_example_now_renders() -> None:
     example = next(row for row in data["supported_examples"] if row["name"] == "angle_autolink")
     html = md.markdown_to_html(example["markdown"])
     assert '<a href="https://example.com">https://example.com</a>' in html
+
+
+def test_kramdown_ial_example_converts() -> None:
+    data = _load_provenance()
+    example = next(row for row in data["supported_examples"] if row["name"] == "kramdown_ial")
+    kd = md.markdown_to_kramdown(example["markdown"])
+    assert "{: #intro .hero}" in kd
+    assert md.kramdown_to_markdown(kd).startswith("# Title")
+
+
+def test_unsupported_kramdown_and_liquid_examples_stay_literal() -> None:
+    data = _load_provenance()
+    for name in ("kramdown_extension_and_toc", "liquid_and_front_matter"):
+        row = next(item for item in data["unsupported_examples"] if item["name"] == name)
+        src = row["markdown"]
+        assert md.markdown_to_kramdown(src) == src
+        assert md.kramdown_to_markdown(src) == src
 
 
 def test_gfm_table_example_now_renders() -> None:

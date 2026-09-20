@@ -34,6 +34,10 @@ __all__ = [
     "markdown_link_to_html",
     "html_to_markdown",
     "markdown_to_html",
+    "markdown_to_kramdown",
+    "kramdown_to_markdown",
+    "ial",
+    "with_attributes",
     "alert_stylesheet",
     "default_stylesheet",
     "is_probably_url",
@@ -114,6 +118,12 @@ SUPPORTED = {
         "([^id] refs + [^id]: definitions -> <sup><a> + <section class=\"footnotes\">)",
         "simple HTML <table> in html_to_markdown (GFM pipe table; headerless rows use an empty header)",
         "HTML <del> -> ~~text~~ and <li><input type=checkbox> -> - [ ] / - [x] in html_to_markdown",
+        "heading/paragraph id+class (+ other simple attrs) in html_to_markdown "
+        "as Pandoc-style {#id .class key=\"value\"} so markdown_to_kramdown can attach IAL",
+        "markdown_to_kramdown: Pandoc/PHP-Extra {#id .class key=value} on headings/paragraphs "
+        "-> Kramdown block IAL ({: #id .class key=\"value\"}); ordinary Markdown left alone",
+        "kramdown_to_markdown: strip known heading/paragraph IAL back to plain Markdown "
+        "(attributes dropped; {:toc} / {::extensions} / Liquid / front matter left as-is)",
         "alert_stylesheet / default_stylesheet (compact CSS strings for markdown_to_html output)",
     ],
     "generation": [
@@ -128,6 +138,7 @@ SUPPORTED = {
         "md_table / md_kv (*args-friendly wrappers, no list/dict pre-building needed)",
         "status_line",
         "section (heading + blocks) / wrap_section (tool-detectable markers)",
+        "ial / with_attributes (Kramdown {: #id .class key=\"value\"} lines)",
     ],
 }
 
@@ -159,12 +170,17 @@ UNSUPPORTED = {
         "angle autolinks with schemes other than http/https (mailto:, ftp:, uppercase HTTP://)",
         "unmatched strikethrough (a lone ~~ stays literal; ~~a~~b~~ takes the first pair)",
         "Math / mermaid rendering",
+        "full Kramdown (extensions {::comment}/{::options}/{::nomarkdown}, math, "
+        "TOC macros {:toc}, span IAL, IAL on lists/quotes/tables, attribute references)",
+        "Liquid {% %} / {{ }}, YAML front matter, Jekyll tags / includes / baseurl",
     ],
     "conversion": [
         "lossy round-trips for complex nested HTML",
         "JavaScript / SVG behavior preservation",
-        "CSS class and style fidelity",
+        "CSS class and style fidelity (HTML style= is dropped; IAL class names are kept)",
         "raw inline HTML tags are escaped, not passed through, by markdown_to_html",
+        "kramdown_to_markdown drops IAL attributes (lossy); markdown_to_html does not "
+        "apply IAL as HTML id/class",
     ],
 }
 
@@ -237,6 +253,22 @@ _TABLE_SEP_CELL_RE = re.compile(r"^:?-{3,}:?$")
 _LIST_ITEM_RE = re.compile(r"^(\s*)(?:[-*+]|\d+\.)\s+")
 _TASK_ITEM_RE = re.compile(r"^\[([ xX])\](?:[ \t]+(.*))?$")
 _STRIKETHROUGH_RE = re.compile(r"~~((?:(?!~~)[^\n])+?)~~")
+_IAL_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
+_IAL_NAME_RE = re.compile(r"^[^\s.#{}]+$")
+_ATTR_LIST_TOKEN_RE = re.compile(
+    r"#(?P<id>[^\s.#{}]+)"
+    r"|\.(?P<cls>[^\s.#{}]+)"
+    r"|(?P<key>[A-Za-z_][A-Za-z0-9_-]*)"
+    r"(?:=(?:\"(?P<dval>[^\"]*)\"|'(?P<sval>[^']*)'|(?P<uval>[^\s{}]+)))?"
+)
+_STANDALONE_IAL_RE = re.compile(r"^\{:(?!:)[ \t]*(?P<inner>[^{}]*)\}\s*$")
+_TRAILING_KRAMDOWN_IAL_RE = re.compile(
+    r"^(?P<body>.*?)(?P<list>\{:(?!:)[ \t]*(?P<inner>[^{}]*)\})\s*$"
+)
+_TRAILING_PANDOC_ATTR_RE = re.compile(
+    r"^(?P<body>.*?)(?P<list>\{(?![%{:])(?P<inner>[^{}]*)\})\s*$"
+)
+_HTML_ATTR_SKIP = frozenset({"id", "class", "style"})
 
 
 # ---------------------------------------------------------------------------
@@ -1288,6 +1320,417 @@ def wrap_section(name: str, content: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Kramdown IAL (thin heading/paragraph subset — not full Kramdown)
+# ---------------------------------------------------------------------------
+
+def _escape_ial_value(value: str) -> str:
+    return str(value).replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _parse_attr_list_inner(inner: str) -> dict[str, Any] | None:
+    """Parse ``#id .class key=value`` tokens. ``None`` if leftover junk remains."""
+    text = inner.strip()
+    parsed: dict[str, Any] = {
+        "id": None,
+        "classes": [],
+        "attrs": {},
+        "flags": [],
+    }
+    if not text:
+        return parsed
+    pos = 0
+    length = len(text)
+    while pos < length:
+        if text[pos].isspace():
+            pos += 1
+            continue
+        match = _ATTR_LIST_TOKEN_RE.match(text, pos)
+        if not match:
+            return None
+        if match.group("id"):
+            parsed["id"] = match.group("id")
+        elif match.group("cls"):
+            parsed["classes"].append(match.group("cls"))
+        elif match.group("key"):
+            key = match.group("key")
+            if match.group("dval") is not None:
+                parsed["attrs"][key] = match.group("dval")
+            elif match.group("sval") is not None:
+                parsed["attrs"][key] = match.group("sval")
+            elif match.group("uval") is not None:
+                parsed["attrs"][key] = match.group("uval")
+            else:
+                parsed["flags"].append(key)
+        pos = match.end()
+    return parsed
+
+
+def _is_toc_only(parsed: dict[str, Any]) -> bool:
+    if parsed["id"] or parsed["classes"] or parsed["attrs"]:
+        return False
+    flags = [flag.lower() for flag in parsed["flags"]]
+    return flags == ["toc"]
+
+
+def _format_attr_tokens(
+    ident: str | None,
+    classes: list[str],
+    attrs: dict[str, str],
+    flags: list[str] | None = None,
+) -> list[str]:
+    parts: list[str] = []
+    if ident:
+        parts.append("#" + ident)
+    for item in classes:
+        parts.append("." + item)
+    for key, value in attrs.items():
+        parts.append(f'{key}="{_escape_ial_value(value)}"')
+    for flag in flags or []:
+        parts.append(flag)
+    return parts
+
+
+def _format_ial_line(
+    ident: str | None,
+    classes: list[str],
+    attrs: dict[str, str],
+    flags: list[str] | None = None,
+) -> str:
+    tokens = _format_attr_tokens(ident, classes, attrs, flags)
+    if not tokens:
+        return "{:}"
+    return "{: " + " ".join(tokens) + "}"
+
+
+def _format_pandoc_attr_list(
+    ident: str | None,
+    classes: list[str],
+    attrs: dict[str, str],
+) -> str:
+    tokens = _format_attr_tokens(ident, classes, attrs)
+    return "{" + " ".join(tokens) + "}"
+
+
+def _html_attrs_to_pandoc_suffix(attr: dict[str, str]) -> str:
+    ident = (attr.get("id") or "").strip()
+    if ident and not _IAL_NAME_RE.fullmatch(ident):
+        ident = ""
+    classes: list[str] = []
+    for item in (attr.get("class") or "").split():
+        item = item.strip()
+        if item and _IAL_NAME_RE.fullmatch(item):
+            classes.append(item)
+    extra: dict[str, str] = {}
+    for key, value in attr.items():
+        if key in _HTML_ATTR_SKIP or not value:
+            continue
+        if not _IAL_KEY_RE.fullmatch(key):
+            continue
+        extra[key] = value
+    if not ident and not classes and not extra:
+        return ""
+    return " " + _format_pandoc_attr_list(ident or None, classes, extra)
+
+
+def _normalize_ial_id(ident: str | None) -> str | None:
+    if ident is None:
+        return None
+    ident = str(ident).strip().lstrip("#")
+    if not ident:
+        return None
+    if not _IAL_NAME_RE.fullmatch(ident):
+        raise ValueError(f"invalid IAL id {ident!r}")
+    return ident
+
+
+def _normalize_ial_classes(classes: Any) -> list[str]:
+    if classes is None:
+        return []
+    if isinstance(classes, str):
+        items = classes.split()
+    else:
+        items = [str(item) for item in classes]
+    out: list[str] = []
+    for item in items:
+        item = item.strip().lstrip(".")
+        if not item:
+            continue
+        if not _IAL_NAME_RE.fullmatch(item):
+            raise ValueError(f"invalid IAL class {item!r}")
+        out.append(item)
+    return out
+
+
+def _normalize_ial_attrs(attrs: dict[str, Any]) -> dict[str, str]:
+    extra: dict[str, str] = {}
+    for key, value in attrs.items():
+        if value is None:
+            continue
+        if not _IAL_KEY_RE.fullmatch(str(key)):
+            raise ValueError(f"invalid IAL key {key!r}")
+        extra[str(key)] = str(value)
+    return extra
+
+
+def ial(
+    *,
+    id: str | None = None,
+    classes: Any = None,
+    **attrs: Any,
+) -> str:
+    """Build a Kramdown Inline Attribute List line.
+
+    Emits ``{: #id .class key="value"}\\n``. Empty input (no id, classes, or
+    attrs) returns ``""``. ``classes`` may be a string (whitespace-split) or
+    a sequence. A leading ``#`` / ``.`` on id / class names is stripped.
+
+    This is a generator only — ``markdown_to_html`` does not apply IAL as
+    HTML attributes.
+
+    >>> ial(id="intro", classes="hero")
+    '{: #intro .hero}\\n'
+    >>> ial(id="box", classes=["note", "wide"], role="note")
+    '{: #box .note .wide role="note"}\\n'
+    """
+    ident = _normalize_ial_id(id)
+    class_list = _normalize_ial_classes(classes)
+    extra = _normalize_ial_attrs(attrs)
+    if not ident and not class_list and not extra:
+        return ""
+    return _format_ial_line(ident, class_list, extra) + "\n"
+
+
+def with_attributes(
+    block_md: str,
+    *,
+    id: str | None = None,
+    classes: Any = None,
+    **attrs: Any,
+) -> str:
+    """Append a block IAL after ``block_md``.
+
+    Intended for headings and paragraphs (tiny contract). ``block_md`` is
+    left unchanged when no attributes are given.
+
+    >>> with_attributes(heading("Title"), id="intro", classes="hero")
+    '# Title\\n{: #intro .hero}\\n'
+    """
+    suffix = ial(id=id, classes=classes, **attrs)
+    if not suffix:
+        return str(block_md)
+    body = str(block_md)
+    if body and not body.endswith("\n"):
+        body += "\n"
+    return body + suffix
+
+
+def _join_converted_lines(lines: list[str], original: str) -> str:
+    if not lines:
+        return "\n" if original.endswith("\n") else ""
+    text = "\n".join(lines)
+    if original.endswith("\n") and not text.endswith("\n"):
+        text += "\n"
+    return text
+
+
+def _is_heading_or_paragraph_line(line: str) -> bool:
+    """True when a trailing attr list may attach (headings / paragraphs only)."""
+    if _HEADING_RE.match(line):
+        return True
+    stripped = line.strip()
+    if not stripped:
+        return False
+    if _HR_RE.match(line) or _FENCE_RE.match(line):
+        return False
+    if _LIST_ITEM_RE.match(line):
+        return False
+    if line.lstrip().startswith(">"):
+        return False
+    if _FOOTNOTE_DEF_RE.match(line):
+        return False
+    if _details_open_summary(line) is not None:
+        return False
+    if _COLON_CONTAINER_CLOSE_RE.match(line):
+        return False
+    if _qiita_note_kind(line) is not None or _zenn_message_kind(line) is not None:
+        return False
+    if stripped.startswith("|"):
+        return False
+    if stripped.startswith("<!--") or stripped.startswith("{%"):
+        return False
+    if stripped.startswith("{{"):
+        return False
+    if stripped == "---":
+        return False
+    return True
+
+
+def _rewrite_trailing_attr_list(line: str) -> tuple[str, str] | None:
+    """Peel a trailing Pandoc or inline IAL list into ``(body, ial_line)``."""
+    if not _is_heading_or_paragraph_line(line):
+        return None
+    ial_match = _TRAILING_KRAMDOWN_IAL_RE.match(line)
+    if ial_match and ial_match.group("body").strip():
+        parsed = _parse_attr_list_inner(ial_match.group("inner"))
+        if parsed is None or _is_toc_only(parsed):
+            return None
+        body = ial_match.group("body").rstrip()
+        return body, _format_ial_line(
+            parsed["id"], parsed["classes"], parsed["attrs"], parsed["flags"]
+        )
+    pandoc_match = _TRAILING_PANDOC_ATTR_RE.match(line)
+    if pandoc_match and pandoc_match.group("body").strip():
+        parsed = _parse_attr_list_inner(pandoc_match.group("inner"))
+        if parsed is None or _is_toc_only(parsed):
+            return None
+        if not (
+            parsed["id"]
+            or parsed["classes"]
+            or parsed["attrs"]
+            or parsed["flags"]
+        ):
+            return None
+        body = pandoc_match.group("body").rstrip()
+        return body, _format_ial_line(
+            parsed["id"], parsed["classes"], parsed["attrs"], parsed["flags"]
+        )
+    return None
+
+
+def markdown_to_kramdown(content: str) -> str:
+    """Rewrite a Markdown subset into Kramdown-leaning Markdown.
+
+    **Rewritten**
+
+    - Pandoc / PHP Markdown Extra trailing braces on headings and
+      paragraphs: ``# Title {#id .class key=value}`` becomes a block IAL
+      on the next line (``{: #id .class key="value"}``).
+    - Inline IAL already on a heading/paragraph (``# Title {: #id}``) is
+      moved to a following block IAL and normalized (id, then classes,
+      then ``key="value"``).
+    - A standalone parseable IAL line is normalized the same way.
+
+    **Left alone**
+
+    - Ordinary Markdown with no attribute list (headings, lists, tables,
+      fences, alerts, ``:::details``, footnotes, …).
+    - Fenced code (attribute-looking braces inside stay literal).
+    - ``{:toc}`` (Kramdown TOC macro), ``{::comment}`` / other extensions,
+      span IAL, IAL on lists / quotes / tables, Liquid ``{% %}`` / ``{{ }}``,
+      YAML front matter, and unknown brace constructs (safe degrade:
+      leave-as-is).
+
+    This is **not** a Kramdown engine. ``markdown_to_html`` does not apply
+    IAL as HTML attributes.
+
+    >>> markdown_to_kramdown("# Title {#intro .hero}").splitlines()
+    ['# Title', '{: #intro .hero}']
+    """
+    lines = content.splitlines()
+    out: list[str] = []
+    in_fence: str | None = None
+    for line in lines:
+        fence = _FENCE_RE.match(line)
+        if fence:
+            mark = fence.group(1)
+            if in_fence is None:
+                in_fence = mark
+            elif line.startswith(in_fence):
+                in_fence = None
+            out.append(line)
+            continue
+        if in_fence:
+            out.append(line)
+            continue
+        standalone = _STANDALONE_IAL_RE.match(line)
+        if standalone:
+            parsed = _parse_attr_list_inner(standalone.group("inner"))
+            if parsed is None or _is_toc_only(parsed):
+                out.append(line)
+            else:
+                out.append(
+                    _format_ial_line(
+                        parsed["id"],
+                        parsed["classes"],
+                        parsed["attrs"],
+                        parsed["flags"],
+                    )
+                )
+            continue
+        rewritten = _rewrite_trailing_attr_list(line)
+        if rewritten is not None:
+            body, ial_line = rewritten
+            out.append(body)
+            out.append(ial_line)
+            continue
+        out.append(line)
+    return _join_converted_lines(out, content)
+
+
+def kramdown_to_markdown(content: str) -> str:
+    """Strip the supported IAL subset back toward plain Markdown.
+
+    **Rewritten (lossy)**
+
+    - A standalone IAL line ``{: #id .class key="value"}`` after a block
+      is removed. Attributes are dropped.
+    - A trailing inline IAL on a heading or paragraph
+      (``# Title {: #id}``) is stripped.
+
+    **Kept / left alone**
+
+    - The heading or paragraph text itself.
+    - Ordinary Markdown, including Pandoc-style ``{#id}`` that was never
+      converted to IAL.
+    - ``{:toc}``, ``{::comment}`` / ``{::options}`` / ``{::nomarkdown}``,
+      unparseable IAL, Liquid ``{% %}`` / ``{{ }}``, YAML front matter,
+      and fenced code. Standalone parseable IAL is stripped wherever it
+      appears (the line does not record which block it attached to).
+
+    Round-trip ``markdown_to_kramdown`` → ``kramdown_to_markdown`` keeps
+    prose and structure; attribute lists are lost. That is intentional.
+
+    >>> kramdown_to_markdown("# Title\\n{: #intro .hero}\\n").splitlines()
+    ['# Title']
+    """
+    lines = content.splitlines()
+    out: list[str] = []
+    in_fence: str | None = None
+    for line in lines:
+        fence = _FENCE_RE.match(line)
+        if fence:
+            mark = fence.group(1)
+            if in_fence is None:
+                in_fence = mark
+            elif line.startswith(in_fence):
+                in_fence = None
+            out.append(line)
+            continue
+        if in_fence:
+            out.append(line)
+            continue
+        standalone = _STANDALONE_IAL_RE.match(line)
+        if standalone:
+            parsed = _parse_attr_list_inner(standalone.group("inner"))
+            if parsed is None or _is_toc_only(parsed):
+                out.append(line)
+            continue
+        ial_match = _TRAILING_KRAMDOWN_IAL_RE.match(line)
+        if ial_match:
+            body = ial_match.group("body").rstrip()
+            parsed = _parse_attr_list_inner(ial_match.group("inner"))
+            if (
+                parsed is not None
+                and not _is_toc_only(parsed)
+                and _is_heading_or_paragraph_line(body)
+            ):
+                out.append(body)
+                continue
+        out.append(line)
+    return _join_converted_lines(out, content)
+
+
+# ---------------------------------------------------------------------------
 # Conservative HTML <-> Markdown (common tags only)
 # ---------------------------------------------------------------------------
 
@@ -1310,6 +1753,7 @@ class _HTMLToMarkdownParser(HTMLParser):
         self._table_cell: list[str] | None = None
         self._table_row_is_header = False
         self._in_thead = False
+        self._block_attr_suffixes: list[str] = []
 
     def _emit(self, text: str) -> None:
         if self._table_cell is not None:
@@ -1414,8 +1858,10 @@ class _HTMLToMarkdownParser(HTMLParser):
         if tag in {"h1", "h2", "h3", "h4", "h5", "h6"}:
             level = int(tag[1])
             self._emit("\n\n" + ("#" * level) + " ")
+            self._block_attr_suffixes.append(_html_attrs_to_pandoc_suffix(attr))
         elif tag == "p":
             self._emit("\n\n")
+            self._block_attr_suffixes.append(_html_attrs_to_pandoc_suffix(attr))
         elif tag == "br":
             self._emit("  \n")
         elif tag == "hr":
@@ -1502,6 +1948,13 @@ class _HTMLToMarkdownParser(HTMLParser):
                 self._flush_cell()
             return
         if tag in {"h1", "h2", "h3", "h4", "h5", "h6", "p"}:
+            suffix = (
+                self._block_attr_suffixes.pop()
+                if self._block_attr_suffixes
+                else ""
+            )
+            if suffix:
+                self._emit(suffix)
             self._emit("\n\n")
         elif tag in {"strong", "b"}:
             self._emit("**")
@@ -1557,6 +2010,11 @@ def html_to_markdown(html: str) -> str:
     ``<del>`` (and ``<s>``) become ``~~text~~``. A checkbox
     ``<input type="checkbox">`` (optional ``checked``) becomes ``[ ]`` /
     ``[x]``, which pairs with ``<li>`` as ``- [ ]`` / ``- [x]``.
+
+    ``id`` / ``class`` (and other simple key=value attrs except ``style``)
+    on ``<h1>``–``<h6>`` and ``<p>`` become a trailing Pandoc-style
+    ``{#id .class key="value"}`` so :func:`markdown_to_kramdown` can attach
+    a Kramdown IAL. This is not applied to tables, lists, or other tags.
     """
     parser = _HTMLToMarkdownParser()
     parser.feed(html)

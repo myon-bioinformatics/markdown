@@ -161,6 +161,10 @@ def test_generation_functions_exposed_in_all() -> None:
         "wrap_section",
         "alert_stylesheet",
         "default_stylesheet",
+        "ial",
+        "with_attributes",
+        "markdown_to_kramdown",
+        "kramdown_to_markdown",
     ):
         assert name in md.__all__
         assert hasattr(md, name)
