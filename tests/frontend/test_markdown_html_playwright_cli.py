@@ -49,9 +49,19 @@ def _skip_if_browser_missing(result: subprocess.CompletedProcess) -> None:
     assert result.returncode == 0, result.stderr
 
 
+def _html_document(body: str) -> str:
+    return (
+        "<html><head><style>"
+        + md.default_stylesheet()
+        + "</style></head><body>"
+        + body
+        + "</body></html>"
+    )
+
+
 def test_cli_screenshot_renders_generated_html(tmp_path) -> None:
     html_file = tmp_path / "reply.html"
-    html_file.write_text(f"<html><body>{md.markdown_to_html(CONTENT)}</body></html>", encoding="utf-8")
+    html_file.write_text(_html_document(md.markdown_to_html(CONTENT)), encoding="utf-8")
     png_file = tmp_path / "reply.png"
 
     result = _run_playwright_cli(
@@ -65,7 +75,7 @@ def test_cli_screenshot_renders_generated_html(tmp_path) -> None:
 
 def test_cli_pdf_renders_generated_html(tmp_path) -> None:
     html_file = tmp_path / "reply.html"
-    html_file.write_text(f"<html><body>{md.markdown_to_html(CONTENT)}</body></html>", encoding="utf-8")
+    html_file.write_text(_html_document(md.markdown_to_html(CONTENT)), encoding="utf-8")
     pdf_file = tmp_path / "reply.pdf"
 
     result = _run_playwright_cli("pdf", html_file.as_uri(), str(pdf_file))

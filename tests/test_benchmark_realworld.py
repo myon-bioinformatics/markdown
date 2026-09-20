@@ -7,11 +7,13 @@ docs, a real project's CONTRIBUTING.md, and a real project's CHANGELOG.md
 
 The goal here (per the benchmark's own brief) is not "make everything
 pass" -- it's proving these don't crash, and pinning down exactly which
-known-unsupported constructs (tables, task lists, footnotes,
-blockquotes, backslash escaping -- see test_benchmark_commonmark.py and
+known-unsupported constructs (task lists, footnotes, autolinks,
+backslash escaping -- see test_benchmark_commonmark.py and
 markdown.py's UNSUPPORTED) show up, unmangled, inside a real document
-rather than only in an isolated one-liner. GitHub-style alerts in the
-GitHub Docs excerpt are now a supported subset (see test_alerts.py).
+rather than only in an isolated one-liner. GitHub-style alerts, simple
+GFM pipe tables, and ordinary > blockquotes in the GitHub Docs excerpt
+are now supported subsets (see test_alerts.py, test_tables.py,
+test_blockquotes.py).
 """
 
 from __future__ import annotations
@@ -67,12 +69,12 @@ def test_github_docs_fixture_has_the_constructs_it_claims() -> None:
     assert inv["code_block_count"] >= 5
 
 
-def test_github_docs_tables_degrade_to_escaped_paragraphs_not_crashes() -> None:
-    """Matches fixtures/provenance.yaml's own unsupported_examples note on tables."""
+def test_github_docs_tables_render_as_html_tables() -> None:
+    """Matches fixtures/provenance.yaml: the live Style/Syntax table is supported."""
     content = _github_docs_content()
     html = md.markdown_to_html(content)
-    assert "<table" not in html
-    # The real header row text still shows up as escaped paragraph content.
+    assert "<table>" in html
+    assert "<th>Style</th>" in html
     assert "First Header" in html
 
 
@@ -114,6 +116,7 @@ def test_contributing_escaped_tip_callout_is_not_an_alert() -> None:
     html = md.markdown_to_html(content)
     assert "markdown-alert" not in html
     assert "[!TIP]" in html
+    assert "<blockquote>" in html
 
 
 def test_contributing_fixture_has_expected_constructs() -> None:

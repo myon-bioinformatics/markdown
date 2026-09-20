@@ -141,6 +141,8 @@ def test_generation_functions_exposed_in_all() -> None:
         "status_line",
         "section",
         "wrap_section",
+        "alert_stylesheet",
+        "default_stylesheet",
     ):
         assert name in md.__all__
         assert hasattr(md, name)

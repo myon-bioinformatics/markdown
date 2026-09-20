@@ -49,9 +49,14 @@ report = md.section(
     [
         md.key_value_table({"mode": "train", "epochs": 10}),
         md.bullet_list(["loss down", "iou up"]),
+        md.blockquote("keep the contract small"),
     ],
 )
 print(report)
+
+# library-side HTML + CSS (no separate .css asset required)
+html = "<style>" + md.default_stylesheet() + "</style>\n" + md.markdown_to_html(report)
+print(html)
 ```
 
 
@@ -112,9 +117,10 @@ checks — stay optional (`workflow_dispatch` / local smoke).
 the one demo whose frontend tests click through the real rendered page.
 `markdown.py`'s generation helpers only build the Markdown *text* — it's
 Gradio's own `Chatbot` component that renders that text to HTML in the
-browser, tables included (see "Capability stance" below: this repo's own
-`markdown_to_html()` does not render GFM tables, by design — it's a
-different, much smaller converter than Gradio's). `tests/frontend/test_chat_ui_screen.py`
+browser. This repo's own `markdown_to_html()` now also renders simple GFM
+pipe tables to `<table>` (see "Capability stance" below); the chat-screen
+test still checks Gradio's DOM, while `tests/test_chat_ui_demo_logic.py`
+checks the library HTML path. `tests/frontend/test_chat_ui_screen.py`
 types a message, clicks Send, and asserts on the resulting DOM
 (a real `<table>` with `<th>`/`<td>` rows, `<pre><code>`, `<li>`, `<strong>`/`<em>`)
 via Playwright (`pip install -r requirements-frontend.txt && playwright install chromium`).
@@ -167,7 +173,7 @@ Results, CommonMark spec examples:
 | ATX headings, emphasis (basic), fenced code, inline code, horizontal rule, links | PASS |
 | nested emphasis (`**foo *bar* baz**`) | DEGRADED — the inner `*bar*` parses, the outer `**` doesn't |
 | nested lists | DEGRADED — flattens to one `<ul>`, no text lost |
-| blockquotes | UNSUPPORTED — escapes and flattens to a plain paragraph, same fallback as tables |
+| blockquotes | DEGRADED — consecutive `>` lines become `<blockquote><p>…</p></blockquote>`; inner ATX headings/lists/tables stay paragraph text; blank `>` lines split paragraphs |
 | backslash escaping | FAIL — not implemented; `\*` stays literal instead of suppressing emphasis |
 | emphasis edge cases (asymmetric delimiter runs, whitespace-adjacent delimiters) | FAIL |
 
@@ -177,9 +183,10 @@ Results, GitHub-flavored constructs found inside the real GitHub Docs excerpt:
 | --- | --- |
 | headings, links, images, fenced code (incl. fence-in-fence), inline code | PASS |
 | nested lists | DEGRADED |
-| tables, task lists, footnotes | UNSUPPORTED (matches the pre-existing `unsupported_examples` note) |
+| tables | PASS — simple GFM pipe tables (header + `\| --- \|` delimiter) render as `<table>/<thead>/<th>/<tbody>/<td>`; cell text is escaped and reuses the inline renderer. Alignment colons are accepted, not emitted as attributes. Pipe rows without a delimiter stay paragraphs. |
+| task lists, footnotes | UNSUPPORTED |
 | autolinks (`<url>`, bare URLs) | UNSUPPORTED |
-| alerts (`> [!NOTE]`) | PASS — GitHub uppercase `[!NOTE]`/`[!TIP]`/`[!IMPORTANT]`/`[!WARNING]`/`[!CAUTION]` (no same-line title) render as `<aside class="markdown-alert">`. Qiita `:::note`, Zenn `:::message`, and Obsidian callouts are also supported. Ordinary `> blockquotes` stay flattened. |
+| alerts (`> [!NOTE]`) | PASS — GitHub uppercase `[!NOTE]`/`[!TIP]`/`[!IMPORTANT]`/`[!WARNING]`/`[!CAUTION]` (no same-line title) render as `<aside class="markdown-alert">`. Qiita `:::note`, Zenn `:::message`, and Obsidian callouts are also supported. Ordinary `>` quotes render as `<blockquote>`; alerts still win when the opener is `[!TYPE]`. |
 | inline HTML | UNSUPPORTED — escaped, not passed through |
 
 ```bash
@@ -194,7 +201,7 @@ Results, `html_to_markdown()` on the real とほほのWWW入門 page: every one 
 links survives as a real Markdown construct (`test_tohoho_headings_and_links_survive_html_to_markdown`),
 and the round trip back to HTML keeps all of them too. `<header>`/`<aside>`/`<main>`/`<footer>` aren't
 in `_HTMLToMarkdownParser`'s handled-tag list, so they contribute no Markdown syntax of their own, but
-the real text they wrap still survives (same "unsupported tag, text not data" fallback as tables).
+the real text they wrap still survives (same "unsupported tag, text not data" fallback as unhandled tags such as `<table>` on the HTML→Markdown path).
 `<script>` content is suppressed, not leaked, same as `<style>`.
 
 ## Real chat product smoke test (Open WebUI, in Docker)
@@ -305,9 +312,14 @@ Pass `flavor="qiita"` for `:::note info|warn|alert`, `flavor="zenn"` for `:::mes
 `:::message alert`, `flavor="obsidian"` for lowercase callouts with optional `title=` / `fold=`,
 or `flavor="gitlab"` for GitLab's lowercase five-kind form (optional `title=`). Unknown GitHub /
 Qiita / Zenn / GitLab kinds raise `ValueError`. `markdown_to_html()` renders those blocks to a
-shared `<aside class="markdown-alert" data-alert-flavor="…">` shape; class names are enough for
-consumers to style — this module ships no CSS. Ordinary `> blockquotes` are still flattened.
-GFM table HTML and Wikipedia infoboxes remain out of scope.
+shared `<aside class="markdown-alert" data-alert-flavor="…">` shape. Embed
+`<style>{md.default_stylesheet()}</style>` (or `md.alert_stylesheet()`) next to
+`markdown_to_html(...)` output — compact stdlib CSS, no separate `.css` file and
+no external URLs. Ordinary `>` blockquotes render as `<blockquote>` (multi-line;
+blank `>` lines split paragraphs). Simple GFM pipe tables from `table()` /
+`key_value_table()` / `md_table()` round-trip through `markdown_to_html()` into
+`<table>`. Wikipedia infoboxes, Math, mermaid, Jekyll/Kramdown/Liquid/front matter,
+and full CommonMark/GFM remain out of scope.
 
 `code_block()`'s fence length is adaptive: plain content still gets a triple-backtick fence, but
 content that itself contains a run of backticks (e.g. Markdown-about-Markdown, like a fenced example
