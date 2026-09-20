@@ -66,3 +66,10 @@ def test_fenced_example_stays_code() -> None:
     html = md.markdown_to_html("```\n~~nope~~\n```\n")
     assert "<del>" not in html
     assert "~~nope~~" in html
+
+
+def test_html_del_becomes_strikethrough_markdown() -> None:
+    md_out = md.html_to_markdown("<p>drop <del>this</del> bit</p>")
+    assert "~~this~~" in md_out
+    html = md.markdown_to_html(md_out)
+    assert "<del>this</del>" in html

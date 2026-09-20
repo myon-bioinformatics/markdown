@@ -186,7 +186,7 @@ Results, GitHub-flavored constructs found inside the real GitHub Docs excerpt:
 | tables | PASS — simple GFM pipe tables (header + `\| --- \|` delimiter) render as `<table>/<thead>/<th>/<tbody>/<td>`; cell text is escaped and reuses the inline renderer. Alignment colons are accepted, not emitted as attributes. Pipe rows without a delimiter stay paragraphs. |
 | strikethrough (`~~text~~`) | PASS — renders as `<del>text</del>`; unmatched `~~` stays literal |
 | task lists | PASS — `- [ ]` / `- [x]` / `- [X]` (also `*` / `+`) become `<li>` with a disabled checkbox; mixed with ordinary bullets in one `<ul>`. This fixture's Task lists section only shows the syntax in inline code, so it stays literal there. `1. [ ]` is not a task. |
-| footnotes | UNSUPPORTED |
+| footnotes | PASS — live `[^id]` plus `[^id]:` definitions become superscript links and a trailing `<section class="footnotes">`. This fixture's Footnotes section only shows the syntax in a fenced example, so it stays code there. Undefined refs stay literal; duplicate ids: first definition wins. |
 | autolinks | DEGRADED — `<https://…>` / `<http://…>` become `<a href>`; bare URLs stay literal. Arbitrary `<tag>` (including `<script>`) is escaped, not linked. |
 | alerts (`> [!NOTE]`) | PASS — GitHub uppercase `[!NOTE]`/`[!TIP]`/`[!IMPORTANT]`/`[!WARNING]`/`[!CAUTION]` (no same-line title) render as `<aside class="markdown-alert">`. Qiita `:::note`, Zenn `:::message`, and Obsidian callouts are also supported. Ordinary `>` quotes render as `<blockquote>`; alerts still win when the opener is `[!TYPE]`. |
 | inline HTML | UNSUPPORTED — escaped, not passed through |
@@ -203,7 +203,7 @@ Results, `html_to_markdown()` on the real とほほのWWW入門 page: every one 
 links survives as a real Markdown construct (`test_tohoho_headings_and_links_survive_html_to_markdown`),
 and the round trip back to HTML keeps all of them too. `<header>`/`<aside>`/`<main>`/`<footer>` aren't
 in `_HTMLToMarkdownParser`'s handled-tag list, so they contribute no Markdown syntax of their own, but
-the real text they wrap still survives (same "unsupported tag, text not data" fallback as unhandled tags such as `<table>` on the HTML→Markdown path).
+the real text they wrap still survives (same "unsupported tag, text not data" fallback as unhandled wrapper tags; simple ``<table>`` is now converted to GFM pipes).
 `<script>` content is suppressed, not leaked, same as `<style>`.
 
 ## Real chat product smoke test (Open WebUI, in Docker)
@@ -307,7 +307,7 @@ It shines at I/O, inventory, URL/image/HTML helpers, conservative conversions, a
 Markdown from scratch (`heading`, `bold`/`italic`/`strikethrough`, `blockquote`, `alert`, `horizontal_rule`,
 `bullet_list`/`numbered_list`/`task_item`/`task_list`, `inline_code`/`code_block`/`json_block`, `table`/`key_value_table`,
 `md_table`/`md_kv` (`*args`-friendly, no list/dict pre-building needed), `status_line`,
-`section`/`wrap_section`) — all of which you can reason about.
+`section`/`wrap_section`, `details`, `footnote`/`footnote_ref`) — all of which you can reason about.
 
 `alert()` emits GitHub `> [!NOTE]` by default (`kind` is case-insensitive, emitted uppercase).
 Pass `flavor="qiita"` for `:::note info|warn|alert`, `flavor="zenn"` for `:::message` /
@@ -323,7 +323,13 @@ blank `>` lines split paragraphs). Simple GFM pipe tables from `table()` /
 `<table>`. `~~text~~` becomes `<del>`. GFM task lists (`task_item()` /
 `task_list()`, or hand-written `- [ ]` / `- [x]`) render as disabled
 checkboxes. Angle-bracket `<https://…>` / `<http://…>` autolinks become
-`<a href>` (bare URLs stay literal). Wikipedia infoboxes, Math, mermaid,
+`<a href>` (bare URLs stay literal). `details(summary, body)` emits
+Zenn-style `:::details` which `markdown_to_html()` turns into
+`<details><summary>` (raw HTML `<details>` in Markdown stays escaped).
+`[^id]` plus `[^id]:` definitions become superscript footnote links and
+a `.footnotes` section. `html_to_markdown()` maps simple `<table>` trees
+back to GFM pipes, `<del>` to `~~…~~`, and checkbox `<li><input>` to
+`- [ ]` / `- [x]`. Wikipedia infoboxes, Math, mermaid,
 Jekyll/Kramdown/Liquid/front matter, and full CommonMark/GFM remain out of
 scope.
 

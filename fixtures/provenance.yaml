@@ -26,12 +26,6 @@ fixtures:
       has_horizontal_rule: true
 
 unsupported_examples:
-  - name: footnote
-    markdown: |
-      footnote[^1]
-
-      [^1]: the note
-    note: Footnotes are not parsed; markers stay literal text.
   - name: bare_url_autolink
     markdown: |
       Visit https://example.com
@@ -43,20 +37,32 @@ supported_examples:
       | a | b |
       | --- | --- |
       | 1 | 2 |
-    note: Simple GFM pipe tables (header + | --- | delimiter) render as HTML tables.
+    note: Simple GFM pipe tables (header + | --- | delimiter) render as HTML tables. html_to_markdown() turns simple <table> trees back into this pipe form.
   - name: task_list
     markdown: |
       - [ ] todo
       - [x] done
-    note: Unordered -/*/ + task items render as disabled checkbox <input>s; mixed with ordinary bullets in the same <ul>.
+    note: Unordered -/*/ + task items render as disabled checkbox <input>s; mixed with ordinary bullets in the same <ul>. html_to_markdown() maps <li><input type=checkbox> back to - [ ] / - [x].
   - name: strikethrough
     markdown: |
       ~~mistake~~
-    note: ~~text~~ becomes <del>text</del>. Unmatched ~~ stays literal.
+    note: ~~text~~ becomes <del>text</del>. Unmatched ~~ stays literal. html_to_markdown() maps <del> back to ~~text~~.
   - name: angle_autolink
     markdown: |
       See <https://example.com>
     note: Angle-bracket http(s) autolinks become <a href>. <script> and other tags stay escaped.
+  - name: footnote
+    markdown: |
+      footnote[^1]
+
+      [^1]: the note
+    note: Inline [^id] refs and [^id]: definitions render as superscript links plus a footnotes section. Undefined refs stay literal. Duplicate ids: first definition wins.
+  - name: details
+    markdown: |
+      :::details Summary
+      Hidden body
+      :::
+    note: Zenn-style :::details summary containers render as <details><summary>. Raw HTML <details> in Markdown stays escaped.
 
 # --- Benchmark fixtures (PR: "how far does this get on real Markdown?") ---
 #
@@ -97,7 +103,10 @@ benchmark_fixtures:
       Angle-bracket autolinks, GFM task lists, and ~~strikethrough~~ parse
       as HTML in this engine; this fixture's Task lists / URLs sections
       only show those constructs inside inline code or as bare URLs, so they
-      stay literal here. Bare URLs and footnotes remain unsupported.
+      stay literal here. Bare URLs remain unsupported. Footnote markers in
+      this fixture live inside a fenced example, so they stay code rather
+      than a live footnotes section. Live [^id] / [^id]: forms are supported
+      elsewhere (see supported_examples.footnote).
       The five-kind syntax examples inside the Alerts fenced code block stay
       code, not live alerts. The "First Header" table example stays inside a
       fenced code block.

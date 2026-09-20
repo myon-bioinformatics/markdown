@@ -7,14 +7,16 @@ docs, a real project's CONTRIBUTING.md, and a real project's CHANGELOG.md
 
 The goal here (per the benchmark's own brief) is not "make everything
 pass" -- it's proving these don't crash, and pinning down exactly which
-known-unsupported constructs (footnotes, bare URL autolinks,
+known-unsupported constructs (bare URL autolinks,
 backslash escaping -- see test_benchmark_commonmark.py and
 markdown.py's UNSUPPORTED) show up, unmangled, inside a real document
 rather than only in an isolated one-liner. GitHub-style alerts, simple
 GFM pipe tables, ordinary > blockquotes, ~~strikethrough~~, GFM task
-lists, and <http(s)://...> autolinks are now supported subsets (see
+lists, <http(s)://...> autolinks, GFM/Pandoc-like footnotes, and
+:::details collapsible sections are now supported subsets (see
 test_alerts.py, test_tables.py, test_blockquotes.py,
-test_strikethrough.py, test_task_lists.py, test_autolinks.py).
+test_strikethrough.py, test_task_lists.py, test_autolinks.py,
+test_footnotes.py, test_details.py).
 """
 
 from __future__ import annotations
@@ -114,10 +116,12 @@ def test_github_docs_alerts_render_as_asides() -> None:
     assert "[!CAUTION]" in html
 
 
-def test_github_docs_footnote_markers_survive_as_literal_text() -> None:
+def test_github_docs_fenced_footnote_example_stays_code() -> None:
+    """This fixture's footnote syntax lives inside a fenced example, not live."""
     content = _github_docs_content()
     html = md.markdown_to_html(content)
     assert "footnote[^1]" in html
+    assert '<section class="footnotes">' not in html
 
 
 def test_github_docs_nested_fence_example_is_a_single_correctly_closed_block() -> None:

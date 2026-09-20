@@ -9,9 +9,10 @@ score.
 
 The HTML below is a small, synthetic snippet built only from the tags
 html_to_markdown() actually handles (see _HTMLToMarkdownParser in
-markdown.py: headings, p, br, hr, strong/b, em/i, code, pre, a, img,
-ul/ol/li, blockquote) -- not vendored from any specific real page, so it
-carries no external provenance the way the other benchmark fixtures do.
+markdown.py: headings, p, br, hr, strong/b, em/i, del, code, pre, a, img,
+ul/ol/li, blockquote, table/thead/th/td, checkbox inputs) -- not vendored
+from any specific real page, so it carries no external provenance the way
+the other benchmark fixtures do.
 
 The real-world section below fills that gap: fixtures/benchmark/
 tohoho_web_home.html is a real, vendored page (see fixtures/provenance.yaml

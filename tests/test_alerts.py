@@ -211,6 +211,8 @@ def test_unknown_qiita_and_zenn_openers_are_not_alerts() -> None:
 
     details = md.markdown_to_html(":::details title\nhidden\n:::\n")
     assert "markdown-alert" not in details
+    assert "<details>" in details
+    assert "<summary>title</summary>" in details
 
 
 def test_fenced_github_alert_examples_stay_code() -> None:
