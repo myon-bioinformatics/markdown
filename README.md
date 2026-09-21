@@ -78,11 +78,16 @@ print(md.markdown_to_kramdown("# Title {#intro .hero}"))
   `markdown_to_html()` subset and then parses the sanitized tree.
 
 The boundary is intentionally conservative: `script` / `style` subtrees,
-event attributes such as `onclick`, inline `style=`, and unsafe URL schemes
-are dropped. Unknown tags degrade to transparent containers so safe text and
-supported descendants remain available. Existing `html_to_markdown()` and
-`markdown_to_html()` entry points are not rewritten around the DOM layer in
-this first contract-focused step.
+event attributes such as `onclick`, inline `style=`, and unsafe absolute URL
+schemes are dropped. `http`, `https`, `mailto`, and relative URLs remain
+allowed; this is a dangerous-scheme rejection policy, not an absolute-URL-only
+allowlist. The same URL policy is shared by DOM serialization and the existing
+Markdown link/image/autolink HTML helpers. Rejected links degrade to plain text
+and rejected images to alt text rather than leaving empty `href` / `src`
+attributes or `[text]()` intermediates. Unknown tags degrade to transparent
+containers so safe text and supported descendants remain available. Existing
+`html_to_markdown()` and `markdown_to_html()` are not rewritten around the DOM
+layer in this first contract-focused step.
 
 
 ## Context helpers
