@@ -36,3 +36,19 @@ def test_tohoho_dom_markdown_is_stable_after_dom_round_trip() -> None:
     second = md.dom_to_markdown(md.markdown_to_dom(first))
 
     assert first == second, _first_diff(first, second)
+
+
+def test_html_block_boundaries_drop_formatting_whitespace() -> None:
+    html = "prefix   <h2>Heading </h2><ul><li>one </li><li>two</li></ul>"
+    markdown = md.html_to_markdown(html)
+
+    assert markdown == "prefix\n\n## Heading\n\n- one\n- two\n"
+
+
+def test_markdown_hard_break_survives_html_round_trip() -> None:
+    source = "first line  \nsecond line\n"
+
+    html = md.markdown_to_html(source)
+
+    assert "<br />" in html
+    assert md.html_to_markdown(html) == source
