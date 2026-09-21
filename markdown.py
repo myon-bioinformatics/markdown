@@ -64,6 +64,12 @@ __all__ = [
     "markdown_table_to_records",
     "csv_to_markdown_table",
     "markdown_table_to_csv",
+    "markdown_table_statistics",
+    "json_to_markdown",
+    "markdown_to_json",
+    "redis_snapshot_to_markdown",
+    "sql_ddl_to_markdown",
+    "markdown_to_sql_ddl",
     "markdown_to_ipynb",
     "ipynb_to_markdown",
     "key_value_table",
@@ -87,7 +93,9 @@ import csv
 import doctest
 import io
 import json
+import math
 import re
+import statistics
 import unicodedata
 from dataclasses import dataclass
 from html.parser import HTMLParser
@@ -1547,6 +1555,108 @@ def ipynb_to_markdown(notebook: str | dict[str, Any]) -> str:
             parts.append("```python\n" + text + ("" if text.endswith("\n") or not text else "\n") + "```\n")
     return "".join(parts)
 
+
+# === SECTION: structured snapshots ===
+
+def markdown_table_statistics(content: str) -> dict[str, Any]:
+    """Return a small, non-mutating summary of the first Markdown table.
+
+    Numeric aggregates appear only when every non-empty value in a column
+    parses as a finite number (``nan``/``inf`` spellings are treated as
+    non-numeric text, not data); no schema inference or value conversion
+    is applied.
+
+    :raises ValueError: if two columns share a header -- ``numeric_columns``
+        is keyed by header text, which cannot represent both losslessly
+        (same contract as :func:`markdown_table_to_records`).
+    """
+    headers, data_rows = markdown_table_to_rows(content)
+    if not headers:
+        return {"rows": 0, "columns": 0, "headers": [], "numeric_columns": {}}
+    if len(set(headers)) != len(headers):
+        raise ValueError("Markdown table headers must be unique for statistics")
+    numeric_columns: dict[str, dict[str, float | int]] = {}
+    for index, header in enumerate(headers):
+        values = [row[index] for row in data_rows if index < len(row) and row[index] != ""]
+        if not values:
+            continue
+        try:
+            numbers = [float(value) for value in values]
+        except ValueError:
+            continue
+        if not all(math.isfinite(number) for number in numbers):
+            continue
+        numeric_columns[header] = {
+            "count": len(numbers),
+            "min": min(numbers),
+            "max": max(numbers),
+            "mean": statistics.mean(numbers),
+            "median": statistics.median(numbers),
+        }
+    return {
+        "rows": len(data_rows),
+        "columns": len(headers),
+        "headers": headers,
+        "numeric_columns": numeric_columns,
+    }
+
+_SQL_IDENTIFIER_RE = (
+    r'(?:"(?:""|[^"])*"|`(?:``|[^`])*`|\[(?:\]\]|[^\]])*\]|[A-Za-z_][A-Za-z0-9_$]*)'
+)
+_CREATE_TABLE_NAME_RE = re.compile(
+    r"\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"
+    r"(" + _SQL_IDENTIFIER_RE + r"(?:\." + _SQL_IDENTIFIER_RE + r")*)",
+    re.IGNORECASE,
+)
+_SQL_TRAILING_NEWLINES_RE = re.compile(
+    r"<!-- markdown\.py:sql-trailing-newlines=(\d+) -->"
+)
+
+
+def json_to_markdown(value: Any, title: str = "JSON") -> str:
+    """Wrap JSON data as a Markdown document without performing I/O."""
+    return heading(title) + json_block(value)
+
+
+def markdown_to_json(content: str) -> Any:
+    """Read the first JSON fence emitted by :func:`json_to_markdown`."""
+    for block in extract_code_blocks(content):
+        if block["language"].lower() == "json":
+            return json.loads(block["code"])
+    raise ValueError("No fenced JSON block found")
+
+
+def redis_snapshot_to_markdown(snapshot: Any, title: str = "Redis snapshot") -> str:
+    """Document an already obtained Redis/RedisJSON snapshot without connecting."""
+    return json_to_markdown(snapshot, title)
+
+
+def sql_ddl_to_markdown(sql: str, title: str = "SQL schema") -> str:
+    """Document a supplied SQL DDL snapshot without parsing or executing it.
+
+    Input line endings are normalized to LF before fencing. The normalized
+    trailing-newline count is recorded in a Markdown comment so the companion
+    reader restores the LF-normalized snapshot exactly.
+    """
+    sql = sql.replace("\r\n", "\n").replace("\r", "\n")
+    names = _CREATE_TABLE_NAME_RE.findall(sql)
+    outline = bullet_list(["Table: " + name for name in names]) if names else ""
+    trailing_newlines = len(sql) - len(sql.rstrip("\n"))
+    body = sql.rstrip("\n")
+    fence = _adaptive_fence(sql, "`")
+    fenced = fence + "sql\n" + body + "\n" + fence + "\n"
+    marker = "<!-- markdown.py:sql-trailing-newlines=" + str(trailing_newlines) + " -->\n"
+    return heading(title) + outline + marker + fenced
+
+
+def markdown_to_sql_ddl(content: str) -> str:
+    """Return the first SQL snapshot without validating or executing it."""
+    for block in extract_code_blocks(content):
+        if block["language"].lower() == "sql":
+            marker = _SQL_TRAILING_NEWLINES_RE.search(content)
+            trailing_newlines = int(marker.group(1)) if marker else 0
+            return block["code"].rstrip("\n") + "\n" * trailing_newlines
+    raise ValueError("No fenced SQL block found")
 
 def key_value_table(
     data: Any,
