@@ -54,6 +54,19 @@ MARKDOWN_CASES = {
 }
 
 
+# Exact Markdown footnote syntax is intentionally not reconstructed by
+# html_to_markdown(). markdown_to_html() lowers [^id] refs/definitions to
+# ordinary HTML anchors + a footnotes section, so an exact textual round trip
+# is lossy by design. Keep that known loss visible without counting it as an
+# unexpected converter divergence.
+EXPECTED_LOSSY_CASES = {
+    "markdown:footnote": (
+        "Markdown footnote refs/definitions are lowered to HTML anchors and a "
+        "footnotes section; html_to_markdown does not reconstruct [^id] syntax."
+    ),
+}
+
+
 def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
@@ -136,21 +149,42 @@ def collect_report() -> dict[str, Any]:
             )
         )
 
-    divergent = [
-        f'{case["kind"]}:{case["id"]}' for case in cases
-        if not case["all_checks_pass"]
-    ]
+    raw_divergent: list[str] = []
+    expected_lossy: list[str] = []
+    divergent: list[str] = []
+
+    for case in cases:
+        case_key = f'{case["kind"]}:{case["id"]}'
+        if case["all_checks_pass"]:
+            case["classification"] = "stable"
+            continue
+
+        raw_divergent.append(case_key)
+        reason = EXPECTED_LOSSY_CASES.get(case_key)
+        if reason is not None:
+            case["classification"] = "expected_lossy"
+            case["expected_loss_reason"] = reason
+            expected_lossy.append(case_key)
+        else:
+            case["classification"] = "divergent"
+            divergent.append(case_key)
+
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "case_count": len(cases),
-        "stable_case_count": len(cases) - len(divergent),
+        "stable_case_count": sum(
+            case["classification"] == "stable" for case in cases
+        ),
+        "expected_lossy_case_count": len(expected_lossy),
         "divergent_case_count": len(divergent),
+        "raw_divergent_case_ids": raw_divergent,
+        "expected_lossy_case_ids": expected_lossy,
         "divergent_case_ids": divergent,
         "real_world_html_count": len(real_world_paths),
         "note": (
-            "Divergence is an audit finding, not automatically a bug. "
-            "Lossy or unsupported conversions should be documented and fixed "
-            "only in focused follow-up PRs."
+            "Exact round-trip loss is classified separately when it is an "
+            "explicit converter contract (expected_lossy). Remaining "
+            "divergence is observational and not automatically a bug."
         ),
         "cases": cases,
     }
@@ -171,6 +205,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"cases={report['case_count']} "
         f"stable={report['stable_case_count']} "
+        f"expected_lossy={report['expected_lossy_case_count']} "
         f"divergent={report['divergent_case_count']} "
         f"real_world={report['real_world_html_count']}"
     )

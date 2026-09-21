@@ -162,9 +162,14 @@ PR #42 broadens that observability into a converter-contract audit. It records
 HTML→Markdown parity plus Markdown→HTML→Markdown and Markdown→DOM→Markdown
 stability across core constructs (lists, tables, details, tasks, footnotes,
 attributes, malformed input, Unicode, URL safety, and empty input) and vendored
-real-world HTML. Divergence is reported, not automatically treated as a bug:
-lossy or unsupported behavior should be documented and handled in focused
-follow-up PRs rather than silently changed by the audit itself.
+real-world HTML. Audit schema v2 keeps every exact-round-trip mismatch in
+`raw_divergent_case_ids`, but separates explicitly documented irreversible
+contracts into `expected_lossy_case_ids` from still-unexplained
+`divergent_case_ids`. Markdown footnotes are the first expected-lossy case:
+`[^id]` refs/definitions are intentionally lowered to ordinary HTML anchors
+and a footnotes section, and `html_to_markdown()` does not reconstruct the
+original footnote syntax. Remaining divergence is observational, not
+automatically treated as a bug.
 
 ```bash
 python scripts/converter_contract_audit.py --out converter_contract_audit.json
