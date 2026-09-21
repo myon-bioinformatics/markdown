@@ -57,3 +57,14 @@ def test_converter_parity_report_does_not_force_dom_first():
         else "investigate_mismatches_before_dom_first"
     )
     assert report["decision_hint"] == expected
+
+
+def test_converter_parity_report_covers_reviewed_synthetic_categories():
+    report_module = _load_report_module()
+    required = {
+        "blockquote",
+        "inline_code",
+        "preformatted_code",
+        "alt_only_image",
+    }
+    assert required.issubset(report_module.SYNTHETIC_CASES)
