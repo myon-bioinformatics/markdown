@@ -62,17 +62,6 @@ def test_converter_parity_report_does_not_force_dom_first():
     assert report["decision_hint"] == expected
 
 
-def test_converter_parity_report_covers_reviewed_synthetic_categories():
-    report_module = _load_report_module()
-    required = {
-        "blockquote",
-        "inline_code",
-        "preformatted_code",
-        "alt_only_image",
-    }
-    assert required.issubset(report_module.SYNTHETIC_CASES)
-
-
 def test_converter_parity_report_covers_requested_synthetic_categories():
     report_module = _load_report_module()
     expected = {
@@ -80,8 +69,14 @@ def test_converter_parity_report_covers_requested_synthetic_categories():
         "inline_code",
         "preformatted_code",
         "alt_only_image",
+        "safe_relative_image",
     }
     assert expected <= set(report_module.SYNTHETIC_CASES)
+    assert report_module.SYNTHETIC_CASES["alt_only_image"] == '<img alt="description">'
+    assert (
+        report_module.SYNTHETIC_CASES["safe_relative_image"]
+        == '<img src="/missing.png" alt="description">'
+    )
 
 
 def test_converter_parity_report_flags_thin_real_world_corpus():
