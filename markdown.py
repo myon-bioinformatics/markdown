@@ -1,5 +1,5 @@
 # markdown.py
-# metadata: __all__=95 | base_sha=686f4c077baabe0d1e6ed29c86670d37fc41d060 | updated_at=2026-09-21T13:45:00Z
+# metadata: __all__=98 | base_sha=cae5618bd940ded29d4b61f71e4a11ee51faa9d9 | updated_at=2026-09-21T15:05:00Z
 """Stdlib-only Markdown utility functions.
 
 This module is intentionally a single file with no CLI / ``main`` entry point.
@@ -70,6 +70,9 @@ __all__ = [
     "markdown_tasks_to_mermaid_flowchart",
     "python_to_mermaid_class_diagram",
     "markdown_links_to_dot",
+    "inspect_to_markdown",
+    "argparse_to_markdown",
+    "distribution_to_markdown",
     "table",
     "aligned_table",
     "markdown_table_to_rows",
@@ -110,12 +113,15 @@ __all__ = [
     "UNSUPPORTED",
 ]
 
+import argparse
 import ast
 import html as html_module
+import inspect
 import configparser
 import csv
 import doctest
 import graphlib
+import importlib.metadata as importlib_metadata
 import io
 import json
 import math
@@ -195,6 +201,8 @@ SUPPORTED = {
         "mermaid_block / extract_mermaid_blocks (opaque Mermaid source only; no parsing/rendering)",
         "structural diagrams: headings -> Mermaid mindmap, task deps -> Mermaid flowchart, "
         "Python classes -> Mermaid classDiagram, Markdown links -> Graphviz DOT",
+        "reference generators: inspect object -> API reference, argparse parser -> CLI reference, "
+        "installed distribution metadata -> package reference",
         "table / key_value_table",
         "md_table / md_kv (*args-friendly wrappers, no list/dict pre-building needed)",
         "status_line",
@@ -1634,6 +1642,206 @@ def markdown_links_to_dot(content: str) -> str:
     out.append("}")
     return "\n".join(out) + "\n"
 
+
+def _reference_summary(value: Any) -> str:
+    """Return the first non-empty documentation line for a known object."""
+    try:
+        doc = inspect.getdoc(value) or ""
+    except (AttributeError, TypeError):
+        return ""
+    return next((line.strip() for line in doc.splitlines() if line.strip()), "")
+
+
+def _reference_signature(value: Any) -> str:
+    """Return a stable signature when ``inspect.signature`` supports value."""
+    try:
+        return str(inspect.signature(value))
+    except (TypeError, ValueError):
+        return ""
+
+
+def _reference_member(value: Any) -> Any:
+    """Unwrap class/static methods without invoking descriptors."""
+    if isinstance(value, (classmethod, staticmethod)):
+        return value.__func__
+    return value
+
+
+def inspect_to_markdown(obj: Any, *, title: str | None = None) -> str:
+    """Generate a small API reference for an already-provided Python object.
+
+    Module/class members are read from ``vars()`` so properties and other
+    descriptors are not invoked. No module discovery or dynamic import occurs.
+    """
+    if inspect.ismodule(obj):
+        kind = "module"
+    elif inspect.isclass(obj):
+        kind = "class"
+    elif inspect.isfunction(obj):
+        kind = "function"
+    elif inspect.ismethod(obj):
+        kind = "method"
+    elif inspect.isbuiltin(obj):
+        kind = "builtin"
+    else:
+        kind = type(obj).__name__
+
+    name = getattr(obj, "__qualname__", None) or getattr(obj, "__name__", None) or type(obj).__name__
+    module_name = getattr(obj, "__module__", "") or ""
+    doc = inspect.getdoc(obj) or ""
+    output = [heading(title or f"API: {name}")]
+    metadata_rows = [["Name", name], ["Kind", kind]]
+    if module_name:
+        metadata_rows.append(["Module", module_name])
+    signature = _reference_signature(obj)
+    if signature:
+        metadata_rows.append(["Signature", signature])
+    output.append(table(["Field", "Value"], metadata_rows))
+    if doc:
+        output.append(heading("Description", 2))
+        output.append(doc.rstrip() + "\n")
+
+    members: list[list[str]] = []
+    if inspect.ismodule(obj) or inspect.isclass(obj):
+        owner_module = getattr(obj, "__name__", "") if inspect.ismodule(obj) else ""
+        for member_name, raw_value in sorted(vars(obj).items()):
+            if member_name.startswith("_"):
+                continue
+            value = _reference_member(raw_value)
+            if not (inspect.isfunction(value) or inspect.isclass(value) or inspect.isbuiltin(value)):
+                continue
+            if owner_module and getattr(value, "__module__", owner_module) != owner_module:
+                continue
+            member_kind = "class" if inspect.isclass(value) else "function"
+            members.append([
+                member_name,
+                member_kind,
+                _reference_signature(value),
+                _reference_summary(value),
+            ])
+    if members:
+        output.append(heading("Public API", 2))
+        output.append(table(["Name", "Kind", "Signature", "Summary"], members))
+    return "\n".join(part.rstrip("\n") for part in output if part) + "\n"
+
+
+def _argparse_value(value: Any) -> str:
+    """Render argparse metadata without unstable object reprs."""
+    if value is argparse.SUPPRESS:
+        return "SUPPRESS"
+    if value is None:
+        return ""
+    if isinstance(value, (str, int, float, bool)):
+        return str(value)
+    if isinstance(value, (list, tuple)):
+        return ", ".join(_argparse_value(item) for item in value)
+    return type(value).__name__
+
+
+def argparse_to_markdown(parser: argparse.ArgumentParser, *, title: str | None = None) -> str:
+    """Generate deterministic CLI reference Markdown from an ArgumentParser.
+
+    The parser is never executed. Reading ``_actions`` is the only intentional
+    narrow dependency on argparse private state; public parser metadata and
+    ``format_usage()`` are used otherwise.
+    """
+    if not isinstance(parser, argparse.ArgumentParser):
+        raise TypeError("parser must be an argparse.ArgumentParser")
+
+    output = [heading(title or f"CLI: {parser.prog}")]
+    if parser.description:
+        output.append(str(parser.description).rstrip() + "\n")
+    usage = parser.format_usage().strip()
+    if usage:
+        output.append(heading("Usage", 2))
+        output.append(code_block(usage, lang="text"))
+
+    argument_rows: list[list[str]] = []
+    subcommands: list[list[str]] = []
+    for action in parser._actions:
+        if action.__class__.__name__ == "_SubParsersAction":
+            for command, child in sorted(action.choices.items()):
+                subcommands.append([command, child.description or _reference_summary(child) or ""])
+            continue
+        if action.dest == argparse.SUPPRESS:
+            continue
+        label = ", ".join(action.option_strings) if action.option_strings else action.dest
+        choices = ""
+        if action.choices is not None:
+            try:
+                choices = ", ".join(str(choice) for choice in action.choices)
+            except TypeError:
+                choices = _argparse_value(action.choices)
+        argument_rows.append([
+            label,
+            "yes" if action.required else "no",
+            _argparse_value(action.nargs),
+            choices,
+            _argparse_value(action.default),
+            "" if action.help is argparse.SUPPRESS else str(action.help or ""),
+        ])
+
+    if argument_rows:
+        output.append(heading("Arguments", 2))
+        output.append(table(
+            ["Argument", "Required", "Nargs", "Choices", "Default", "Help"],
+            argument_rows,
+        ))
+    if subcommands:
+        output.append(heading("Subcommands", 2))
+        output.append(table(["Command", "Description"], subcommands))
+    if parser.epilog:
+        output.append(heading("Epilog", 2))
+        output.append(str(parser.epilog).rstrip() + "\n")
+    return "\n".join(part.rstrip("\n") for part in output if part) + "\n"
+
+
+def distribution_to_markdown(name: str, *, title: str | None = None) -> str:
+    """Generate package metadata Markdown for an installed distribution."""
+    if not str(name).strip():
+        raise ValueError("distribution name must be non-empty")
+    try:
+        dist = importlib_metadata.distribution(str(name))
+    except importlib_metadata.PackageNotFoundError as exc:
+        raise ValueError(f"Distribution not found: {name}") from exc
+
+    metadata = dist.metadata
+    package_name = metadata.get("Name") or str(name)
+    output = [heading(title or f"Package: {package_name}")]
+    fields = [
+        ("Name", package_name),
+        ("Version", dist.version),
+        ("Summary", metadata.get("Summary", "")),
+        ("Requires-Python", metadata.get("Requires-Python", "")),
+        ("License", metadata.get("License", "")),
+        ("Author", metadata.get("Author", "")),
+        ("Author-email", metadata.get("Author-email", "")),
+        ("Home-page", metadata.get("Home-page", "")),
+    ]
+    output.append(table(["Field", "Value"], [[key, value] for key, value in fields if value]))
+
+    project_urls = sorted(metadata.get_all("Project-URL") or [])
+    if project_urls:
+        output.append(heading("Project URLs", 2))
+        rows = []
+        for value in project_urls:
+            label, separator, url = value.partition(",")
+            rows.append([label.strip() if separator else "", url.strip() if separator else value.strip()])
+        output.append(table(["Label", "URL"], rows))
+
+    requirements = sorted(dist.requires or [])
+    if requirements:
+        output.append(heading("Requires", 2))
+        output.append(bullet_list(requirements))
+
+    entry_points = sorted(dist.entry_points, key=lambda item: (item.group, item.name, item.value))
+    if entry_points:
+        output.append(heading("Entry Points", 2))
+        output.append(table(
+            ["Group", "Name", "Value"],
+            [[item.group, item.name, item.value] for item in entry_points],
+        ))
+    return "\n".join(part.rstrip("\n") for part in output if part) + "\n"
 
 def json_block(obj: Any, indent: int = 2) -> str:
     """Serialize ``obj`` as JSON and wrap it in a ```json fenced code block."""
