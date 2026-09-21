@@ -64,6 +64,7 @@ __all__ = [
     "markdown_table_to_records",
     "csv_to_markdown_table",
     "markdown_table_to_csv",
+    "markdown_table_statistics",
     "json_to_markdown",
     "markdown_to_json",
     "redis_snapshot_to_markdown",
@@ -93,6 +94,7 @@ import doctest
 import io
 import json
 import re
+import statistics
 import unicodedata
 from dataclasses import dataclass
 from html.parser import HTMLParser
@@ -1555,9 +1557,44 @@ def ipynb_to_markdown(notebook: str | dict[str, Any]) -> str:
 
 # === SECTION: structured snapshots ===
 
+def markdown_table_statistics(content: str) -> dict[str, Any]:
+    """Return a small, non-mutating summary of the first Markdown table.
+
+    Numeric aggregates appear only when every non-empty value in a column
+    parses as a number; no schema inference or value conversion is applied.
+    """
+    headers, data_rows = markdown_table_to_rows(content)
+    if not headers:
+        return {"rows": 0, "columns": 0, "headers": [], "numeric_columns": {}}
+    numeric_columns: dict[str, dict[str, float | int]] = {}
+    for index, header in enumerate(headers):
+        values = [row[index] for row in data_rows if index < len(row) and row[index] != ""]
+        if not values:
+            continue
+        try:
+            numbers = [float(value) for value in values]
+        except ValueError:
+            continue
+        numeric_columns[header] = {
+            "count": len(numbers),
+            "min": min(numbers),
+            "max": max(numbers),
+            "mean": statistics.mean(numbers),
+            "median": statistics.median(numbers),
+        }
+    return {
+        "rows": len(data_rows),
+        "columns": len(headers),
+        "headers": headers,
+        "numeric_columns": numeric_columns,
+    }
+
+_SQL_IDENTIFIER_RE = (
+    r'(?:"(?:""|[^"])*"|`(?:``|[^`])*`|\[(?:\]\]|[^\]])*\]|[A-Za-z_][A-Za-z0-9_$]*)'
+)
 _CREATE_TABLE_NAME_RE = re.compile(
     r"\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"
-    r"(\"[^\"]*\"|`[^`]*`|\[[^\]]*\]|[\w.]+)",
+    r"(" + _SQL_IDENTIFIER_RE + r"(?:\." + _SQL_IDENTIFIER_RE + r")*)",
     re.IGNORECASE,
 )
 _SQL_TRAILING_NEWLINES_RE = re.compile(
