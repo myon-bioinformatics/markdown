@@ -118,6 +118,12 @@ links/images. The shared host:port normalization also applies consistently, so
 an unambiguous value such as `example.com:8080/path` becomes the network-path
 reference `//example.com:8080/path`.
 
+PR #39 normalizes the empty-output boundary between the legacy and DOM
+HTML→Markdown paths. Empty or fully-suppressed input now returns `""` rather
+than a lone newline. Non-empty Markdown output keeps the existing contract of
+exactly one trailing newline. This deliberately treats empty-output
+normalization separately from broader whitespace or nested-list behavior.
+
 URL scheme safety for conversion paths is centralized in
 `_sanitize_url_scheme()`: new HTML→Markdown or Markdown→HTML URL-consuming
 conversion code must reuse that helper rather than introduce an independent
