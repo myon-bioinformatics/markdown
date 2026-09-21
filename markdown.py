@@ -1,5 +1,5 @@
 # markdown.py
-# metadata: __all__=81 | base_sha=e1f8bd086f547d032c3fa577a26a294602541dcb | date=2026-09-21
+# metadata: __all__=81 | base_sha=e1f8bd086f547d032c3fa577a26a294602541dcb | updated_at=2026-09-21T09:45:55Z
 """Stdlib-only Markdown utility functions.
 
 This module is intentionally a single file with no CLI / ``main`` entry point.
