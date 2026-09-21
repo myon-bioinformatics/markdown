@@ -61,18 +61,26 @@ def test_converter_contract_audit_reports_real_world_html():
     audit = _load_module()
     report = audit.collect_report()
 
-    assert report["schema_version"] == 1
+    assert report["schema_version"] == 2
     assert report["case_count"] == len(report["cases"])
     assert (
         report["case_count"]
-        == report["stable_case_count"] + report["divergent_case_count"]
+        == report["stable_case_count"]
+        + report["expected_lossy_case_count"]
+        + report["divergent_case_count"]
     )
     assert report["real_world_html_count"] >= 1
-    assert report["divergent_case_ids"] == [
+    assert report["raw_divergent_case_ids"] == [
         f'{case["kind"]}:{case["id"]}' for case in report["cases"]
         if not case["all_checks_pass"]
     ]
-    assert len(report["divergent_case_ids"]) == len(set(report["divergent_case_ids"]))
+    assert report["divergent_case_ids"] == [
+        f'{case["kind"]}:{case["id"]}' for case in report["cases"]
+        if case["classification"] == "divergent"
+    ]
+    assert len(report["raw_divergent_case_ids"]) == len(
+        set(report["raw_divergent_case_ids"])
+    )
 
 
 def test_converter_contract_audit_keeps_divergence_observational():
@@ -83,6 +91,7 @@ def test_converter_contract_audit_keeps_divergence_observational():
     for case in report["cases"]:
         assert set(case["checks"])
         assert case["all_checks_pass"] == all(case["checks"].values())
+        assert case["classification"] in {"stable", "expected_lossy", "divergent"}
 
 
 def test_blockquote_is_no_longer_a_converter_audit_divergence():
@@ -98,3 +107,19 @@ def test_mixed_lists_are_no_longer_converter_audit_divergences():
 
     assert "html:mixed_lists" not in report["divergent_case_ids"]
     assert "markdown:mixed_lists" not in report["divergent_case_ids"]
+
+
+def test_footnote_is_classified_as_expected_lossy():
+    audit = _load_module()
+    report = audit.collect_report()
+
+    assert "markdown:footnote" in report["raw_divergent_case_ids"]
+    assert "markdown:footnote" in report["expected_lossy_case_ids"]
+    assert "markdown:footnote" not in report["divergent_case_ids"]
+
+    footnote = next(
+        case for case in report["cases"]
+        if case["kind"] == "markdown" and case["id"] == "footnote"
+    )
+    assert footnote["classification"] == "expected_lossy"
+    assert "[^id]" in footnote["expected_loss_reason"]
