@@ -213,7 +213,7 @@ _REF_LINK_RE = re.compile(r"(?<!!)\[([^\]]+)\]\[([^\]]*)\]")
 _REF_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\[([^\]]+)\]")
 _ANGLE_URL_RE = re.compile(r"<(https?://[^>\s]+)>")
 _BARE_URL_RE = re.compile(r"(?<![\"'(\\[])(https?://[^\s)<>\"]+)")
-_DATA_URI_RE = re.compile(r"data:([^,\s]+),([^\s]*)", re.IGNORECASE)
+_DATA_URI_RE = re.compile(r"(?<![A-Za-z0-9_-])data:([^,\s]*),([^\s]*)", re.IGNORECASE)
 _HTML_TAG_RE = re.compile(r"</?([A-Za-z][A-Za-z0-9]*)\b[^>]*>", re.DOTALL)
 _HTML_IMG_RE = re.compile(
     r"<img\b([^>]*)/?>",
@@ -655,6 +655,13 @@ def extract_urls(content: str, *, base_url: str | None = None) -> list[str]:
 
 
 def extract_data_uris(content: str) -> list[dict[str, str]]:
+    """List well-formed literal data URIs without decoding their payloads.
+
+    The helper is observation-only: it does not fetch, decode, or execute
+    a URI. A missing media type uses the RFC default ``text/plain``.
+    """
+    found: list[dict[str, str]] = []
+    media_type_re = re.compile(r"^[A-Za-z][A-Za-z0-9!#def extract_data_uris(content: str) -> list[dict[str, str]]:
     """List literal ``data:`` URIs without decoding or fetching their payloads."""
     found: list[dict[str, str]] = []
     for match in _DATA_URI_RE.finditer(content):
@@ -667,6 +674,37 @@ def extract_data_uris(content: str) -> list[dict[str, str]]:
         meta = match.group(1)
         media_type = meta.split(";", 1)[0].lower()
         found.append({"uri": uri, "media_type": media_type, "metadata": meta})
+    return found^_.+-]*/[A-Za-z0-9!#def extract_data_uris(content: str) -> list[dict[str, str]]:
+    """List literal ``data:`` URIs without decoding or fetching their payloads."""
+    found: list[dict[str, str]] = []
+    for match in _DATA_URI_RE.finditer(content):
+        uri = match.group(0).rstrip("\"'>")
+        # The permissive payload pattern includes the closing parenthesis of a
+        # Markdown link.  Keep literal balanced parentheses in a data payload,
+        # but discard an unmatched Markdown delimiter.
+        while uri.endswith(")") and uri.count("(") < uri.count(")"):
+            uri = uri[:-1]
+        meta = match.group(1)
+        media_type = meta.split(";", 1)[0].lower()
+        found.append({"uri": uri, "media_type": media_type, "metadata": meta})
+    return found^_.+-]+$")
+    for match in _DATA_URI_RE.finditer(content):
+        metadata = match.group(1)
+        parts = metadata.split(";") if metadata else []
+        declared_type = parts[0].lower() if parts and parts[0] else ""
+        if declared_type and not media_type_re.match(declared_type):
+            continue
+        if any(part and "=" not in part and part.lower() != "base64" for part in parts[1:]):
+            continue
+        uri = match.group(0).rstrip("\"'>")
+        while uri.endswith(")") and uri.count("(") < uri.count(")"):
+            uri = uri[:-1]
+        uri = uri.rstrip(".,;:!?")
+        found.append({
+            "uri": uri,
+            "media_type": declared_type or "text/plain",
+            "metadata": metadata,
+        })
     return found
 
 
