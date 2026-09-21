@@ -82,7 +82,8 @@ def test_argparse_to_markdown_documents_arguments_and_subcommands():
     )
     parser.add_argument("path", help="Input path")
     parser.add_argument("--mode", choices=["fast", "safe"], default="safe", help="Run mode")
-    parser.add_argument("--count", type=int, required=True, help="Count")
+    parser.add_argument("--count", type=int, metavar="N", required=True, help="Count")
+    parser.add_argument("--verbose", action="store_true", help="Verbose output")
 
     subs = parser.add_subparsers(dest="command")
     child = subs.add_parser("serve", description="Serve content")
@@ -93,8 +94,9 @@ def test_argparse_to_markdown_documents_arguments_and_subcommands():
     assert result.startswith("# CLI: demo\n")
     assert "## Usage" in result
     assert "| path | yes |" in result
-    assert "| --mode | no |  | fast, safe | safe | Run mode |" in result
-    assert "| --count | yes |" in result
+    assert "| --mode | no |  | fast, safe | safe |  |  | store | Run mode |" in result
+    assert "| --count | yes |  |  |  | int | N | store | Count |" in result
+    assert "| --verbose | no |  |  | False |  |  | store_true | Verbose output |" in result
     assert "## Subcommands" in result
     assert "| serve | Serve content |" in result
     assert "## Epilog" in result
