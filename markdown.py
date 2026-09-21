@@ -404,55 +404,43 @@ def read_markdown(filepath: str, count_hashtags: bool = False) -> dict:
 def run_markdown_doctest(content: str, name: str = "<markdown>", globs: Any = None) -> doctest.TestResults:
     """Run Python doctest prompts found in fenced Markdown code blocks.
 
-    Only python, py and pycon fenced blocks participate. All other Markdown
-    is replaced with blank lines before parsing so doctest failure locations
-    continue to point at the original Markdown line.
-
-    This helper deliberately executes the doctest examples it is given. It
-    is intended for trusted project documentation and test suites, not for
-    untrusted Markdown supplied by an end user.
+    Only Python-family fences participate. The examples are executed, so this
+    helper is for trusted project documentation and test suites only.
     """
     source = _markdown_doctest_source(content)
     test = doctest.DocTestParser().get_doctest(
         source, dict(globs or {}), name, name, 0,
     )
     runner = doctest.DocTestRunner()
-    runner.run(test)
-    return runner.summarize(verbose=False)
+    runner.run(test, out=lambda _message: None)
+    return doctest.TestResults(runner.failures, runner.tries)
 
 
 def _markdown_doctest_source(content: str) -> str:
-    """Keep Python fence contents while preserving Markdown line numbers."""
+    """Keep Python fence contents while preserving Markdown line numbers.
+
+    Fence state is supplied by the shared P0 scanner rather than a parallel
+    fence parser. Fence info strings use their first token as the language.
+    """
+    lines = content.splitlines(keepends=True)
+    scanned = _scan_lines([line.rstrip("\r\n") for line in lines])
     output: list[str] = []
-    fence: tuple[str, int] | None = None
-    opener = re.compile(
-        r"^ {0,3}(`{3,}|~{3,})\s*(?:python|python3|py|pycon)\s*$",
-        re.I,
-    )
-
-
-    for line in content.splitlines(keepends=True):
-        if fence is None:
-            match = opener.match(line.rstrip("\r\n"))
-            if match:
-                marker = match.group(1)
-                fence = (marker[0], len(marker))
+    in_python = False
+    for line, item in zip(lines, scanned):
+        match = _FENCE_RE.match(item.text)
+        if item.is_fence_open:
+            info = match.group(2).strip() if match else ""
+            language = info.split()[0].lower() if info else ""
+            in_python = language in {"python", "python3", "py", "pycon"}
             output.append("\n" if line.endswith("\n") else "")
-            continue
-
-
-        character, width = fence
-        close = re.match(
-            r"^ {0,3}(%s{%d,})\s*$" % (re.escape(character), width),
-            line.rstrip("\r\n"),
-        )
-        if close:
-            fence = None
+        elif item.is_fence_close:
+            in_python = False
             output.append("\n" if line.endswith("\n") else "")
-        else:
+        elif in_python:
             output.append(line)
+        else:
+            output.append("\n" if line.endswith("\n") else "")
     return "".join(output)
-
 
 # ---------------------------------------------------------------------------
 # Structure extraction
