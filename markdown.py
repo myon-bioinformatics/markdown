@@ -1653,7 +1653,7 @@ def ipynb_to_markdown(notebook: str | dict[str, Any]) -> str:
     return "".join(parts)
 
 
-_PY_PERCENT_MARKER_RE = re.compile(r"^#\\s*%%(?:\\s+\\[markdown\\])?\\s*$")
+_PY_PERCENT_MARKER_RE = re.compile(r"^#\s*%%(?:\s+\[markdown\])?\s*$")
 
 
 def _py_percent_marker_rows(content: str) -> dict[int, str]:
@@ -1690,18 +1690,18 @@ def markdown_to_py_percent(content: str) -> str:
         source = cell.get("source", [])
         text = source if isinstance(source, str) else "".join(source)
         if cell.get("cell_type") == "markdown":
-            out.append("# %% [markdown]\\n")
+            out.append("# %% [markdown]\n")
             for line in text.splitlines(keepends=True):
-                body = line.rstrip("\\r\\n")
-                ending = "\\n" if line.endswith(("\\n", "\\r")) else ""
+                body = line.rstrip("\r\n")
+                ending = "\n" if line.endswith(("\n", "\r")) else ""
                 out.append(("# " + body if body else "#") + ending)
-            if text and not text.endswith(("\\n", "\\r")):
-                out.append("\\n")
+            if text and not text.endswith(("\n", "\r")):
+                out.append("\n")
         elif cell.get("cell_type") == "code":
-            out.append("# %%\\n")
+            out.append("# %%\n")
             out.append(text)
-            if text and not text.endswith(("\\n", "\\r")):
-                out.append("\\n")
+            if text and not text.endswith(("\n", "\r")):
+                out.append("\n")
     return "".join(out)
 
 
@@ -1712,7 +1712,7 @@ def py_percent_to_markdown(content: str) -> str:
     be blank or comment lines. Code-cell source is copied verbatim; it is never
     parsed through AST/unparse, so ordinary Python comments are preserved.
     """
-    normalized = content.replace("\\r\\n", "\\n").replace("\\r", "\\n")
+    normalized = content.replace("\r\n", "\n").replace("\r", "\n")
     marker_rows = _py_percent_marker_rows(normalized)
     if not marker_rows:
         raise ValueError("No py:percent cell markers found")
@@ -1726,24 +1726,24 @@ def py_percent_to_markdown(content: str) -> str:
         body = lines[marker_index + 1:end]
         if kind == "markdown":
             for line_number, line in enumerate(body, marker_index + 2):
-                raw = line[:-1] if line.endswith("\\n") else line
+                raw = line[:-1] if line.endswith("\n") else line
                 if raw == "":
-                    parts.append("\\n" if line.endswith("\\n") else "")
+                    parts.append("\n" if line.endswith("\n") else "")
                 elif raw == "#":
-                    parts.append("\\n" if line.endswith("\\n") else "")
+                    parts.append("\n" if line.endswith("\n") else "")
                 elif raw.startswith("# "):
-                    parts.append(raw[2:] + ("\\n" if line.endswith("\\n") else ""))
+                    parts.append(raw[2:] + ("\n" if line.endswith("\n") else ""))
                 else:
                     raise ValueError(
                         f"py:percent markdown cell line {line_number} must be a comment"
                     )
         else:
             code = "".join(body)
-            parts.append("~~~python\\n")
+            parts.append("~~~python\n")
             parts.append(code)
-            if code and not code.endswith("\\n"):
-                parts.append("\\n")
-            parts.append("~~~\\n")
+            if code and not code.endswith("\n"):
+                parts.append("\n")
+            parts.append("~~~\n")
     return "".join(parts)
 
 # === SECTION: structured snapshots ===
