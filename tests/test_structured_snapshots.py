@@ -124,7 +124,12 @@ def test_structured_markdown_rejects_non_finite_float():
 
 
 def test_markdown_to_structured_rejects_noncanonical_headers():
-    source = "| key | value |\n| --- | --- |\n| a | 1 |\n"
+    source = (
+        "<!-- markdown.py:structured-v1 -->\n"
+        "| key | value |\n"
+        "| --- | --- |\n"
+        "| a | 1 |\n"
+    )
     with pytest.raises(ValueError, match="canonical"):
         md.markdown_to_structured(source)
 
