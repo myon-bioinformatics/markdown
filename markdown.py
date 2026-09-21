@@ -2515,6 +2515,7 @@ class _HTMLToMarkdownParser(HTMLParser):
         self._in_thead = False
         self._block_attr_suffixes: list[str] = []
         self._details_stack: list[dict[str, Any]] = []
+        self._blockquote_paragraphs: list[int] = []
         self._open_tags: list[str] = []
 
     def _emit(self, text: str) -> None:
@@ -2625,8 +2626,14 @@ class _HTMLToMarkdownParser(HTMLParser):
             self._emit("\n\n" + ("#" * level) + " ")
             self._block_attr_suffixes.append(_html_attrs_to_pandoc_suffix(attr))
         elif tag == "p":
-            self._emit("\n\n")
-            self._block_attr_suffixes.append(_html_attrs_to_pandoc_suffix(attr))
+            if parent_tag == "blockquote" and self._blockquote_paragraphs:
+                if self._blockquote_paragraphs[-1] > 0:
+                    self._emit("\n>\n> ")
+                self._blockquote_paragraphs[-1] += 1
+                self._block_attr_suffixes.append("")
+            else:
+                self._emit("\n\n")
+                self._block_attr_suffixes.append(_html_attrs_to_pandoc_suffix(attr))
         elif tag == "br":
             self._emit("  \n")
         elif tag == "hr":
@@ -2671,6 +2678,10 @@ class _HTMLToMarkdownParser(HTMLParser):
             if attr.get("type", "").lower() == "checkbox":
                 mark = "x" if "checked" in attr else " "
                 self._emit(f"[{mark}]")
+        elif tag == "blockquote":
+            if self._blockquote_paragraphs:
+                self._blockquote_paragraphs.pop()
+            self._emit("\n\n")
         elif tag in {"ul", "ol"}:
             self._list_stack.append(tag)
             self._li_index.append(0)
@@ -2703,6 +2714,7 @@ class _HTMLToMarkdownParser(HTMLParser):
             if current.get("special") and parent_tag == "details":
                 current["summary_start"] = len(self.parts)
         elif tag == "blockquote":
+            self._blockquote_paragraphs.append(0)
             self._emit("\n\n> ")
 
     def handle_endtag(self, tag: str) -> None:
@@ -2752,6 +2764,10 @@ class _HTMLToMarkdownParser(HTMLParser):
             )
             if suffix:
                 self._emit(suffix)
+            if tag == "p" and self._blockquote_paragraphs:
+                parent_tag = self._open_tags[-1] if self._open_tags else None
+                if parent_tag == "blockquote":
+                    return
             self._emit("\n\n")
         elif tag in {"strong", "b"}:
             self._emit("**")
