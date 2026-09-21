@@ -41,6 +41,11 @@ def test_data_uri_keeps_ordinary_payload_bytes_around_unmatched_parens():
         ("data:text/plain,x)y)z", "data:text/plain,x)y)z"),
         ("data:text/plain,payload_with)inside)", "data:text/plain,payload_with)inside"),
         ("data:text/plain,))extra", "data:text/plain,))extra"),
+        ("data:text/plain,)hello", "data:text/plain,)hello"),
+        ("data:text/plain,a)b)c", "data:text/plain,a)b)c"),
+        # A trailing run that contains no ")" at all is never a delimiter
+        # run, even if it starts right after an unmatched ")" further back.
+        ("data:text/plain,hello)world!", "data:text/plain,hello)world!"),
     ]
     for source, expected in cases:
         result = md.extract_data_uris(source)

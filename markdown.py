@@ -673,13 +673,18 @@ def extract_data_uris(content: str) -> list[dict[str, str]]:
         if any(part and "=" not in part and part.lower() != "base64" for part in parts[1:]):
             continue
         uri = match.group(0).rstrip("\\\"'>")
-        # Drop only unmatched Markdown closing parens, plus trailing prose
-        # punctuation that was only wrapping them (e.g. "...hello)." from
-        # "(data:...,hello)."). Stop the moment the trailing character is
-        # neither -- an ordinary payload character is never a delimiter,
-        # even while the paren count is still imbalanced (e.g. "a)b").
-        while uri and uri.count("(") < uri.count(")") and uri[-1] in ").,;:!?":
-            uri = uri[:-1]
+        # Drop a trailing run of only ")" / prose punctuation, but only when
+        # that whole run contains the unmatched Markdown ")" it is wrapping
+        # -- e.g. "...hello)." from "(data:...,hello)." strips both chars,
+        # while "...hello)world!" or "...x)y" leave payload bytes (and any
+        # punctuation past them) untouched, since the run stops at the
+        # first character that isn't ")" or punctuation.
+        trim = len(uri)
+        while trim > 0 and uri[trim - 1] in ").,;:!?":
+            trim -= 1
+        tail = uri[trim:]
+        if ")" in tail and uri.count("(") < uri.count(")"):
+            uri = uri[:trim]
         found.append({
             "uri": uri,
             "media_type": declared_type or "text/plain",
