@@ -22,16 +22,18 @@ def test_converter_parity_report_is_deterministic_and_covers_real_html():
     second = report_module.collect_report()
 
     assert first == second
-    assert first["schema_version"] == 1
+    assert first["schema_version"] == 2
     assert first["case_count"] >= len(report_module.SYNTHETIC_CASES) + 1
     assert first["case_count"] == first["match_count"] + first["mismatch_count"]
     assert first["mismatch_ids"] == [
         case["id"] for case in first["cases"] if not case["equal"]
     ]
-    assert any(
-        case["source"].startswith("fixtures/benchmark/")
-        for case in first["cases"]
-    )
+    real_world_cases = [
+        case for case in first["cases"]
+        if case["source"].startswith("fixtures/benchmark/")
+    ]
+    assert first["real_world_case_count"] == len(real_world_cases)
+    assert first["real_world_case_count"] >= 1
 
 
 def test_converter_parity_report_hashes_both_outputs():
@@ -51,11 +53,12 @@ def test_converter_parity_report_does_not_force_dom_first():
     report_module = _load_report_module()
     report = report_module.collect_report()
 
-    expected = (
-        "candidate_for_dom_first_evaluation"
-        if report["mismatch_count"] == 0
-        else "investigate_mismatches_before_dom_first"
-    )
+    if report["mismatch_count"]:
+        expected = "investigate_mismatches_before_dom_first"
+    elif report["real_world_case_count"] < 2:
+        expected = "expand_real_world_corpus_before_dom_first"
+    else:
+        expected = "candidate_for_dom_first_evaluation"
     assert report["decision_hint"] == expected
 
 
@@ -68,3 +71,23 @@ def test_converter_parity_report_covers_reviewed_synthetic_categories():
         "alt_only_image",
     }
     assert required.issubset(report_module.SYNTHETIC_CASES)
+
+
+def test_converter_parity_report_covers_requested_synthetic_categories():
+    report_module = _load_report_module()
+    expected = {
+        "blockquote",
+        "inline_code",
+        "preformatted_code",
+        "alt_only_image",
+    }
+    assert expected <= set(report_module.SYNTHETIC_CASES)
+
+
+def test_converter_parity_report_flags_thin_real_world_corpus():
+    report_module = _load_report_module()
+    report = report_module.collect_report()
+
+    assert "real-world html coverage" in report["corpus_note"].lower()
+    if report["real_world_case_count"] < 2 and report["mismatch_count"] == 0:
+        assert report["decision_hint"] == "expand_real_world_corpus_before_dom_first"
