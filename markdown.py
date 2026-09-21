@@ -2289,7 +2289,7 @@ _DOM_COMMON_ATTRS = frozenset({
 
 def _dom_safe_url(value: str) -> str:
     """Return a safe URL-ish attribute value, or an empty string when rejected."""
-    cleaned = value.strip()
+    cleaned = "".join(ch for ch in value.strip() if ord(ch) >= 0x20 and ord(ch) != 0x7F)
     if not cleaned:
         return ""
     if cleaned.startswith(("#", "/", "./", "../")):
