@@ -129,3 +129,18 @@ def test_dom_helpers_are_public_and_do_not_require_io_or_network():
         "markdown_to_dom",
     ):
         assert name in md.__all__
+
+
+def test_control_characters_cannot_bypass_url_scheme_checks():
+    html = (
+        '<a href="javascript\x00:alert(1)">nul</a>'
+        '<a href="java\tscript:alert(1)">tab</a>'
+        '<a href="java\nscript:alert(1)">newline</a>'
+    )
+    sanitized = md.dom_to_html(md.parse_html_dom(html))
+
+    assert "javascript:" not in sanitized
+    assert "java\x00script:" not in sanitized
+    assert "java\tscript:" not in sanitized
+    assert "java\nscript:" not in sanitized
+    assert 'href=' not in sanitized
