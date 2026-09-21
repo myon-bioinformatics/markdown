@@ -18,11 +18,7 @@ PARITY_CASES = {
 
 
 KNOWN_DOM_LEGACY_GAPS = {
-    "table_structural_tags": (
-        "<table><caption>Report caption</caption>"
-        "<colgroup><col></colgroup>"
-        "<tbody><tr><td>value</td></tr></tbody></table>"
-    ),
+    "unsafe_link_sanitization": '<p><a href="javascript:alert(1)">click</a></p>',
 }
 
 
@@ -54,5 +50,13 @@ def test_dom_path_does_not_call_public_html_to_markdown(monkeypatch):
         raise AssertionError("dom_to_markdown must not call public html_to_markdown")
 
     monkeypatch.setattr(md, "html_to_markdown", fail_public_wrapper)
-    result = md.dom_to_markdown(md.parse_html_dom("<p>Hello</p>"))
-    assert result == "Hello\n"
+
+    assert md.dom_to_markdown(md.parse_html_dom("<p>Hello</p>")) == "Hello\n"
+
+    details = md.dom_to_markdown(
+        md.parse_html_dom(
+            "<details><summary>More</summary><p>Body <strong>text</strong>.</p></details>"
+        )
+    )
+    assert details.startswith(":::details More\n")
+    assert "Body **text**." in details
