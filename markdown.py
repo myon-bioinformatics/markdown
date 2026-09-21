@@ -1,5 +1,5 @@
 # markdown.py
-# metadata: __all__=81 | base_sha=e1f8bd086f547d032c3fa577a26a294602541dcb | updated_at=2026-09-21T09:45:55Z
+# metadata: __all__=83 | base_sha=e1f8bd086f547d032c3fa577a26a294602541dcb | updated_at=2026-09-21T10:05:00Z
 """Stdlib-only Markdown utility functions.
 
 This module is intentionally a single file with no CLI / ``main`` entry point.
@@ -78,6 +78,8 @@ __all__ = [
     "redis_snapshot_to_markdown",
     "sql_ddl_to_markdown",
     "markdown_to_sql_ddl",
+    "ini_to_markdown",
+    "markdown_to_ini",
     "markdown_to_ipynb",
     "ipynb_to_markdown",
     "key_value_table",
@@ -97,6 +99,7 @@ __all__ = [
 ]
 
 import html as html_module
+import configparser
 import csv
 import doctest
 import io
@@ -156,6 +159,9 @@ SUPPORTED = {
         "kramdown_to_markdown: strip known heading/paragraph IAL back to plain Markdown "
         "(attributes dropped; {:toc} / {::extensions} / Liquid / front matter left as-is)",
         "alert_stylesheet / default_stylesheet (compact CSS strings for markdown_to_html output)",
+        "ini_to_markdown / markdown_to_ini (configparser section/key/string-value <-> "
+        "heading+table, DEFAULT inheritance kept structural, values stored as JSON "
+        "strings; comments/whitespace/delimiter style are not round-tripped)",
     ],
     "generation": [
         "heading / bold / italic / strikethrough / blockquote / horizontal_rule",
@@ -214,6 +220,9 @@ UNSUPPORTED = {
         "raw inline HTML tags are escaped, not passed through, by markdown_to_html",
         "kramdown_to_markdown drops IAL attributes (lossy); markdown_to_html does not "
         "apply IAL as HTML id/class",
+        "ini_to_markdown / markdown_to_ini drop comments, original whitespace, and "
+        "the =/: delimiter choice; markdown_to_ini lowercases keys via configparser's "
+        "default option normalization; interpolation (%(...)s) is disabled, not resolved",
     ],
 }
 
@@ -1733,6 +1742,83 @@ def markdown_to_sql_ddl(content: str) -> str:
             trailing_newlines = int(marker.group(1)) if marker else 0
             return block["code"].rstrip("\n") + "\n" * trailing_newlines
     raise ValueError("No fenced SQL block found")
+
+
+def _ini_section_heading(name: str) -> str:
+    return "[" + name + "]"
+
+
+def _ini_section_name(title: str) -> str | None:
+    if title.startswith("[") and title.endswith("]") and len(title) >= 2:
+        return title[1:-1]
+    return None
+
+
+def _ini_items_table(items: dict[str, str]) -> str:
+    rows = [[json.dumps(key), json.dumps(value)] for key, value in items.items()]
+    return table(["Key", "Value"], rows)
+
+
+def ini_to_markdown(ini_text: str, title: str = "INI") -> str:
+    """Document an INI file's section/key/string-value structure as Markdown.
+
+    Each section (including ``[DEFAULT]``, when present) becomes a level-2
+    heading with a ``Key``/``Value`` table; only a section's own keys are
+    listed, so ``[DEFAULT]`` inheritance is not flattened into the sections
+    that use it. Keys and values are stored as JSON strings so pipes,
+    backslashes, embedded newlines, and Unicode never depend on Markdown
+    table escaping to stay unambiguous. Interpolation (``%(...)s``) is
+    disabled -- ``%`` is kept as a literal character.
+
+    Comments, original whitespace/indentation, and the ``=``/``:``
+    delimiter choice are not preserved; use :func:`markdown_to_ini` to
+    recover a canonical (not byte-identical) INI file.
+    """
+    parser = configparser.ConfigParser(interpolation=None)
+    parser.read_string(ini_text)
+    out = [heading(title)]
+    default_items = parser.defaults()
+    if default_items:
+        out.append(heading(_ini_section_heading("DEFAULT"), level=2))
+        out.append(_ini_items_table(default_items))
+    for section in parser.sections():
+        out.append(heading(_ini_section_heading(section), level=2))
+        out.append(_ini_items_table(parser._sections[section]))
+    return "".join(out)
+
+
+def markdown_to_ini(content: str) -> str:
+    """Rebuild a canonical INI file from a document made by :func:`ini_to_markdown`.
+
+    Section order, each section's own keys, and ``[DEFAULT]`` inheritance
+    are restored; comments, original spacing, and delimiter style are not
+    (:func:`configparser.ConfigParser.write` regenerates canonical
+    formatting). Key names go through ``configparser``'s default
+    case-insensitive normalization (lowercased).
+
+    :raises ValueError: if a ``[Section]``-titled heading's body is not a
+        ``Key``/``Value`` table produced by :func:`ini_to_markdown`.
+    """
+    parser = configparser.ConfigParser(interpolation=None)
+    for entry in split_sections(content):
+        name = _ini_section_name(entry["title"])
+        if name is None:
+            continue
+        headers, rows = markdown_table_to_rows(entry["content"])
+        if headers != ["Key", "Value"]:
+            raise ValueError(f"Section {entry['title']!r} is missing its Key/Value table")
+        items = {json.loads(key): json.loads(value) for key, value in rows}
+        if name == "DEFAULT":
+            for key, value in items.items():
+                parser["DEFAULT"][key] = value
+        else:
+            parser.add_section(name)
+            for key, value in items.items():
+                parser.set(name, key, value)
+    out = io.StringIO()
+    parser.write(out)
+    return out.getvalue()
+
 
 def key_value_table(
     data: Any,
