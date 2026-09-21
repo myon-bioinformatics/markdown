@@ -21,6 +21,70 @@ jobs:
       - name: Run pytest
         run: pytest -q
 
+
+  module-metadata:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Summarize markdown.py metadata
+        shell: bash
+        run: |
+          python - <<'PY'
+          import ast
+          import os
+          import re
+          from pathlib import Path
+
+          path = Path("markdown.py")
+          text = path.read_text(encoding="utf-8")
+          match = re.search(
+              r"^# metadata: __all__=(\d+) \| base_sha=([0-9a-f]{40}) "
+              r"\| updated_at=([^\s]+)$",
+              text,
+              re.MULTILINE,
+          )
+          if not match:
+              print("::warning::markdown.py metadata header is missing or malformed")
+              raise SystemExit(0)
+
+          declared_count = int(match.group(1))
+          base_sha = match.group(2)
+          updated_at = match.group(3)
+
+          tree = ast.parse(text)
+          actual_count = None
+          for node in tree.body:
+              if isinstance(node, ast.Assign):
+                  if any(isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets):
+                      if isinstance(node.value, (ast.List, ast.Tuple)):
+                          actual_count = len(node.value.elts)
+                      break
+
+          if actual_count is None:
+              print("::warning::Could not determine __all__ count")
+              actual_display = "unknown"
+          else:
+              actual_display = str(actual_count)
+              if actual_count != declared_count:
+                  print(
+                      f"::warning::metadata __all__={declared_count} "
+                      f"but actual __all__ has {actual_count} entries"
+                  )
+
+          summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary:
+              with open(summary, "a", encoding="utf-8") as fh:
+                  fh.write("## markdown.py metadata\n\n")
+                  fh.write("| field | value |\n|---|---|\n")
+                  fh.write(f"| declared __all__ | {declared_count} |\n")
+                  fh.write(f"| actual __all__ | {actual_display} |\n")
+                  fh.write(f"| base SHA | `{base_sha}` |\n")
+                  fh.write(f"| updated at (UTC) | `{updated_at}` |\n")
+          PY
+
   frontend-smoke:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
