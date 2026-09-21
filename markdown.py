@@ -2516,6 +2516,7 @@ class _HTMLToMarkdownParser(HTMLParser):
         self._block_attr_suffixes: list[str] = []
         self._details_stack: list[dict[str, Any]] = []
         self._blockquote_paragraphs: list[int] = []
+        self._skip_next_list_structural_whitespace = False
         self._open_tags: list[str] = []
 
     def _emit(self, text: str) -> None:
@@ -2818,7 +2819,9 @@ class _HTMLToMarkdownParser(HTMLParser):
                 self._list_stack.pop()
             if self._li_index:
                 self._li_index.pop()
-            if not self._list_stack:
+            if self._list_stack:
+                self._skip_next_list_structural_whitespace = True
+            else:
                 self._emit("\n")
 
     def handle_data(self, data: str) -> None:
@@ -2826,6 +2829,10 @@ class _HTMLToMarkdownParser(HTMLParser):
             return
         if self._table_depth and self._table_cell is None:
             return
+        if self._skip_next_list_structural_whitespace:
+            self._skip_next_list_structural_whitespace = False
+            if not data.strip():
+                return
         if (
             not data.strip()
             and self._open_tags
