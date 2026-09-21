@@ -156,3 +156,18 @@ def test_details_html_to_markdown_matches_dom_contract():
         dom = md.dom_to_markdown(md.parse_html_dom(html))
         assert legacy == expected, html
         assert dom == expected, html
+
+
+COMMENT_WHITESPACE_PARITY_CASES = [
+    ("<p>A <!-- comment --> B</p>", "A B\n"),
+    ("<p>A<!-- comment --> B</p>", "A B\n"),
+    ("<p>A <!-- comment -->B</p>", "A B\n"),
+]
+
+
+def test_comment_boundaries_do_not_duplicate_collapsed_whitespace():
+    for html, expected in COMMENT_WHITESPACE_PARITY_CASES:
+        legacy = md.html_to_markdown(html)
+        dom = md.dom_to_markdown(md.parse_html_dom(html))
+        assert legacy == expected, html
+        assert dom == expected, html
