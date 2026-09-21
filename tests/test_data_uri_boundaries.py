@@ -32,6 +32,21 @@ def test_data_uri_drops_unmatched_paren_followed_by_sentence_punctuation():
     assert balanced[0]["uri"] == "data:text/plain,a(b)c"
 
 
+def test_data_uri_keeps_ordinary_payload_bytes_around_unmatched_parens():
+    """An imbalanced paren count must not license eating arbitrary trailing
+    payload characters -- only ")" and prose punctuation are delimiters;
+    anything else stops the strip immediately, even while still imbalanced."""
+    cases = [
+        ("data:text/plain,a)b", "data:text/plain,a)b"),
+        ("data:text/plain,x)y)z", "data:text/plain,x)y)z"),
+        ("data:text/plain,payload_with)inside)", "data:text/plain,payload_with)inside"),
+        ("data:text/plain,))extra", "data:text/plain,))extra"),
+    ]
+    for source, expected in cases:
+        result = md.extract_data_uris(source)
+        assert result[0]["uri"] == expected, source
+
+
 def test_data_uri_rejects_prefixed_false_positives():
     assert md.extract_data_uris("notdata:text/plain,x") == []
     assert md.extract_data_uris("foo_data:text/plain,x") == []
