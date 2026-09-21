@@ -14,15 +14,17 @@ def test_sql_snapshot_preserves_multiline_values_and_trailing_newlines():
 
 def test_sql_snapshot_lists_quoted_and_bracket_table_names():
     tick = chr(96)
-    ddl = 'CREATE TABLE "my table" (id int);\nCREATE TABLE ' + tick + "order items" + tick + '
- (id int);\nCREATE TABLE [select] (id int);'
+    ddl = (
+        'CREATE TABLE "my table" (id int);\\n'
+        + "CREATE TABLE " + tick + "order items" + tick + " (id int);\\n"
+        + "CREATE TABLE [select] (id int);"
+    )
     document = md.sql_ddl_to_markdown(ddl)
 
     assert 'Table: "my table"' in document
     assert "Table: " + tick + "order items" + tick in document
     assert "Table: [select]" in document
     assert md.markdown_to_sql_ddl(document) == ddl
-
 
 def test_sql_snapshot_lists_qualified_and_escaped_quoted_names():
     ddl = 'CREATE TABLE "schema"."my table" (id int);\nCREATE TABLE "my ""table""" (id int);'
