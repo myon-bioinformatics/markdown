@@ -93,6 +93,30 @@ containers so safe text and supported descendants remain available. Existing
 layer in this first contract-focused step.
 
 
+## Converter integration scaffold
+
+The HTML→Markdown compatibility engine is intentionally split from its public
+entry point. `html_to_markdown()` remains the stable compatibility wrapper,
+while `_html_to_markdown_impl()` is the internal parser engine shared by the
+lightweight DOM path. This prevents a future recursion loop if the public HTML
+entry point is ever evaluated for a DOM-first implementation.
+
+PR #37 treats DOM/legacy parity as an **observability contract**, not as a
+requirement that every existing path already be identical. Representative
+supported cases are required to stay equal, while known pre-existing gaps are
+recorded separately so later work can decide whether to close them without
+mixing behavior changes into this refactor. In particular, lightweight DOM
+sanitization currently makes unsupported structural tags such as `caption`,
+`colgroup`, and `col` transparent before the legacy HTML→Markdown table
+engine sees them. That difference is deliberate baseline data for subsequent
+converter-integration work, not a reason to silently expand #37's scope.
+
+DOM-specific preprocessing such as `details` handling stays in
+`dom_to_markdown()`; the internal HTML engine remains DOM-agnostic. Nested-list
+behavior, whitespace normalization, safe-tag expansion, and any eventual
+DOM-first switch are intentionally deferred to later PRs after this scaffold
+has made their effects measurable.
+
 ## Context helpers
 
 The stdlib-only context helpers added in PR #12 are deterministic preparation
