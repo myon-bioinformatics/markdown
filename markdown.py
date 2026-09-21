@@ -673,19 +673,23 @@ def extract_data_uris(content: str) -> list[dict[str, str]]:
         if any(part and "=" not in part and part.lower() != "base64" for part in parts[1:]):
             continue
         uri = match.group(0).rstrip("\"'>")
-        # Drop an unmatched Markdown ")" and any prose punctuation trailing
-        # *after* it (e.g. "...hello)." from "(data:...,hello)."), but keep
-        # payload punctuation that sits *before* the paren (e.g. the "!" in
-        # "(data:...,Hello!)" is data, not a delimiter). Find the rightmost
-        # ")" in the trailing ")"/punctuation run and cut from there -- text
-        # to its left in the run is payload; text at/after it is wrapping.
+        # Drop unmatched Markdown ")" chars and any prose punctuation
+        # trailing *after* them (e.g. "...hello)." from "(data:...,hello).",
+        # or "...hello))" from a prose paren wrapping a "(...)" link/image),
+        # but keep payload punctuation that sits *before* them (e.g. the "!"
+        # in "(data:...,Hello!)" is data, not a delimiter). Multiple stacked
+        # wrappers can leave more than one unmatched ")" at the end, so cut
+        # at the excess-th ")" from the right in the trailing run, not
+        # always just the last one.
         trim = len(uri)
         while trim > 0 and uri[trim - 1] in ").,;:!?":
             trim -= 1
         tail = uri[trim:]
-        last_paren = tail.rfind(")")
-        if last_paren != -1 and uri.count("(") < uri.count(")"):
-            uri = uri[: trim + last_paren]
+        paren_positions = [i for i, char in enumerate(tail) if char == ")"]
+        excess = uri.count(")") - uri.count("(")
+        if paren_positions and excess > 0:
+            cut_at = paren_positions[-min(excess, len(paren_positions))]
+            uri = uri[: trim + cut_at]
         found.append({
             "uri": uri,
             "media_type": declared_type or "text/plain",

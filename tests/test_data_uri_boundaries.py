@@ -75,6 +75,23 @@ def test_data_uri_trailing_backslash_is_kept():
     assert result[0]["uri"] == "data:text/plain,ends\\"
 
 
+def test_data_uri_strips_all_excess_closers_from_stacked_wrappers():
+    """A prose paren wrapping a Markdown link/image leaves 2+ unmatched
+    ")" at the end -- the cut must remove all of the excess, not just the
+    single rightmost one, while still keeping a genuinely balanced payload
+    paren that sits inside that excess."""
+    cases = [
+        ("(see ![x](data:text/plain,hello))", "data:text/plain,hello"),
+        ("(see ![x](data:text/plain,a(b)))", "data:text/plain,a(b)"),
+        ("((data:text/plain,hello))", "data:text/plain,hello"),
+        ("![x](data:text/plain,hello))", "data:text/plain,hello"),
+        ("See (data:text/plain,a(b))).", "data:text/plain,a(b)"),
+    ]
+    for source, expected in cases:
+        result = md.extract_data_uris(source)
+        assert result[0]["uri"] == expected, source
+
+
 def test_data_uri_rejects_prefixed_false_positives():
     assert md.extract_data_uris("notdata:text/plain,x") == []
     assert md.extract_data_uris("foo_data:text/plain,x") == []
