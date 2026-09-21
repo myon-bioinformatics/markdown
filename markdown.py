@@ -1435,12 +1435,10 @@ def markdown_table_statistics(content: str) -> dict[str, Any]:
     Numeric columns receive count, minimum, maximum, mean, and median.
     Empty or mixed columns are absent from numeric_columns.
     """
-    rows = markdown_table_to_rows(content)
-    if not rows:
+    headers, data_rows = markdown_table_to_rows(content)
+    if not headers:
         return {"rows": 0, "columns": 0, "headers": [], "numeric_columns": {}}
 
-    headers = rows[0]
-    data_rows = rows[1:]
     numeric_columns: dict[str, dict[str, float | int]] = {}
     for index, header in enumerate(headers):
         values = [row[index] for row in data_rows if index < len(row) and row[index] != ""]
