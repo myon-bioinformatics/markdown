@@ -304,8 +304,8 @@ _TRAILING_PANDOC_ATTR_RE = re.compile(
 )
 _HTML_ATTR_SKIP = frozenset({"id", "class", "style"})
 _HOST_PORT_REFERENCE_RE = re.compile(
-    r"^(?P<host>(?:localhost|(?:[A-Za-z0-9-]+\\.)+[A-Za-z0-9-]+|(?:\\d{1,3}\\.){3}\\d{1,3}|\\[[0-9A-Fa-f:.]+\\]))"
-    r":(?P<port>\\d{1,5})(?P<rest>(?:[/?#].*)?)$"
+    r"^(?P<host>(?:localhost|(?:[A-Za-z0-9-]+\.)+[A-Za-z0-9-]+|(?:\d{1,3}\.){3}\d{1,3}|\[[0-9A-Fa-f:.]+\]))"
+    r":(?P<port>\d{1,5})(?P<rest>(?:[/?#].*)?)$"
 )
 
 
