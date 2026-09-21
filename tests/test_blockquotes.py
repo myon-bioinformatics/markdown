@@ -82,3 +82,32 @@ def test_paragraph_then_blockquote_interrupts() -> None:
     assert html.startswith("<p>before</p>")
     assert "<blockquote>" in html
     assert html.endswith("<p>after</p>\n")
+
+
+def test_blockquote_round_trip_single_paragraph() -> None:
+    source = "> quoted\n"
+    html = md.markdown_to_html(source)
+    assert md.html_to_markdown(html) == source
+    assert md.dom_to_markdown(md.markdown_to_dom(source)) == source
+
+
+def test_blockquote_round_trip_multiple_paragraphs() -> None:
+    source = "> a\n>\n> b\n"
+    html = md.markdown_to_html(source)
+    assert md.html_to_markdown(html) == source
+    assert md.dom_to_markdown(md.markdown_to_dom(source)) == source
+
+
+def test_blockquote_round_trip_inline_formatting() -> None:
+    source = "> hello **world** and `code`\n"
+    html = md.markdown_to_html(source)
+    assert md.html_to_markdown(html) == source
+    assert md.dom_to_markdown(md.markdown_to_dom(source)) == source
+
+
+def test_blockquote_round_trip_preserves_paragraph_attributes() -> None:
+    html = '<blockquote><p id="q" class="note">quoted</p></blockquote>'
+    markdown = md.html_to_markdown(html)
+
+    assert markdown == "> quoted {#q .note}\n"
+    assert md.dom_to_markdown(md.parse_html_dom(html)) == markdown

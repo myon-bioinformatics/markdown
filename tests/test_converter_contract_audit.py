@@ -83,3 +83,10 @@ def test_converter_contract_audit_keeps_divergence_observational():
     for case in report["cases"]:
         assert set(case["checks"])
         assert case["all_checks_pass"] == all(case["checks"].values())
+
+
+def test_blockquote_is_no_longer_a_converter_audit_divergence():
+    audit = _load_module()
+    report = audit.collect_report()
+
+    assert "markdown:blockquote" not in report["divergent_case_ids"]
