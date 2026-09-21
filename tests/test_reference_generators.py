@@ -92,7 +92,7 @@ def test_argparse_to_markdown_documents_arguments_and_subcommands():
 
     assert result.startswith("# CLI: demo\n")
     assert "## Usage" in result
-    assert "| path | no |" in result
+    assert "| path | yes |" in result
     assert "| --mode | no |  | fast, safe | safe | Run mode |" in result
     assert "| --count | yes |" in result
     assert "## Subcommands" in result
