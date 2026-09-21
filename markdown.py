@@ -16,6 +16,8 @@ __all__ = [
     "read_markdown",
     "extract_sections",
     "split_sections",
+    "headings_to_mermaid_mindmap",
+    "mermaid_mindmap_to_markdown",
     "extract_links",
     "extract_images",
     "extract_code_blocks",
@@ -454,6 +456,35 @@ def split_sections(content: str) -> list[dict[str, Any]]:
     flush()
     return parts
 
+
+def headings_to_mermaid_mindmap(content: str, root: str = "Document") -> str:
+    """Render ATX headings as a small Mermaid mindmap source string.
+
+    This does not render Mermaid or interpret arbitrary Mermaid syntax.
+    """
+    def label(value: str) -> str:
+        return value.replace("\\", "\\\\").replace('"', "\\\"")
+
+    output = ["mindmap", "  root((" + label(root) + "))"]
+    for item in extract_sections(content):
+        output.append("  " * (item["level"] + 1) + label(item["title"]))
+    return "\n".join(output) + "\n"
+
+
+def mermaid_mindmap_to_markdown(content: str) -> str:
+    """Read headings from the simple mindmap shape emitted by this module.
+
+    Unknown Mermaid nodes are ignored rather than being interpreted.
+    """
+    headings: list[str] = []
+    for line in content.splitlines():
+        match = re.match(r"^( +)(?!root\(\()(.+?)\s*$", line)
+        if not match:
+            continue
+        title = match.group(2).replace("\\\"", '"').replace("\\\\", "\\")
+        level = max(1, len(match.group(1)) // 2 - 1)
+        headings.append("#" * level + " " + title)
+    return "\n".join(headings) + ("\n" if headings else "")
 
 def _parse_attrs(attr_text: str) -> dict[str, str]:
     attrs: dict[str, str] = {}
