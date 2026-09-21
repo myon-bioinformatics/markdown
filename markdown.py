@@ -115,13 +115,13 @@ __all__ = [
 
 import argparse
 import ast
-import html as html_module
-import inspect
 import configparser
 import csv
 import doctest
 import graphlib
+import html as html_module
 import importlib.metadata as importlib_metadata
+import inspect
 import io
 import json
 import math
@@ -1760,6 +1760,7 @@ def _argparse_action_name(action: argparse.Action) -> str:
         "_CountAction": "count",
         "_HelpAction": "help",
         "_VersionAction": "version",
+        "BooleanOptionalAction": "boolean_optional",
     }
     return mapping.get(action.__class__.__name__, action.__class__.__name__.lstrip("_"))
 
