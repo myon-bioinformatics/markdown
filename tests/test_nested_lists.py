@@ -66,7 +66,8 @@ def test_ordered_parent_with_unordered_child_round_trip() -> None:
     assert "<ol>" in html
     assert "<ul>" in html
     assert "<li>parent\n<ul>" in html
-    assert md.html_to_markdown(html) == source
+    # HTML -> Markdown canonicalizes nesting to two spaces per depth.
+    assert md.html_to_markdown(html) == "1. parent\n  - child\n2. tail\n"
 
 
 def test_nested_task_items_use_same_list_nesting_engine() -> None:
