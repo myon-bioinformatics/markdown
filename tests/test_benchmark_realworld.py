@@ -165,15 +165,22 @@ def test_changelog_fixture_is_long_and_stable() -> None:
 def test_github_docs_structural_generators_scale_to_real_document() -> None:
     """Recent one-way structural generators should handle a real docs excerpt."""
     content = _github_docs_content()
-    inv = md.inventory(content)
-
     mindmap = md.markdown_headings_to_mermaid_mindmap(content, root="GitHub Docs")
     dot = md.markdown_links_to_dot(content)
 
     assert mindmap.startswith("mindmap\n")
-    assert mindmap.count('["') >= inv["heading_count"] + 1
+    # Structural generators deliberately ignore fenced/inline examples, while
+    # inventory() answers a broader lexical question. Pin real live headings
+    # instead of comparing unlike counters.
+    assert mindmap.count('["') >= 10
+    assert '["Headings"]' in mindmap
+    assert '["Alerts"]' in mindmap
+
     assert dot.startswith("digraph markdown_links {\n")
-    assert dot.count(" -> ") >= inv["link_count"]
+    # Same rule for links: prove real link-graph scale/content without treating
+    # fenced/inline-code links as live graph edges.
+    assert dot.count(" -> ") >= 5
+    assert "https://docs.github.com" in dot or "https://github.com" in dot
 
 
 def test_changelog_structural_generators_are_deterministic_on_long_input() -> None:
