@@ -36,6 +36,11 @@ __all__ = [
     "markdown_link_to_html",
     "html_to_markdown",
     "markdown_to_html",
+    "HtmlNode",
+    "parse_html_dom",
+    "dom_to_html",
+    "dom_to_markdown",
+    "markdown_to_dom",
     "markdown_to_kramdown",
     "kramdown_to_markdown",
     "ial",
@@ -125,6 +130,7 @@ SUPPORTED = {
         "link/image builders",
         "HTML <a>/<img> <-> Markdown link/image",
         "conservative html_to_markdown / markdown_to_html for common tags",
+        "lightweight HtmlNode / parse_html_dom / dom_to_html / dom_to_markdown / markdown_to_dom",
         "GitHub / Qiita / Zenn / Obsidian alerts and callouts in markdown_to_html "
         "(shared <aside class=\"markdown-alert\"> HTML; alerts win over ordinary > quotes)",
         "ordinary > blockquotes in markdown_to_html (multi-line, blank > lines; "
@@ -201,6 +207,7 @@ UNSUPPORTED = {
     ],
     "conversion": [
         "lossy round-trips for complex nested HTML",
+        "browser DOM / HTML5 tree-construction fidelity (HtmlNode is a small normalized tree)",
         "JavaScript / SVG behavior preservation",
         "CSS class and style fidelity (HTML style= is dropped; IAL class names are kept)",
         "raw inline HTML tags are escaped, not passed through, by markdown_to_html",
@@ -296,6 +303,10 @@ _TRAILING_PANDOC_ATTR_RE = re.compile(
     r"^(?P<body>.*?)(?P<list>\{(?![%{:])(?P<inner>[^{}]*)\})\s*$"
 )
 _HTML_ATTR_SKIP = frozenset({"id", "class", "style"})
+_HOST_PORT_REFERENCE_RE = re.compile(
+    r"^(?P<host>(?:localhost|(?:[A-Za-z0-9-]+\.)+[A-Za-z0-9-]+|(?:\d{1,3}\.){3}\d{1,3}|\[[0-9A-Fa-f:.]+\]))"
+    r":(?P<port>\d{1,5})(?P<rest>(?:[/?#].*)?)$"
+)
 
 
 # === SECTION: scanner ===
@@ -982,8 +993,11 @@ def markdown_image_to_html(
     else:
         # Treat bare path/URL as image source.
         alt, url, title = "", markdown.strip(), ""
+    safe_url = _sanitize_url_scheme(url)
+    if not safe_url:
+        return html_module.escape(alt)
     attrs = [
-        f'src="{html_module.escape(url, quote=True)}"',
+        f'src="{html_module.escape(safe_url, quote=True)}"',
         f'alt="{html_module.escape(alt, quote=True)}"',
     ]
     if title:
@@ -1011,7 +1025,10 @@ def markdown_link_to_html(markdown: str) -> str:
     if not match:
         return ""
     text, url, title = match.group(1), match.group(2), match.group(3) or ""
-    attrs = [f'href="{html_module.escape(url, quote=True)}"']
+    safe_url = _sanitize_url_scheme(url)
+    if not safe_url:
+        return html_module.escape(text)
+    attrs = [f'href="{html_module.escape(safe_url, quote=True)}"']
     if title:
         attrs.append(f'title="{html_module.escape(title, quote=True)}"')
     return f"<a {' '.join(attrs)}>{html_module.escape(text)}</a>"
@@ -2242,6 +2259,237 @@ def kramdown_to_markdown(content: str) -> str:
 # Conservative HTML <-> Markdown (common tags only)
 # ---------------------------------------------------------------------------
 
+@dataclass
+class HtmlNode:
+    """Small normalized HTML tree node; not a browser DOM implementation.
+
+    ``kind`` is ``"root"``, ``"element"``, or ``"text"``. Element nodes use
+    lowercase ``tag`` names and sanitized attributes. Unknown tags are retained
+    as transparent containers so their safe text/children can degrade without
+    passing unsupported markup through.
+    """
+
+    kind: str
+    tag: str = ""
+    attrs: dict[str, str] | None = None
+    children: list["HtmlNode"] | None = None
+    text: str = ""
+
+    def __post_init__(self) -> None:
+        if self.attrs is None:
+            self.attrs = {}
+        if self.children is None:
+            self.children = []
+
+
+_DOM_SAFE_TAGS = frozenset({
+    "a", "aside", "b", "blockquote", "br", "code", "del", "details", "em",
+    "h1", "h2", "h3", "h4", "h5", "h6", "hr", "i", "img", "input", "li",
+    "ol", "p", "pre", "s", "section", "strong", "summary", "sup", "table",
+    "tbody", "td", "tfoot", "th", "thead", "tr", "ul",
+})
+_DOM_VOID_TAGS = frozenset({"br", "hr", "img", "input"})
+_DOM_DROP_TAGS = frozenset({"script", "style"})
+_DOM_URL_ATTRS = frozenset({"href", "src"})
+_DOM_COMMON_ATTRS = frozenset({
+    "alt", "checked", "class", "disabled", "href", "id", "open", "src",
+    "title", "type",
+})
+
+
+def _sanitize_url_scheme(value: str) -> str:
+    """Normalize and validate a URL for generated HTML attributes.
+
+    C0 controls and DEL are removed before parsing. http/https/mailto and
+    ordinary relative URLs are kept; other absolute schemes are rejected.
+    An unambiguous host:port reference such as ``example.com:8080/path`` is
+    normalized to ``//example.com:8080/path`` so browsers treat it as a
+    network-path reference rather than an unknown custom scheme.
+    """
+    cleaned = "".join(ch for ch in value.strip() if ord(ch) >= 0x20 and ord(ch) != 0x7F)
+    if not cleaned:
+        return ""
+    if cleaned.startswith(("#", "/", "./", "../")):
+        return cleaned
+    host_port = _HOST_PORT_REFERENCE_RE.fullmatch(cleaned)
+    if host_port:
+        port = int(host_port.group("port"))
+        if 1 <= port <= 65535:
+            return "//" + cleaned
+        return ""
+    parsed = urlparse(cleaned)
+    if not parsed.scheme:
+        return cleaned
+    if parsed.scheme.lower() in {"http", "https", "mailto"}:
+        return cleaned
+    return ""
+
+
+def _dom_sanitize_attrs(tag: str, attrs: list[tuple[str, str | None]]) -> dict[str, str]:
+    safe: dict[str, str] = {}
+    for raw_key, raw_value in attrs:
+        key = raw_key.lower()
+        if key.startswith("on") or key == "style":
+            continue
+        if key not in _DOM_COMMON_ATTRS and not key.startswith("data-"):
+            continue
+        value = raw_value or ""
+        if key in _DOM_URL_ATTRS:
+            value = _sanitize_url_scheme(value)
+            if not value:
+                continue
+        safe[key] = value
+    if tag == "input" and safe.get("type", "").lower() != "checkbox":
+        return {}
+    return safe
+
+
+class _LightweightDomParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.root = HtmlNode("root")
+        self.stack: list[HtmlNode] = [self.root]
+        self._suppress_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag = tag.lower()
+        if tag in _DOM_DROP_TAGS:
+            self._suppress_depth += 1
+            return
+        if self._suppress_depth:
+            return
+        node = HtmlNode(
+            "element",
+            tag=tag,
+            attrs=_dom_sanitize_attrs(tag, attrs) if tag in _DOM_SAFE_TAGS else {},
+        )
+        assert self.stack[-1].children is not None
+        self.stack[-1].children.append(node)
+        if tag not in _DOM_VOID_TAGS:
+            self.stack.append(node)
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.handle_starttag(tag, attrs)
+        if tag.lower() not in _DOM_VOID_TAGS:
+            self.handle_endtag(tag)
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if tag in _DOM_DROP_TAGS:
+            if self._suppress_depth:
+                self._suppress_depth -= 1
+            return
+        if self._suppress_depth:
+            return
+        for index in range(len(self.stack) - 1, 0, -1):
+            if self.stack[index].tag == tag:
+                del self.stack[index:]
+                break
+
+    def handle_data(self, data: str) -> None:
+        if self._suppress_depth or not data:
+            return
+        assert self.stack[-1].children is not None
+        self.stack[-1].children.append(HtmlNode("text", text=data))
+
+
+def parse_html_dom(html: str) -> HtmlNode:
+    """Parse HTML into a small sanitized in-memory tree.
+
+    This uses html.parser.HTMLParser, not browser HTML5 tree construction.
+    script/style subtrees are dropped, event/style attributes are removed,
+    unsafe URL schemes are rejected, and unknown tags become transparent
+    containers when serialized.
+    """
+    parser = _LightweightDomParser()
+    parser.feed(html)
+    parser.close()
+    return parser.root
+
+
+def dom_to_html(node: HtmlNode) -> str:
+    """Serialize a lightweight DOM tree to sanitized HTML."""
+
+    def render(current: HtmlNode) -> str:
+        if current.kind == "text":
+            return html_module.escape(current.text, quote=False)
+        children = "".join(render(child) for child in (current.children or []))
+        if current.kind == "root":
+            return children
+        if current.kind != "element":
+            return children
+        tag = current.tag.lower()
+        if tag not in _DOM_SAFE_TAGS:
+            return children
+        attrs = current.attrs or {}
+        if tag == "a" and not attrs.get("href"):
+            return children
+        if tag == "img" and not attrs.get("src"):
+            return html_module.escape(attrs.get("alt", ""), quote=False)
+        attr_text = "".join(
+            (f' {key}="{html_module.escape(str(value), quote=True)}"'
+             if value != "" else f" {key}")
+            for key, value in sorted(attrs.items())
+        )
+        if tag in _DOM_VOID_TAGS:
+            return f"<{tag}{attr_text} />"
+        return f"<{tag}{attr_text}>{children}</{tag}>"
+
+    return render(node)
+
+
+def _dom_details_to_markdown(node: HtmlNode) -> str:
+    summary = "Details"
+    body_nodes: list[HtmlNode] = []
+    for child in node.children or []:
+        if child.kind == "element" and child.tag == "summary":
+            summary = html_to_markdown(dom_to_html(child)).strip() or "Details"
+        else:
+            body_nodes.append(child)
+    body_root = HtmlNode("root", children=body_nodes)
+    body = html_to_markdown(dom_to_html(body_root)).strip()
+    if body:
+        return f":::details {summary}\n{body}\n:::\n"
+    return f":::details {summary}\n:::\n"
+
+
+def dom_to_markdown(node: HtmlNode) -> str:
+    """Convert a lightweight DOM tree to normalized Markdown.
+
+    Existing html_to_markdown remains the compatibility engine. details is
+    handled explicitly so the DOM path preserves the repository contract.
+    """
+    if node.kind == "element" and node.tag == "details":
+        return _dom_details_to_markdown(node)
+    if node.kind == "root":
+        parts: list[str] = []
+        pending: list[HtmlNode] = []
+
+        def flush_pending() -> None:
+            if not pending:
+                return
+            fragment = HtmlNode("root", children=list(pending))
+            converted = html_to_markdown(dom_to_html(fragment))
+            if converted.strip():
+                parts.append(converted.strip())
+            pending.clear()
+
+        for child in node.children or []:
+            if child.kind == "element" and child.tag == "details":
+                flush_pending()
+                parts.append(_dom_details_to_markdown(child).strip())
+            else:
+                pending.append(child)
+        flush_pending()
+        return "\n\n".join(part for part in parts if part).strip() + ("\n" if parts else "")
+    return html_to_markdown(dom_to_html(node))
+
+
+def markdown_to_dom(content: str) -> HtmlNode:
+    """Convert the repository supported Markdown subset to HtmlNode."""
+    return parse_html_dom(markdown_to_html(content))
+
+
 class _HTMLToMarkdownParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -2535,9 +2783,12 @@ def _escape_html_text(text: str) -> str:
 
 
 def _angle_autolink_html(url: str) -> str:
-    """Render a stashed ``<http(s)://...>`` autolink as ``<a href>``."""
-    href = html_module.escape(url, quote=True)
+    """Render a safe stashed angle autolink; unsafe URLs degrade to text."""
+    safe_url = _sanitize_url_scheme(url)
     text = html_module.escape(url)
+    if not safe_url:
+        return text
+    href = html_module.escape(safe_url, quote=True)
     return f'<a href="{href}">{text}</a>'
 
 

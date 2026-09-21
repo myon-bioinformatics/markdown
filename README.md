@@ -64,6 +64,35 @@ print(md.markdown_to_kramdown("# Title {#intro .hero}"))
 ```
 
 
+## Lightweight HTML DOM helpers
+
+`HtmlNode` is a small, stdlib-only normalized tree for conversion work. It is
+**not** a browser DOM and does not claim HTML5 tree-construction fidelity.
+
+- `parse_html_dom(html)` builds a root/element/text tree with lowercase tags.
+- `dom_to_html(node)` serializes only the supported safe tag subset.
+- `dom_to_markdown(node)` reuses the existing conservative HTML→Markdown
+  contract; `<details><summary>` is preserved as the repository's
+  `:::details` form.
+- `markdown_to_dom(markdown)` converts through the existing
+  `markdown_to_html()` subset and then parses the sanitized tree.
+
+The boundary is intentionally conservative: `script` / `style` subtrees,
+event attributes such as `onclick`, inline `style=`, and unsafe absolute URL
+schemes are dropped. `http`, `https`, `mailto`, and relative URLs remain
+allowed; unambiguous `host:port` references such as `example.com:8080/path`
+are normalized to network-path form (`//example.com:8080/path`) so they are
+not mistaken for custom schemes. This is a dangerous-scheme rejection policy,
+not an absolute-URL-only allowlist. The same URL policy is shared by DOM
+serialization and the existing Markdown link/image/autolink HTML helpers.
+Rejected links degrade to plain text
+and rejected images to alt text rather than leaving empty `href` / `src`
+attributes or `[text]()` intermediates. Unknown tags degrade to transparent
+containers so safe text and supported descendants remain available. Existing
+`html_to_markdown()` and `markdown_to_html()` are not rewritten around the DOM
+layer in this first contract-focused step.
+
+
 ## Context helpers
 
 The stdlib-only context helpers added in PR #12 are deterministic preparation
