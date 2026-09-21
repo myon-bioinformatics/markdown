@@ -1432,24 +1432,25 @@ def markdown_table_to_csv(content: str) -> str:
 def markdown_to_ipynb(content: str, *, indent: int | None = 2) -> str:
     """Make a minimal nbformat-4 JSON notebook from Markdown and Python fences.
 
-    This is a source conversion only. It does not execute cells, create
-    outputs, or infer kernels beyond the conventional Python metadata.
+    Fenced-code state comes from the shared ``_scan_lines`` scanner. The
+    converter does not execute cells, create outputs, or infer kernels.
     """
+    lines = content.splitlines(keepends=True)
+    scanned = _scan_lines([line.rstrip("\r\n") for line in lines])
     cells: list[dict[str, Any]] = []
     prose: list[str] = []
-    lines = content.splitlines(keepends=True)
     index = 0
     while index < len(lines):
-        match = _FENCE_RE.match(lines[index].rstrip("\n"))
+        item = scanned[index]
+        match = _FENCE_RE.match(item.text)
         language = match.group(2).strip().lower() if match else ""
-        if match and language in {"python", "py", "python3"}:
+        if item.is_fence_open and language in {"python", "py", "python3"}:
             if prose:
                 cells.append({"cell_type": "markdown", "metadata": {}, "source": prose})
                 prose = []
-            marker = match.group(1)
             index += 1
             code: list[str] = []
-            while index < len(lines) and not lines[index].startswith(marker):
+            while index < len(lines) and not scanned[index].is_fence_close:
                 code.append(lines[index])
                 index += 1
             if index < len(lines):
@@ -1493,7 +1494,8 @@ def ipynb_to_markdown(notebook: str | dict[str, Any]) -> str:
             parts.append(text)
         elif cell.get("cell_type") == "code":
             parts.append("```python\n" + text + ("" if text.endswith("\n") or not text else "\n") + "```\n")
-    return "\n".join(part.rstrip("\n") for part in parts) + ("\n" if parts else "")
+    return "".join(parts)
+
 
 def key_value_table(
     data: Any,
