@@ -1623,10 +1623,11 @@ def redis_snapshot_to_markdown(snapshot: Any, title: str = "Redis snapshot") -> 
 def sql_ddl_to_markdown(sql: str, title: str = "SQL schema") -> str:
     """Document a supplied SQL DDL snapshot without parsing or executing it.
 
-    The original LF trailing-newline count is recorded in a Markdown comment
-    so the companion reader restores it exactly. CRLF input is normalized to
-    the module-wide LF fence convention.
+    Input line endings are normalized to LF before fencing. The normalized
+    trailing-newline count is recorded in a Markdown comment so the companion
+    reader restores the LF-normalized snapshot exactly.
     """
+    sql = sql.replace("\r\n", "\n").replace("\r", "\n")
     names = _CREATE_TABLE_NAME_RE.findall(sql)
     outline = bullet_list(["Table: " + name for name in names]) if names else ""
     trailing_newlines = len(sql) - len(sql.rstrip("\n"))
