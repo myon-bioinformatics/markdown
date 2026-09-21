@@ -2527,6 +2527,17 @@ class _HTMLToMarkdownParser(HTMLParser):
         else:
             self.parts.append(text)
 
+    def _trim_structural_boundary(self) -> None:
+        """Drop horizontal whitespace immediately before a block boundary.
+
+        HTML source indentation and formatting whitespace around block tags is
+        not Markdown content. Trimming only the active output fragment keeps
+        inline spaces intact while making block serialization idempotent.
+        """
+        target = self._table_cell if self._table_cell is not None else self.parts
+        if target and target[-1]:
+            target[-1] = target[-1].rstrip(" \t")
+
     def _flush_cell(self) -> None:
         if self._table_cell is None or self._table_row is None:
             self._table_cell = None
@@ -2623,10 +2634,12 @@ class _HTMLToMarkdownParser(HTMLParser):
         if tag in {"tbody", "tfoot", "caption", "colgroup", "col"}:
             return
         if tag in {"h1", "h2", "h3", "h4", "h5", "h6"}:
+            self._trim_structural_boundary()
             level = int(tag[1])
             self._emit("\n\n" + ("#" * level) + " ")
             self._block_attr_suffixes.append(_html_attrs_to_pandoc_suffix(attr))
         elif tag == "p":
+            self._trim_structural_boundary()
             if parent_tag == "blockquote" and self._blockquote_paragraphs:
                 if self._blockquote_paragraphs[-1] > 0:
                     self._emit("\n>\n> ")
@@ -2697,6 +2710,7 @@ class _HTMLToMarkdownParser(HTMLParser):
             if len(self._list_stack) == 1:
                 self._emit("\n")
         elif tag == "li":
+            self._trim_structural_boundary()
             depth = max(len(self._list_stack) - 1, 0)
             indent = "  " * depth
             kind = self._list_stack[-1] if self._list_stack else "ul"
@@ -2764,6 +2778,7 @@ class _HTMLToMarkdownParser(HTMLParser):
                 self._flush_cell()
             return
         if tag in {"h1", "h2", "h3", "h4", "h5", "h6", "p"}:
+            self._trim_structural_boundary()
             suffix = (
                 self._block_attr_suffixes.pop()
                 if self._block_attr_suffixes
@@ -3689,7 +3704,12 @@ def markdown_to_html(content: str) -> str:
         while i < len(lines) and not paragraph_interrupt(i):
             para.append(lines[i])
             i += 1
-        out.append(f"<p>{render_inline(' '.join(s.strip() for s in para))}</p>")
+        rendered_para: list[str] = []
+        for index, raw in enumerate(para):
+            rendered_para.append(render_inline(raw.strip()))
+            if index + 1 < len(para):
+                rendered_para.append("<br />" if raw.endswith("  ") else " ")
+        out.append(f"<p>{''.join(rendered_para)}</p>")
 
     close_list()
     if footnote_order:
