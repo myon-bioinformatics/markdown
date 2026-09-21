@@ -63,6 +63,7 @@ __all__ = [
     "markdown_table_to_records",
     "csv_to_markdown_table",
     "markdown_table_to_csv",
+    "markdown_table_statistics",
     "key_value_table",
     "section",
     "inline_code",
@@ -84,6 +85,7 @@ import csv
 import io
 import json
 import re
+import statistics
 import unicodedata
 from dataclasses import dataclass
 from html.parser import HTMLParser
@@ -1426,6 +1428,42 @@ def markdown_table_to_csv(content: str) -> str:
     writer.writerows(rows)
     return out.getvalue()
 
+
+def markdown_table_statistics(content: str) -> dict[str, Any]:
+    """Return a small, non-mutating summary of a simple Markdown table.
+
+    Numeric columns receive count, minimum, maximum, mean, and median.
+    Empty or mixed columns are absent from numeric_columns.
+    """
+    rows = markdown_table_to_rows(content)
+    if not rows:
+        return {"rows": 0, "columns": 0, "headers": [], "numeric_columns": {}}
+
+    headers = rows[0]
+    data_rows = rows[1:]
+    numeric_columns: dict[str, dict[str, float | int]] = {}
+    for index, header in enumerate(headers):
+        values = [row[index] for row in data_rows if index < len(row) and row[index] != ""]
+        if not values:
+            continue
+        try:
+            numbers = [float(value) for value in values]
+        except ValueError:
+            continue
+        numeric_columns[header] = {
+            "count": len(numbers),
+            "min": min(numbers),
+            "max": max(numbers),
+            "mean": statistics.mean(numbers),
+            "median": statistics.median(numbers),
+        }
+
+    return {
+        "rows": len(data_rows),
+        "columns": len(headers),
+        "headers": headers,
+        "numeric_columns": numeric_columns,
+    }
 
 def key_value_table(
     data: Any,
