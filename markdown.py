@@ -1960,8 +1960,8 @@ def _ini_dumps(value: Any) -> str:
             if (
                 not isinstance(key, str)
                 or not key
-                or "\\n" in key
-                or "\\r" in key
+                or "\n" in key
+                or "\r" in key
                 or "=" in key
                 or ":" in key
             ):
