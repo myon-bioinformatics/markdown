@@ -14,6 +14,7 @@ from __future__ import annotations
 __all__ = [
     "save_markdown",
     "read_markdown",
+    "run_markdown_doctest",
     "extract_sections",
     "split_sections",
     "extract_links",
@@ -81,6 +82,7 @@ __all__ = [
 
 import html as html_module
 import csv
+import doctest
 import io
 import json
 import re
@@ -400,6 +402,47 @@ def read_markdown(filepath: str, count_hashtags: bool = False) -> dict:
         result["content"] = f"Error reading file: {e}"
     return result
 
+
+def run_markdown_doctest(content: str, name: str = "<markdown>", globs: Any = None) -> doctest.TestResults:
+    """Run Python doctest prompts found in fenced Markdown code blocks.
+
+    Only Python-family fences participate. The examples are executed, so this
+    helper is for trusted project documentation and test suites only.
+    """
+    source = _markdown_doctest_source(content)
+    test = doctest.DocTestParser().get_doctest(
+        source, dict(globs or {}), name, name, 0,
+    )
+    runner = doctest.DocTestRunner()
+    runner.run(test, out=lambda _message: None)
+    return doctest.TestResults(runner.failures, runner.tries)
+
+
+def _markdown_doctest_source(content: str) -> str:
+    """Keep Python fence contents while preserving Markdown line numbers.
+
+    Fence state is supplied by the shared P0 scanner rather than a parallel
+    fence parser. Fence info strings use their first token as the language.
+    """
+    lines = content.splitlines(keepends=True)
+    scanned = _scan_lines([line.rstrip("\r\n") for line in lines])
+    output: list[str] = []
+    in_python = False
+    for line, item in zip(lines, scanned):
+        match = _FENCE_RE.match(item.text)
+        if item.is_fence_open:
+            info = match.group(2).strip() if match else ""
+            language = info.split()[0].lower() if info else ""
+            in_python = language in {"python", "python3", "py", "pycon"}
+            output.append("\n" if line.endswith("\n") else "")
+        elif item.is_fence_close:
+            in_python = False
+            output.append("\n" if line.endswith("\n") else "")
+        elif in_python:
+            output.append(item.text + ("\n" if line.endswith("\n") else ""))
+        else:
+            output.append("\n" if line.endswith("\n") else "")
+    return "".join(output)
 
 # ---------------------------------------------------------------------------
 # Structure extraction
