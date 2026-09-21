@@ -111,11 +111,20 @@ transparent in the lightweight DOM, but the legacy engine already ignores
 those structures in supported table output, so they are not a known final
 Markdown gap by themselves.
 
-One current observed gap is safety normalization: an unsafe HTML link may be
-preserved by the legacy HTML→Markdown parser, while the DOM path removes the
-unsafe URL before conversion. That difference is recorded deliberately as
-baseline data for later converter-integration work rather than being silently
-"fixed" inside this refactor.
+PR #38 closes the previously observed URL-safety gap between the legacy and
+DOM HTML→Markdown paths. Both now reuse the shared URL policy: unsafe absolute
+schemes degrade to visible link text / image alt text, while safe URLs remain
+links/images. The shared host:port normalization also applies consistently, so
+an unambiguous value such as `example.com:8080/path` becomes the network-path
+reference `//example.com:8080/path`.
+
+URL scheme safety for conversion paths is centralized in
+`_sanitize_url_scheme()`: new HTML→Markdown or Markdown→HTML URL-consuming
+conversion code must reuse that helper rather than introduce an independent
+scheme check. Extraction helpers such as `extract_links()` /
+`extract_images()` only report source content, and builders such as
+`make_link()` / `make_image()` continue to treat the caller-supplied URL as
+caller responsibility; changing those contracts is a separate design decision.
 
 DOM-specific preprocessing such as `details` handling stays in
 `dom_to_markdown()`; the internal HTML engine remains DOM-agnostic. Nested-list

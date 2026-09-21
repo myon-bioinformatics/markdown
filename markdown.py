@@ -2635,18 +2635,29 @@ class _HTMLToMarkdownParser(HTMLParser):
             self._in_pre = True
             self._emit("\n\n```\n")
         elif tag == "a":
-            self._emit("[")
-            self._link_href = attr.get("href", "")
-            self._link_title = attr.get("title", "")
-            self._link_open = True
+            safe_href = _sanitize_url_scheme(attr.get("href", ""))
+            if safe_href:
+                self._emit("[")
+                self._link_href = safe_href
+                self._link_title = attr.get("title", "")
+                self._link_open = True
+            else:
+                self._link_href = ""
+                self._link_title = ""
+                self._link_open = False
         elif tag == "img":
-            self._emit(
-                make_image(
-                    attr.get("alt", ""),
-                    attr.get("src", ""),
-                    attr.get("title") or None,
+            alt = attr.get("alt", "")
+            safe_src = _sanitize_url_scheme(attr.get("src", ""))
+            if safe_src:
+                self._emit(
+                    make_image(
+                        alt,
+                        safe_src,
+                        attr.get("title") or None,
+                    )
                 )
-            )
+            else:
+                self._emit(alt)
         elif tag == "input":
             if attr.get("type", "").lower() == "checkbox":
                 mark = "x" if "checked" in attr else " "

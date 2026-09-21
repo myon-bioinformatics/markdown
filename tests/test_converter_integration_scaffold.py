@@ -14,12 +14,11 @@ PARITY_CASES = {
     ),
     "task": '<ul><li><input type="checkbox" checked disabled> done</li></ul>',
     "unicode": "<p>日本語 <strong>世界</strong> café</p>",
-}
-
-
-KNOWN_DOM_LEGACY_GAPS = {
     "unsafe_link_sanitization": '<p><a href="javascript:alert(1)">click</a></p>',
 }
+
+
+KNOWN_DOM_LEGACY_GAPS = {}
 
 
 def test_public_html_to_markdown_is_a_compatibility_wrapper():
@@ -60,3 +59,40 @@ def test_dom_path_does_not_call_public_html_to_markdown(monkeypatch):
     )
     assert details.startswith(":::details More\n")
     assert "Body **text**." in details
+
+
+URL_SAFETY_CASES = [
+    ('<a href="javascript:alert(1)">click</a>', "click\n"),
+    ('<a href="JavaScript:alert(1)">click</a>', "click\n"),
+    ('<a href="javascript\x00:alert(1)">click</a>', "click\n"),
+    ('<a href="java\tscript:alert(1)">click</a>', "click\n"),
+    ('<a href="java\nscript:alert(1)">click</a>', "click\n"),
+    ('<a href="data:text/html,boom">click</a>', "click\n"),
+    ('<a href="vbscript:msgbox(1)">click</a>', "click\n"),
+    ('<a href="https://example.com/x">click</a>', "[click](https://example.com/x)\n"),
+    ('<a href="mailto:test@example.com">mail</a>', "[mail](mailto:test@example.com)\n"),
+    ('<a href="../docs/page.html">docs</a>', "[docs](../docs/page.html)\n"),
+    ('<a href="example.com:8080/path">host</a>', "[host](//example.com:8080/path)\n"),
+    ('<img src="javascript:alert(1)" alt="pic">', "pic\n"),
+    ('<img src="data:text/html,boom" alt="pic">', "pic\n"),
+    ('<img src="/img.png" alt="pic">', "![pic](/img.png)\n"),
+]
+
+
+def test_legacy_html_url_safety_matches_dom_final_markdown():
+    for html, expected in URL_SAFETY_CASES:
+        legacy = md.html_to_markdown(html)
+        dom = md.dom_to_markdown(md.parse_html_dom(html))
+        assert legacy == expected, html
+        assert dom == expected, html
+
+
+def test_rejected_url_targets_never_emit_empty_markdown_targets():
+    samples = [
+        '<a href="javascript:alert(1)">click</a>',
+        '<img src="javascript:alert(1)" alt="pic">',
+    ]
+    for html in samples:
+        result = md.html_to_markdown(html)
+        assert "]()" not in result
+        assert "![](" not in result
