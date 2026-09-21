@@ -303,6 +303,10 @@ _TRAILING_PANDOC_ATTR_RE = re.compile(
     r"^(?P<body>.*?)(?P<list>\{(?![%{:])(?P<inner>[^{}]*)\})\s*$"
 )
 _HTML_ATTR_SKIP = frozenset({"id", "class", "style"})
+_HOST_PORT_REFERENCE_RE = re.compile(
+    r"^(?P<host>(?:localhost|(?:[A-Za-z0-9-]+\\.)+[A-Za-z0-9-]+|(?:\\d{1,3}\\.){3}\\d{1,3}|\\[[0-9A-Fa-f:.]+\\]))"
+    r":(?P<port>\\d{1,5})(?P<rest>(?:[/?#].*)?)$"
+)
 
 
 # === SECTION: scanner ===
@@ -2297,13 +2301,22 @@ def _sanitize_url_scheme(value: str) -> str:
     """Normalize and validate a URL for generated HTML attributes.
 
     C0 controls and DEL are removed before parsing. http/https/mailto and
-    relative URLs are kept; other absolute schemes are rejected.
+    ordinary relative URLs are kept; other absolute schemes are rejected.
+    An unambiguous host:port reference such as ``example.com:8080/path`` is
+    normalized to ``//example.com:8080/path`` so browsers treat it as a
+    network-path reference rather than an unknown custom scheme.
     """
     cleaned = "".join(ch for ch in value.strip() if ord(ch) >= 0x20 and ord(ch) != 0x7F)
     if not cleaned:
         return ""
     if cleaned.startswith(("#", "/", "./", "../")):
         return cleaned
+    host_port = _HOST_PORT_REFERENCE_RE.fullmatch(cleaned)
+    if host_port:
+        port = int(host_port.group("port"))
+        if 1 <= port <= 65535:
+            return "//" + cleaned
+        return ""
     parsed = urlparse(cleaned)
     if not parsed.scheme:
         return cleaned
