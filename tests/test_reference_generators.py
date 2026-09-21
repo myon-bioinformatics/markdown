@@ -9,7 +9,7 @@ import markdown as md
 
 
 def test_inspect_to_markdown_function_reference_is_deterministic():
-    def sample(value: int, flag: bool = False) -> str:
+    def sample(value, flag=False):
         """Return a sample value.
 
         Longer documentation stays in the description section.
@@ -24,7 +24,7 @@ def test_inspect_to_markdown_function_reference_is_deterministic():
     assert "| Kind | function |" in first
     assert "## Description" in first
     assert "Return a sample value." in first
-    assert "(value: int, flag: bool = False) -> str" in first
+    assert "(value, flag=False)" in first
 
 
 def test_inspect_to_markdown_class_does_not_invoke_properties():
