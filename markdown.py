@@ -2825,7 +2825,7 @@ class _HTMLToMarkdownParser(HTMLParser):
         if (
             not data.strip()
             and self._open_tags
-            and self._open_tags[-1] == "blockquote"
+            and self._open_tags[-1] in {"blockquote", "ul", "ol"}
         ):
             return
         if self._in_pre or self._in_code:
