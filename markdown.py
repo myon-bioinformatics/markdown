@@ -1738,12 +1738,38 @@ def _argparse_value(value: Any) -> str:
     return type(value).__name__
 
 
+def _argparse_type_name(value: Any) -> str:
+    """Return a compact, stable display name for an argparse ``type`` value."""
+    if value is None:
+        return ""
+    name = getattr(value, "__name__", None)
+    if name:
+        return str(name)
+    return type(value).__name__
+
+
+def _argparse_action_name(action: argparse.Action) -> str:
+    """Normalize common argparse action classes to user-facing action names."""
+    mapping = {
+        "_StoreAction": "store",
+        "_StoreConstAction": "store_const",
+        "_StoreTrueAction": "store_true",
+        "_StoreFalseAction": "store_false",
+        "_AppendAction": "append",
+        "_AppendConstAction": "append_const",
+        "_CountAction": "count",
+        "_HelpAction": "help",
+        "_VersionAction": "version",
+    }
+    return mapping.get(action.__class__.__name__, action.__class__.__name__.lstrip("_"))
+
 def argparse_to_markdown(parser: argparse.ArgumentParser, *, title: str | None = None) -> str:
     """Generate deterministic CLI reference Markdown from an ArgumentParser.
 
     The parser is never executed. Reading ``_actions`` is the only intentional
     narrow dependency on argparse private state; public parser metadata and
-    ``format_usage()`` are used otherwise.
+    ``format_usage()`` are used otherwise. Type, metavar, and common action
+    kinds are rendered as stable descriptive names rather than object reprs.
     """
     if not isinstance(parser, argparse.ArgumentParser):
         raise TypeError("parser must be an argparse.ArgumentParser")
@@ -1778,13 +1804,16 @@ def argparse_to_markdown(parser: argparse.ArgumentParser, *, title: str | None =
             _argparse_value(action.nargs),
             choices,
             _argparse_value(action.default),
+            _argparse_type_name(action.type),
+            _argparse_value(action.metavar),
+            _argparse_action_name(action),
             "" if action.help == argparse.SUPPRESS else str(action.help or ""),
         ])
 
     if argument_rows:
         output.append(heading("Arguments", 2))
         output.append(table(
-            ["Argument", "Required", "Nargs", "Choices", "Default", "Help"],
+            ["Argument", "Required", "Nargs", "Choices", "Default", "Type", "Metavar", "Action", "Help"],
             argument_rows,
         ))
     if subcommands:
