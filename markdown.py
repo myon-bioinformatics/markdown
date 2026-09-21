@@ -2799,7 +2799,8 @@ class _HTMLToMarkdownParser(HTMLParser):
                 and target[-1][-1].isspace()
             ):
                 collapsed = collapsed[1:]
-            self._emit(collapsed)
+            if collapsed:
+                self._emit(collapsed)
 
     def output(self) -> str:
         text = "".join(self.parts)
