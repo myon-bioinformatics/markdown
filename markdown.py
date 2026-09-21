@@ -1764,6 +1764,7 @@ def _argparse_action_name(action: argparse.Action) -> str:
     }
     return mapping.get(action.__class__.__name__, action.__class__.__name__.lstrip("_"))
 
+
 def argparse_to_markdown(parser: argparse.ArgumentParser, *, title: str | None = None) -> str:
     """Generate deterministic CLI reference Markdown from an ArgumentParser.
 
