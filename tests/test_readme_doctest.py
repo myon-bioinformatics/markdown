@@ -49,3 +49,15 @@ def test_run_markdown_doctest_reports_failures_without_writing_stdout(capsys):
 
     assert result == (1, 1)
     assert capsys.readouterr().out == ""
+
+
+def test_run_markdown_doctest_handles_crlf_line_endings():
+    """A correct example must not fail just because the source file uses
+    CRLF -- doctest.DocTestParser splits on "\\n", so a stray "\\r" left on
+    each Python-fence line would attach to the example/want text."""
+    document = "# X\r\n\r\n```python\r\n>>> 1 + 1\r\n2\r\n```\r\n"
+
+    result = md.run_markdown_doctest(document)
+
+    assert result.attempted == 1
+    assert result.failed == 0

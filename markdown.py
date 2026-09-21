@@ -437,7 +437,7 @@ def _markdown_doctest_source(content: str) -> str:
             in_python = False
             output.append("\n" if line.endswith("\n") else "")
         elif in_python:
-            output.append(line)
+            output.append(item.text + ("\n" if line.endswith("\n") else ""))
         else:
             output.append("\n" if line.endswith("\n") else "")
     return "".join(output)
