@@ -250,6 +250,100 @@ def _markdown_record(case_id: str, markdown: str) -> dict[str, Any]:
     }
 
 
+
+def _conversion_graph() -> dict[str, Any]:
+    edges = [dict(edge) for edge in CONVERSION_EDGES]
+    nodes = sorted({edge["source"] for edge in edges} | {edge["target"] for edge in edges})
+    adjacency: dict[str, list[tuple[str, str]]] = {node: [] for node in nodes}
+    for edge in edges:
+        if edge["runtime_available"]:
+            adjacency[edge["source"]].append((edge["target"], edge["id"]))
+    for values in adjacency.values():
+        values.sort()
+
+    routes: list[dict[str, Any]] = []
+    for source in nodes:
+        queue: list[tuple[str, list[str]]] = [(source, [])]
+        seen = {source}
+        while queue:
+            node, path = queue.pop(0)
+            for target, edge_id in adjacency[node]:
+                if target in seen:
+                    continue
+                next_path = path + [edge_id]
+                seen.add(target)
+                queue.append((target, next_path))
+                routes.append({
+                    "source": source,
+                    "target": target,
+                    "edge_ids": next_path,
+                })
+
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "routes": sorted(routes, key=lambda item: (item["source"], item["target"])),
+        "note": (
+            "Reachability means a converter path exists, not that arbitrary inputs "
+            "round-trip. Each edge declares its supported domain. markdown_prose "
+            "and markdown_structured_v1 are intentionally distinct carriers."
+        ),
+    }
+
+
+def _to_structured_markdown(format_name: str, content: str) -> str:
+    converter = getattr(md, f"{format_name}_to_markdown")
+    return converter(content)
+
+
+def _from_structured_markdown(format_name: str, content: str) -> str:
+    converter = getattr(md, f"markdown_to_{format_name}")
+    return converter(content)
+
+
+def _structured_cycle_record(case: dict[str, Any]) -> dict[str, Any]:
+    source_format = case["source_format"]
+    via_format = case["via_format"]
+    source_md = _to_structured_markdown(source_format, case["input"])
+    canonical_source = _from_structured_markdown(source_format, source_md)
+
+    via_text = _from_structured_markdown(via_format, source_md)
+    via_md = _to_structured_markdown(via_format, via_text)
+    back_text = _from_structured_markdown(source_format, via_md)
+    back_md = _to_structured_markdown(source_format, back_text)
+
+    checks = {
+        "source_to_via_hub_stable": source_md == via_md,
+        "cycle_hub_stable": source_md == back_md,
+        "source_canonical_stable": canonical_source == back_text,
+    }
+    return {
+        "id": case["id"],
+        "kind": "structured_cycle",
+        "source_format": source_format,
+        "via_format": via_format,
+        "carrier": "markdown_structured_v1",
+        "domain": "intersection of both adapters' declared structured-v1 subsets",
+        "checks": checks,
+        "all_checks_pass": all(checks.values()),
+        "classification": "stable" if all(checks.values()) else "divergent",
+        "input": _text_record(case["input"]),
+        "source_markdown": _text_record(source_md),
+        "via_text": _text_record(via_text),
+        "back_text": _text_record(back_text),
+    }
+
+
+def _collect_structured_cycles() -> tuple[list[dict[str, Any]], list[str]]:
+    cycles: list[dict[str, Any]] = []
+    unavailable: list[str] = []
+    for case in STRUCTURED_CYCLE_CASES:
+        if case.get("requires_tomllib") and md.tomllib is None:
+            unavailable.append(case["id"])
+            continue
+        cycles.append(_structured_cycle_record(case))
+    return cycles, unavailable
+
 def collect_report() -> dict[str, Any]:
     cases: list[dict[str, Any]] = []
 
