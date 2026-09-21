@@ -2684,7 +2684,8 @@ class _HTMLToMarkdownParser(HTMLParser):
         elif tag in {"ul", "ol"}:
             self._list_stack.append(tag)
             self._li_index.append(0)
-            self._emit("\n")
+            if len(self._list_stack) == 1:
+                self._emit("\n")
         elif tag == "li":
             depth = max(len(self._list_stack) - 1, 0)
             indent = "  " * depth
@@ -3478,6 +3479,77 @@ def markdown_to_html(content: str) -> str:
             text = text.replace(f"\x00PH{index}\x00", snippet)
         return text
 
+    def consume_list(start: int) -> tuple[str, int]:
+        """Consume one contiguous Markdown list, preserving simple nesting.
+
+        Nesting is indentation-based and deliberately small: list items may
+        contain child ul/ol lists, but arbitrary block content inside an item
+        remains out of scope.
+        """
+
+        def match_list_line(index: int):
+            if index >= len(lines):
+                return None
+            return re.match(r"^(\s*)([-*+]|\d+\.)\s+(.*)$", lines[index])
+
+        def kind_for(marker: str) -> str:
+            return "ol" if marker.endswith(".") and marker[:-1].isdigit() else "ul"
+
+        def render_item(kind: str, item: str) -> str:
+            task = _parse_task_item(item) if kind == "ul" else None
+            if task is None:
+                return render_inline(item)
+            checked, rest = task
+            box = _task_checkbox_html(checked)
+            body = render_inline(rest)
+            return f"{box} {body}" if body else box
+
+        def consume_level(index: int, indent: int, kind: str) -> tuple[list[str], int]:
+            parts = [f"<{kind}>"]
+            while index < len(lines):
+                match = match_list_line(index)
+                if match is None:
+                    break
+                current_indent = len(match.group(1).expandtabs(4))
+                current_kind = kind_for(match.group(2))
+                if current_indent < indent:
+                    break
+                if current_indent != indent or current_kind != kind:
+                    break
+
+                item = match.group(3)
+                index += 1
+                children: list[str] = []
+                while index < len(lines):
+                    child = match_list_line(index)
+                    if child is None:
+                        break
+                    child_indent = len(child.group(1).expandtabs(4))
+                    if child_indent <= indent:
+                        break
+                    child_kind = kind_for(child.group(2))
+                    child_parts, index = consume_level(index, child_indent, child_kind)
+                    children.extend(child_parts)
+
+                body = render_item(kind, item)
+                if children:
+                    parts.append(f"<li>{body}")
+                    parts.extend(children)
+                    parts.append("</li>")
+                else:
+                    parts.append(f"<li>{body}</li>")
+
+            parts.append(f"</{kind}>")
+            return parts, index
+
+        first = match_list_line(start)
+        if first is None:
+            return "", start
+        indent = len(first.group(1).expandtabs(4))
+        kind = kind_for(first.group(2))
+        parts, end = consume_level(start, indent, kind)
+        return "\n".join(parts), end
+
     def paragraph_interrupt(index: int) -> bool:
         line = lines[index]
         if not line.strip():
@@ -3584,24 +3656,9 @@ def markdown_to_html(content: str) -> str:
         ul = re.match(r"^(\s*)[-*+]\s+(.*)$", line)
         ol = re.match(r"^(\s*)\d+\.\s+(.*)$", line)
         if ul or ol:
-            kind = "ul" if ul else "ol"
-            item = (ul or ol).group(2)  # type: ignore[union-attr]
-            if in_list != kind:
-                close_list()
-                out.append(f"<{kind}>")
-                in_list = kind
-            task = _parse_task_item(item) if ul else None
-            if task is not None:
-                checked, rest = task
-                box = _task_checkbox_html(checked)
-                body = render_inline(rest)
-                if body:
-                    out.append(f"<li>{box} {body}</li>")
-                else:
-                    out.append(f"<li>{box}</li>")
-            else:
-                out.append(f"<li>{render_inline(item)}</li>")
-            i += 1
+            close_list()
+            html, i = consume_list(i)
+            out.append(html)
             continue
 
         if not line.strip():
