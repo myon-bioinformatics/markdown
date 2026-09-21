@@ -33,15 +33,12 @@ SYNTHETIC_CASES = {
     "blockquote": "<blockquote><p>Quoted <strong>text</strong>.</p></blockquote>",
     "inline_code": "<p>Use <code>print(1)</code> here.</p>",
     "preformatted_code": "<pre><code>def hello():\n    return 1\n</code></pre>",
-    "alt_only_image": '<img src="/missing.png" alt="description">',
+    "alt_only_image": '<img alt="description">',
+    "safe_relative_image": '<img src="/missing.png" alt="description">',
     "table": (
         "<table><thead><tr><th>a</th><th>b</th></tr></thead>"
         "<tbody><tr><td>1</td><td>2</td></tr></tbody></table>"
     ),
-    "blockquote": "<blockquote><p>Quoted <strong>text</strong>.</p></blockquote>",
-    "inline_code": "<p>Use <code>print()</code> here.</p>",
-    "preformatted_code": "<pre><code>def f():\n    return 1\n</code></pre>",
-    "alt_only_image": '<img src="javascript:alert(1)" alt="fallback text">',
     "details": "<details><summary>More</summary><p>Body <em>text</em>.</p></details>",
     "unsafe_link": '<a href="javascript:alert(1)">click</a>',
     "unsafe_image": '<img src="javascript:alert(1)" alt="pic">',
