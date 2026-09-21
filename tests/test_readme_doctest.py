@@ -36,3 +36,16 @@ def test_run_markdown_doctest_returns_failure_count_without_a_cli():
 
     assert result.attempted == 2
     assert result.failed == 0
+
+
+def test_run_markdown_doctest_reports_failures_without_writing_stdout(capsys):
+    document = """```python
+>>> 1 + 1
+3
+```
+"""
+
+    result = md.run_markdown_doctest(document)
+
+    assert result == (1, 1)
+    assert capsys.readouterr().out == ""
