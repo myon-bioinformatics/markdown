@@ -18,3 +18,10 @@ def test_ipynb_to_markdown_rejects_non_notebook_data():
         pass
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_markdown_to_ipynb_does_not_extract_python_fence_inside_code_context():
+    source = "```md\n```python\nx = 1\n```\n```\n"
+    notebook = json.loads(md.markdown_to_ipynb(source))
+
+    assert [cell["cell_type"] for cell in notebook["cells"]] == ["markdown"]
