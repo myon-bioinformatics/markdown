@@ -3362,8 +3362,8 @@ def markdown_to_html(content: str) -> str:
 
     Handles ATX headings, fenced code, paragraphs, inline code, bold/italic,
     strikethrough (``~~text~~`` → ``<del>``), links, images, angle-bracket
-    http(s) autolinks, thematic breaks, simple bullet/numbered lists, GFM
-    task lists, ordinary ``>`` blockquotes, simple GFM pipe tables,
+    http(s) autolinks, thematic breaks, simple indentation-based nested
+    bullet/numbered lists, nested GFM task lists, ordinary ``>`` blockquotes, simple GFM pipe tables,
     GitHub / Qiita / Zenn / Obsidian alerts, Zenn-style ``:::details``
     collapsible sections, and a small GFM/Pandoc-like footnote subset.
 
