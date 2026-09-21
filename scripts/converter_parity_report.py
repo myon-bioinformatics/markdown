@@ -38,6 +38,10 @@ SYNTHETIC_CASES = {
         "<table><thead><tr><th>a</th><th>b</th></tr></thead>"
         "<tbody><tr><td>1</td><td>2</td></tr></tbody></table>"
     ),
+    "blockquote": "<blockquote><p>Quoted <strong>text</strong>.</p></blockquote>",
+    "inline_code": "<p>Use <code>print()</code> here.</p>",
+    "preformatted_code": "<pre><code>def f():\n    return 1\n</code></pre>",
+    "alt_only_image": '<img src="javascript:alert(1)" alt="fallback text">',
     "details": "<details><summary>More</summary><p>Body <em>text</em>.</p></details>",
     "unsafe_link": '<a href="javascript:alert(1)">click</a>',
     "unsafe_image": '<img src="javascript:alert(1)" alt="pic">',
@@ -79,22 +83,32 @@ def collect_report() -> dict[str, Any]:
         cases.append(_record(case_id, "synthetic", html))
 
     benchmark_dir = ROOT / "fixtures" / "benchmark"
-    for path in sorted(benchmark_dir.glob("*.html")):
+    real_world_paths = sorted(benchmark_dir.glob("*.html"))
+    for path in real_world_paths:
         html = path.read_text(encoding="utf-8")
         cases.append(_record(path.stem, str(path.relative_to(ROOT)), html))
 
     mismatches = [case["id"] for case in cases if not case["equal"]]
+    real_world_case_count = len(real_world_paths)
+    if mismatches:
+        decision_hint = "investigate_mismatches_before_dom_first"
+    elif real_world_case_count < 2:
+        decision_hint = "expand_real_world_corpus_before_dom_first"
+    else:
+        decision_hint = "candidate_for_dom_first_evaluation"
+
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "case_count": len(cases),
         "match_count": len(cases) - len(mismatches),
         "mismatch_count": len(mismatches),
         "mismatch_ids": mismatches,
-        "decision_hint": (
-            "candidate_for_dom_first_evaluation"
-            if not mismatches
-            else "investigate_mismatches_before_dom_first"
+        "real_world_case_count": real_world_case_count,
+        "corpus_note": (
+            "Real-world HTML coverage is intentionally reported separately; "
+            "fewer than two vendored pages is too thin for a DOM-first decision."
         ),
+        "decision_hint": decision_hint,
         "cases": cases,
     }
 
@@ -114,7 +128,8 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"cases={report['case_count']} "
         f"matches={report['match_count']} "
-        f"mismatches={report['mismatch_count']}"
+        f"mismatches={report['mismatch_count']} "
+        f"real_world={report['real_world_case_count']}"
     )
     return 0
 
