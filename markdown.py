@@ -1439,7 +1439,9 @@ def redis_snapshot_to_markdown(snapshot: Any, title: str = "Redis snapshot") -> 
 
 
 _CREATE_TABLE_NAME_RE = re.compile(
-    r"\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([\w\"`\[\].]+)", re.IGNORECASE
+    r'\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?'
+    r'("[^"]*"|`[^`]*`|\[[^\]]*\]|[\w.]+)',
+    re.IGNORECASE,
 )
 
 
@@ -1452,14 +1454,15 @@ def sql_ddl_to_markdown(sql: str, title: str = "SQL schema") -> str:
     """
     names = _CREATE_TABLE_NAME_RE.findall(sql)
     outline = bullet_list([f"Table: {name}" for name in names]) if names else ""
-    return heading(title) + outline + code_block(sql.rstrip("\n"), lang="sql")
+    return heading(title) + outline + code_block(sql, lang="sql")
 
 
 def markdown_to_sql_ddl(content: str) -> str:
-    """Return the first fenced ``sql`` block; never validate or execute it."""
+    """Return the first fenced ``sql`` block exactly as embedded; never
+    validate or execute it."""
     for block in extract_code_blocks(content):
         if block["language"].lower() == "sql":
-            return block["code"] + "\n"
+            return block["code"]
     raise ValueError("No fenced SQL block found")
 
 

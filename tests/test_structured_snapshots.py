@@ -21,3 +21,21 @@ def test_sql_ddl_is_documented_and_returned_without_dialect_interpretation() -> 
     document = md.sql_ddl_to_markdown(ddl)
     assert "Table: app.users" in document and "Table: audit.log" in document
     assert md.markdown_to_sql_ddl(document) == ddl
+
+
+def test_sql_ddl_round_trip_is_byte_exact_on_trailing_newlines() -> None:
+    """The round trip must not add, drop, or collapse trailing newlines --
+    "lossless" means byte-exact, not "normalized to one trailing newline"."""
+    no_trailing = "CREATE TABLE x (a int);"
+    assert md.markdown_to_sql_ddl(md.sql_ddl_to_markdown(no_trailing)) == no_trailing
+
+    many_trailing = "CREATE TABLE x (a int);\n\n\n"
+    assert md.markdown_to_sql_ddl(md.sql_ddl_to_markdown(many_trailing)) == many_trailing
+
+
+def test_sql_ddl_table_name_outline_keeps_quoted_identifiers_with_spaces() -> None:
+    ddl = 'CREATE TABLE "My Table" (id int);\nCREATE TABLE `Order Items` (id int);\n'
+    document = md.sql_ddl_to_markdown(ddl)
+    assert 'Table: "My Table"' in document
+    assert "Table: `Order Items`" in document
+    assert md.markdown_to_sql_ddl(document) == ddl
