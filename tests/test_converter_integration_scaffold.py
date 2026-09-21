@@ -128,3 +128,65 @@ def test_non_empty_html_to_markdown_keeps_single_trailing_newline():
     ]
     for html, expected in samples:
         assert md.html_to_markdown(html) == expected
+
+
+DETAILS_PARITY_CASES = [
+    (
+        "<details><summary>More</summary><p>Body <em>text</em>.</p></details>",
+        ":::details More\nBody *text*.\n:::\n",
+    ),
+    (
+        "<details><p>Body only</p></details>",
+        ":::details Details\nBody only\n:::\n",
+    ),
+    (
+        "<details><summary></summary></details>",
+        ":::details Details\n:::\n",
+    ),
+    (
+        "<p>Before</p><details><summary>More</summary><p>Body</p></details><p>After</p>",
+        "Before\n\n:::details More\nBody\n:::\n\nAfter\n",
+    ),
+    (
+        "<details><div><summary>Nested</summary></div><p>Body</p></details>",
+        ":::details Details\nNested\n\nBody\n:::\n",
+    ),
+]
+
+
+def test_details_html_to_markdown_matches_dom_contract():
+    for html, expected in DETAILS_PARITY_CASES:
+        legacy = md.html_to_markdown(html)
+        dom = md.dom_to_markdown(md.parse_html_dom(html))
+        assert legacy == expected, html
+        assert dom == expected, html
+
+
+COMMENT_WHITESPACE_PARITY_CASES = [
+    ("<p>A <!-- comment --> B</p>", "A B\n"),
+    ("<p>A<!-- comment --> B</p>", "A B\n"),
+    ("<p>A <!-- comment -->B</p>", "A B\n"),
+]
+
+
+def test_comment_boundaries_do_not_duplicate_collapsed_whitespace():
+    for html, expected in COMMENT_WHITESPACE_PARITY_CASES:
+        legacy = md.html_to_markdown(html)
+        dom = md.dom_to_markdown(md.parse_html_dom(html))
+        assert legacy == expected, html
+        assert dom == expected, html
+
+
+def test_details_inside_table_cell_stays_flat_and_keeps_table_shape():
+    html = (
+        "<table><tr><th>kind</th><th>value</th></tr>"
+        "<tr><td>x</td><td><details><summary>More</summary><p>Body</p></details></td></tr>"
+        "</table>"
+    )
+    legacy = md.html_to_markdown(html)
+    dom = md.dom_to_markdown(md.parse_html_dom(html))
+
+    assert legacy == dom
+    assert ":::details" not in legacy
+    assert "| kind | value |" in legacy
+    assert "| x | More Body |" in legacy

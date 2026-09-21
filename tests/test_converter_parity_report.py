@@ -86,3 +86,29 @@ def test_converter_parity_report_flags_thin_real_world_corpus():
     assert "real-world html coverage" in report["corpus_note"].lower()
     if report["real_world_case_count"] < 2 and report["mismatch_count"] == 0:
         assert report["decision_hint"] == "expand_real_world_corpus_before_dom_first"
+
+
+def test_tohoho_real_world_fixture_matches_dom_path():
+    report_module = _load_report_module()
+    report = report_module.collect_report()
+    tohoho = next(case for case in report["cases"] if case["id"] == "tohoho_web_home")
+    if not tohoho["equal"]:
+        import markdown as md
+        html = (ROOT / "fixtures" / "benchmark" / "tohoho_web_home.html").read_text(encoding="utf-8")
+        legacy = md.html_to_markdown(html)
+        dom = md.dom_to_markdown(md.parse_html_dom(html))
+        first_diff = next(
+            (i for i, (a, b) in enumerate(zip(legacy, dom)) if a != b),
+            min(len(legacy), len(dom)),
+        )
+        lo = max(0, first_diff - 80)
+        hi = first_diff + 80
+        raise AssertionError(
+            (
+                first_diff,
+                repr(legacy[lo:hi]),
+                repr(dom[lo:hi]),
+                len(legacy),
+                len(dom),
+            )
+        )

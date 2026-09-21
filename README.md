@@ -148,6 +148,12 @@ details, URL safety, Unicode, empty output, and host:port behavior. Expanding
 the vendored real-HTML corpus remains follow-up work before any public
 DOM-first cutover.
 
+PR #41 closes the synthetic `details` mismatch surfaced by that report.
+Legacy `html_to_markdown()` now preserves `<details><summary>` using the
+same `:::details Summary ... :::` Markdown contract as `dom_to_markdown()`.
+The implementation remains inside the legacy HTML parser, so the compatibility
+engine does not gain a dependency on the DOM layer.
+
 ```bash
 python scripts/converter_parity_report.py --out converter_parity.json
 ```
