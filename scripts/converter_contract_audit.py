@@ -137,7 +137,7 @@ def collect_report() -> dict[str, Any]:
         )
 
     divergent = [
-        case["id"] for case in cases
+        f'{case["kind"]}:{case["id"]}' for case in cases
         if not case["all_checks_pass"]
     ]
     return {
