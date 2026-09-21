@@ -2528,15 +2528,21 @@ class _HTMLToMarkdownParser(HTMLParser):
             self.parts.append(text)
 
     def _trim_structural_boundary(self) -> None:
-        """Drop horizontal whitespace immediately before a block boundary.
+        """Drop source-formatting whitespace before a block boundary.
 
-        HTML source indentation and formatting whitespace around block tags is
-        not Markdown content. Trimming only the active output fragment keeps
-        inline spaces intact while making block serialization idempotent.
+        Preserve trailing spaces that are part of Markdown syntax emitted by
+        this parser itself: blockquote prefixes and bare list markers used
+        before nested lists.
         """
         target = self._table_cell if self._table_cell is not None else self.parts
-        if target and target[-1]:
-            target[-1] = target[-1].rstrip(" \t")
+        if not target or not target[-1]:
+            return
+        tail = target[-1]
+        if tail.endswith("> "):
+            return
+        if re.search(r"(?:^|\n)\s*(?:[-*+]|\d+\.) $", tail):
+            return
+        target[-1] = tail.rstrip(" \t")
 
     def _flush_cell(self) -> None:
         if self._table_cell is None or self._table_row is None:
