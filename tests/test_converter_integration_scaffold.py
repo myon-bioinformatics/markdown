@@ -147,6 +147,10 @@ DETAILS_PARITY_CASES = [
         "<p>Before</p><details><summary>More</summary><p>Body</p></details><p>After</p>",
         "Before\n\n:::details More\nBody\n:::\n\nAfter\n",
     ),
+    (
+        "<details><div><summary>Nested</summary></div><p>Body</p></details>",
+        ":::details Details\nNested\n\nBody\n:::\n",
+    ),
 ]
 
 
@@ -171,3 +175,18 @@ def test_comment_boundaries_do_not_duplicate_collapsed_whitespace():
         dom = md.dom_to_markdown(md.parse_html_dom(html))
         assert legacy == expected, html
         assert dom == expected, html
+
+
+def test_details_inside_table_cell_stays_flat_and_keeps_table_shape():
+    html = (
+        "<table><tr><th>kind</th><th>value</th></tr>"
+        "<tr><td>x</td><td><details><summary>More</summary><p>Body</p></details></td></tr>"
+        "</table>"
+    )
+    legacy = md.html_to_markdown(html)
+    dom = md.dom_to_markdown(md.parse_html_dom(html))
+
+    assert legacy == dom
+    assert ":::details" not in legacy
+    assert "| kind | value |" in legacy
+    assert "| x | More Body |" in legacy
