@@ -2469,7 +2469,7 @@ def dom_to_markdown(node: HtmlNode) -> str:
             if not pending:
                 return
             fragment = HtmlNode("root", children=list(pending))
-            converted = html_to_markdown(dom_to_html(fragment))
+            converted = _html_to_markdown_impl(dom_to_html(fragment))
             if converted.strip():
                 parts.append(converted.strip())
             pending.clear()
@@ -2482,7 +2482,7 @@ def dom_to_markdown(node: HtmlNode) -> str:
                 pending.append(child)
         flush_pending()
         return "\n\n".join(part for part in parts if part).strip() + ("\n" if parts else "")
-    return html_to_markdown(dom_to_html(node))
+    return _html_to_markdown_impl(dom_to_html(node))
 
 
 def markdown_to_dom(content: str) -> HtmlNode:
@@ -2753,7 +2753,7 @@ class _HTMLToMarkdownParser(HTMLParser):
         return text.strip() + "\n"
 
 
-def html_to_markdown(html: str) -> str:
+def _html_to_markdown_impl(html: str) -> str:
     """Conservatively convert common HTML tags to Markdown.
 
     Simple ``<table>`` trees become GFM pipe tables (``| a | b |`` plus a
@@ -2776,6 +2776,16 @@ def html_to_markdown(html: str) -> str:
     parser.feed(html)
     parser.close()
     return parser.output()
+
+
+def html_to_markdown(html: str) -> str:
+    """Conservatively convert common HTML tags to Markdown.
+
+    This public compatibility entry point intentionally delegates to the
+    legacy parser engine. Keeping the engine separate lets DOM conversion
+    reuse the same implementation without creating a future recursion loop.
+    """
+    return _html_to_markdown_impl(html)
 
 
 def _escape_html_text(text: str) -> str:
