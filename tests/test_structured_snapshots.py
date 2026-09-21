@@ -22,3 +22,25 @@ def test_sql_snapshot_lists_quoted_and_bracket_table_names():
     assert "Table: " + tick + "order items" + tick in document
     assert "Table: [select]" in document
     assert md.markdown_to_sql_ddl(document) == ddl
+
+
+def test_sql_snapshot_lists_qualified_and_escaped_quoted_names():
+    ddl = 'CREATE TABLE "schema"."my table" (id int);\nCREATE TABLE "my ""table""" (id int);'
+    document = md.sql_ddl_to_markdown(ddl)
+
+    assert 'Table: "schema"."my table"' in document
+    assert 'Table: "my ""table"""' in document
+    assert md.markdown_to_sql_ddl(document) == ddl
+
+
+def test_markdown_table_statistics_reports_only_fully_numeric_columns():
+    source = "| name | score |\n| --- | --- |\n| a | 1 |\n| b | 3 |\n"
+
+    assert md.markdown_table_statistics(source) == {
+        "rows": 2,
+        "columns": 2,
+        "headers": ["name", "score"],
+        "numeric_columns": {
+            "score": {"count": 2, "min": 1.0, "max": 3.0, "mean": 2.0, "median": 2.0}
+        },
+    }
