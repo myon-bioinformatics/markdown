@@ -58,6 +58,8 @@ __all__ = [
     "footnote_ref",
     "footnote",
     "code_block",
+    "mermaid_block",
+    "extract_mermaid_blocks",
     "table",
     "aligned_table",
     "markdown_table_to_rows",
@@ -156,6 +158,7 @@ SUPPORTED = {
         "details (Zenn :::details summary / body; markdown_to_html -> <details><summary>)",
         "footnote_ref / footnote ([^id] inline ref and [^id]: definition)",
         "inline_code / code_block / json_block",
+        "mermaid_block / extract_mermaid_blocks (opaque Mermaid source only; no parsing/rendering)",
         "table / key_value_table",
         "md_table / md_kv (*args-friendly wrappers, no list/dict pre-building needed)",
         "status_line",
@@ -191,7 +194,7 @@ UNSUPPORTED = {
         "<http://...> and [text](url) become <a>)",
         "angle autolinks with schemes other than http/https (mailto:, ftp:, uppercase HTTP://)",
         "unmatched strikethrough (a lone ~~ stays literal; ~~a~~b~~ takes the first pair)",
-        "Math / mermaid rendering",
+        "Math / Mermaid rendering (Mermaid helpers only fence/extract opaque source)",
         "full Kramdown (extensions {::comment}/{::options}/{::nomarkdown}, math, "
         "TOC macros {:toc}, span IAL, IAL on lists/quotes/tables, attribute references)",
         "Liquid {% %} / {{ }}, YAML front matter, Jekyll tags / includes / baseurl",
@@ -1370,6 +1373,30 @@ def code_block(code: str, lang: str = "", *, fence_char: str = "`") -> str:
     """
     fence = _adaptive_fence(code, fence_char)
     return f"{fence}{lang}\n{code}\n{fence}\n"
+
+
+def mermaid_block(source: str, *, fence_char: str = "`") -> str:
+    """Wrap opaque Mermaid source in a safe ``mermaid`` fenced block.
+
+    Line endings are normalized to LF. Mermaid syntax is not parsed or
+    validated, and no renderer, browser, JavaScript runtime, or I/O is used.
+    """
+    normalized = source.replace("\r\n", "\n").replace("\r", "\n")
+    return code_block(normalized, lang="mermaid", fence_char=fence_char)
+
+
+def extract_mermaid_blocks(content: str) -> list[str]:
+    """Return Mermaid fenced-block sources in document order.
+
+    The info-string language match is case-insensitive and must be exactly
+    ``mermaid`` as its first token. Non-Mermaid fences and inline code are
+    ignored. Returned line endings follow the module-wide LF convention.
+    """
+    return [
+        block["code"]
+        for block in extract_code_blocks(content)
+        if block["language"].lower() == "mermaid"
+    ]
 
 
 def json_block(obj: Any, indent: int = 2) -> str:
