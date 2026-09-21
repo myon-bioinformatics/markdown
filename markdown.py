@@ -989,8 +989,11 @@ def markdown_image_to_html(
     else:
         # Treat bare path/URL as image source.
         alt, url, title = "", markdown.strip(), ""
+    safe_url = _sanitize_url_scheme(url)
+    if not safe_url:
+        return html_module.escape(alt)
     attrs = [
-        f'src="{html_module.escape(url, quote=True)}"',
+        f'src="{html_module.escape(safe_url, quote=True)}"',
         f'alt="{html_module.escape(alt, quote=True)}"',
     ]
     if title:
@@ -1018,7 +1021,10 @@ def markdown_link_to_html(markdown: str) -> str:
     if not match:
         return ""
     text, url, title = match.group(1), match.group(2), match.group(3) or ""
-    attrs = [f'href="{html_module.escape(url, quote=True)}"']
+    safe_url = _sanitize_url_scheme(url)
+    if not safe_url:
+        return html_module.escape(text)
+    attrs = [f'href="{html_module.escape(safe_url, quote=True)}"']
     if title:
         attrs.append(f'title="{html_module.escape(title, quote=True)}"')
     return f"<a {' '.join(attrs)}>{html_module.escape(text)}</a>"
@@ -2287,8 +2293,12 @@ _DOM_COMMON_ATTRS = frozenset({
 })
 
 
-def _dom_safe_url(value: str) -> str:
-    """Return a safe URL-ish attribute value, or an empty string when rejected."""
+def _sanitize_url_scheme(value: str) -> str:
+    """Normalize and validate a URL for generated HTML attributes.
+
+    C0 controls and DEL are removed before parsing. http/https/mailto and
+    relative URLs are kept; other absolute schemes are rejected.
+    """
     cleaned = "".join(ch for ch in value.strip() if ord(ch) >= 0x20 and ord(ch) != 0x7F)
     if not cleaned:
         return ""
@@ -2312,7 +2322,7 @@ def _dom_sanitize_attrs(tag: str, attrs: list[tuple[str, str | None]]) -> dict[s
             continue
         value = raw_value or ""
         if key in _DOM_URL_ATTRS:
-            value = _dom_safe_url(value)
+            value = _sanitize_url_scheme(value)
             if not value:
                 continue
         safe[key] = value
@@ -2399,6 +2409,10 @@ def dom_to_html(node: HtmlNode) -> str:
         if tag not in _DOM_SAFE_TAGS:
             return children
         attrs = current.attrs or {}
+        if tag == "a" and not attrs.get("href"):
+            return children
+        if tag == "img" and not attrs.get("src"):
+            return html_module.escape(attrs.get("alt", ""), quote=False)
         attr_text = "".join(
             (f' {key}="{html_module.escape(str(value), quote=True)}"'
              if value != "" else f" {key}")
@@ -2756,9 +2770,12 @@ def _escape_html_text(text: str) -> str:
 
 
 def _angle_autolink_html(url: str) -> str:
-    """Render a stashed ``<http(s)://...>`` autolink as ``<a href>``."""
-    href = html_module.escape(url, quote=True)
+    """Render a safe stashed angle autolink; unsafe URLs degrade to text."""
+    safe_url = _sanitize_url_scheme(url)
     text = html_module.escape(url)
+    if not safe_url:
+        return text
+    href = html_module.escape(safe_url, quote=True)
     return f'<a href="{href}">{text}</a>'
 
 
