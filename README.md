@@ -64,6 +64,27 @@ print(md.markdown_to_kramdown("# Title {#intro .hero}"))
 ```
 
 
+## Lightweight HTML DOM helpers
+
+`HtmlNode` is a small, stdlib-only normalized tree for conversion work. It is
+**not** a browser DOM and does not claim HTML5 tree-construction fidelity.
+
+- `parse_html_dom(html)` builds a root/element/text tree with lowercase tags.
+- `dom_to_html(node)` serializes only the supported safe tag subset.
+- `dom_to_markdown(node)` reuses the existing conservative HTML→Markdown
+  contract; `<details><summary>` is preserved as the repository's
+  `:::details` form.
+- `markdown_to_dom(markdown)` converts through the existing
+  `markdown_to_html()` subset and then parses the sanitized tree.
+
+The boundary is intentionally conservative: `script` / `style` subtrees,
+event attributes such as `onclick`, inline `style=`, and unsafe URL schemes
+are dropped. Unknown tags degrade to transparent containers so safe text and
+supported descendants remain available. Existing `html_to_markdown()` and
+`markdown_to_html()` entry points are not rewritten around the DOM layer in
+this first contract-focused step.
+
+
 ## Context helpers
 
 The stdlib-only context helpers added in PR #12 are deterministic preparation
