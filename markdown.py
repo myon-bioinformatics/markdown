@@ -1,5 +1,5 @@
 # markdown.py
-# metadata: __all__=91 | base_sha=7d313e261bfe30d1aae97dd8d4de161927e12503 | updated_at=2026-09-21T13:20:00Z
+# metadata: __all__=95 | base_sha=686f4c077baabe0d1e6ed29c86670d37fc41d060 | updated_at=2026-09-21T13:45:00Z
 """Stdlib-only Markdown utility functions.
 
 This module is intentionally a single file with no CLI / ``main`` entry point.
@@ -193,6 +193,8 @@ SUPPORTED = {
         "footnote_ref / footnote ([^id] inline ref and [^id]: definition)",
         "inline_code / code_block / json_block",
         "mermaid_block / extract_mermaid_blocks (opaque Mermaid source only; no parsing/rendering)",
+        "structural diagrams: headings -> Mermaid mindmap, task deps -> Mermaid flowchart, "
+        "Python classes -> Mermaid classDiagram, Markdown links -> Graphviz DOT",
         "table / key_value_table",
         "md_table / md_kv (*args-friendly wrappers, no list/dict pre-building needed)",
         "status_line",
