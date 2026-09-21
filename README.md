@@ -124,6 +124,34 @@ than a lone newline. Non-empty Markdown output keeps the existing contract of
 exactly one trailing newline. This deliberately treats empty-output
 normalization separately from broader whitespace or nested-list behavior.
 
+PR #40 adds a deterministic legacy-vs-DOM parity report for the next
+architecture decision. The report runs both HTML→Markdown paths over synthetic
+edge cases plus every vendored real-world HTML fixture under
+`fixtures/benchmark/`, records equality, output lengths, SHA-256 hashes, and
+short previews for mismatches, and emits a decision hint. Synthetic coverage
+explicitly includes blockquotes, inline/preformatted code, and alt-only image
+fallbacks in addition to lists/tables/details/URL cases.
+
+The report also records `real_world_case_count` separately. At present the
+repository has only one vendored real-world HTML page, so even a hypothetical
+zero-mismatch run is **not** enough to recommend DOM-first; the hint remains
+`expand_real_world_corpus_before_dom_first` until the real-world corpus is less
+thin. The hint is evidence, not an automatic switch: DOM-first remains a review
+decision based on observed mismatches, compatibility, and complexity.
+
+The current real-world HTML corpus is intentionally small: today it contains
+one vendored page (`tohoho_web_home.html`). That is enough to catch at least
+one real-page whitespace divergence, but not enough to treat a zero-mismatch
+result as broad production evidence. Synthetic coverage therefore also pins
+blockquotes, inline/preformatted code, image alt handling, lists, tables,
+details, URL safety, Unicode, empty output, and host:port behavior. Expanding
+the vendored real-HTML corpus remains follow-up work before any public
+DOM-first cutover.
+
+```bash
+python scripts/converter_parity_report.py --out converter_parity.json
+```
+
 URL scheme safety for conversion paths is centralized in
 `_sanitize_url_scheme()`: new HTML→Markdown or Markdown→HTML URL-consuming
 conversion code must reuse that helper rather than introduce an independent
