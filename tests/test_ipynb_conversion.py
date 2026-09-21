@@ -25,3 +25,11 @@ def test_markdown_to_ipynb_does_not_extract_python_fence_inside_code_context():
     notebook = json.loads(md.markdown_to_ipynb(source))
 
     assert [cell["cell_type"] for cell in notebook["cells"]] == ["markdown"]
+
+
+def test_markdown_to_ipynb_uses_the_first_fence_info_token_as_language():
+    source = "```python hl_lines=\"1\"\nx = 1\n```\n"
+    notebook = json.loads(md.markdown_to_ipynb(source))
+
+    assert [cell["cell_type"] for cell in notebook["cells"]] == ["code"]
+    assert notebook["cells"][0]["source"] == ["x = 1\n"]
