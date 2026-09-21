@@ -128,3 +128,31 @@ def test_non_empty_html_to_markdown_keeps_single_trailing_newline():
     ]
     for html, expected in samples:
         assert md.html_to_markdown(html) == expected
+
+
+DETAILS_PARITY_CASES = [
+    (
+        "<details><summary>More</summary><p>Body <em>text</em>.</p></details>",
+        ":::details More\nBody *text*.\n:::\n",
+    ),
+    (
+        "<details><p>Body only</p></details>",
+        ":::details Details\nBody only\n:::\n",
+    ),
+    (
+        "<details><summary></summary></details>",
+        ":::details Details\n:::\n",
+    ),
+    (
+        "<p>Before</p><details><summary>More</summary><p>Body</p></details><p>After</p>",
+        "Before\n\n:::details More\nBody\n:::\n\nAfter\n",
+    ),
+]
+
+
+def test_details_html_to_markdown_matches_dom_contract():
+    for html, expected in DETAILS_PARITY_CASES:
+        legacy = md.html_to_markdown(html)
+        dom = md.dom_to_markdown(md.parse_html_dom(html))
+        assert legacy == expected, html
+        assert dom == expected, html
