@@ -2289,6 +2289,10 @@ _DOM_SAFE_TAGS = frozenset({
     "tbody", "td", "tfoot", "th", "thead", "tr", "ul",
 })
 _DOM_VOID_TAGS = frozenset({"br", "hr", "img", "input"})
+_HTML_VOID_TAGS = frozenset({
+    "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta",
+    "param", "source", "track", "wbr",
+})
 _DOM_DROP_TAGS = frozenset({"script", "style"})
 _DOM_URL_ATTRS = frozenset({"href", "src"})
 _DOM_COMMON_ATTRS = frozenset({
@@ -2511,6 +2515,7 @@ class _HTMLToMarkdownParser(HTMLParser):
         self._in_thead = False
         self._block_attr_suffixes: list[str] = []
         self._details_stack: list[dict[str, Any]] = []
+        self._open_tags: list[str] = []
 
     def _emit(self, text: str) -> None:
         if self._table_cell is not None:
@@ -2569,6 +2574,9 @@ class _HTMLToMarkdownParser(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
+        parent_tag = self._open_tags[-1] if self._open_tags else None
+        if tag not in _HTML_VOID_TAGS:
+            self._open_tags.append(tag)
         attr = {k.lower(): (v or "") for k, v in attrs}
         if tag in {"script", "style"}:
             self._suppress += 1
@@ -2678,20 +2686,31 @@ class _HTMLToMarkdownParser(HTMLParser):
                 bullet = "-"
             self._emit(f"\n{indent}{bullet} ")
         elif tag == "details":
+            # A fenced :::details block cannot live safely inside one GFM table
+            # cell. Preserve the pre-#41 behavior there by flattening the
+            # contents instead of reconstructing a multiline container.
+            special = self._table_cell is None
             self._details_stack.append(
                 {
-                    "start": len(self.parts),
+                    "special": special,
+                    "start": len(self.parts) if special else None,
                     "summary_start": None,
                     "summary": "Details",
                 }
             )
         elif tag == "summary" and self._details_stack:
-            self._details_stack[-1]["summary_start"] = len(self.parts)
+            current = self._details_stack[-1]
+            if current.get("special") and parent_tag == "details":
+                current["summary_start"] = len(self.parts)
         elif tag == "blockquote":
             self._emit("\n\n> ")
 
     def handle_endtag(self, tag: str) -> None:
         tag = tag.lower()
+        for index in range(len(self._open_tags) - 1, -1, -1):
+            if self._open_tags[index] == tag:
+                del self._open_tags[index:]
+                break
         if tag in {"script", "style"}:
             self._suppress = max(0, self._suppress - 1)
             return
@@ -2755,22 +2774,24 @@ class _HTMLToMarkdownParser(HTMLParser):
         elif tag == "summary" and self._details_stack:
             current = self._details_stack[-1]
             summary_start = current.get("summary_start")
-            if isinstance(summary_start, int):
+            if current.get("special") and isinstance(summary_start, int):
                 summary = "".join(self.parts[summary_start:]).strip()
                 del self.parts[summary_start:]
                 current["summary"] = summary or "Details"
                 current["summary_start"] = None
         elif tag == "details" and self._details_stack:
             current = self._details_stack.pop()
-            start = current["start"]
-            body = "".join(self.parts[start:])
-            del self.parts[start:]
-            body = re.sub(r"\n{3,}", "\n\n", body).strip()
-            summary = str(current.get("summary") or "Details")
-            if body:
-                self._emit(f"\n\n:::details {summary}\n{body}\n:::\n\n")
-            else:
-                self._emit(f"\n\n:::details {summary}\n:::\n\n")
+            if current.get("special"):
+                start = current.get("start")
+                if isinstance(start, int):
+                    body = "".join(self.parts[start:])
+                    del self.parts[start:]
+                    body = re.sub(r"\n{3,}", "\n\n", body).strip()
+                    summary = str(current.get("summary") or "Details")
+                    if body:
+                        self._emit(f"\n\n:::details {summary}\n{body}\n:::\n\n")
+                    else:
+                        self._emit(f"\n\n:::details {summary}\n:::\n\n")
         elif tag in {"ul", "ol"}:
             if self._list_stack:
                 self._list_stack.pop()
