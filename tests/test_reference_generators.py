@@ -96,7 +96,7 @@ def test_argparse_to_markdown_documents_arguments_and_subcommands():
     assert "| path | yes |" in result
     assert "| --mode | no |  | fast, safe | safe |  |  | store | Run mode |" in result
     assert "| --count | yes |  |  |  | int | N | store | Count |" in result
-    assert "| --verbose | no |  |  | False |  |  | store_true | Verbose output |" in result
+    assert "| --verbose | no | 0 |  | False |  |  | store_true | Verbose output |" in result
     assert "## Subcommands" in result
     assert "| serve | Serve content |" in result
     assert "## Epilog" in result
