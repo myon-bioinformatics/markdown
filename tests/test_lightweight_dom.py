@@ -190,3 +190,29 @@ def test_dom_rejected_urls_degrade_without_empty_link_or_image():
     assert "[click]()" not in back
     assert "click" in back
     assert "picture" in back
+
+
+def test_host_port_references_are_normalized_not_rejected():
+    assert md.markdown_link_to_html("[local](example.com:8080/path)") == (
+        '<a href="//example.com:8080/path">local</a>'
+    )
+    assert md.markdown_link_to_html("[localhost](localhost:3000/app)") == (
+        '<a href="//localhost:3000/app">localhost</a>'
+    )
+    assert md.markdown_link_to_html("[ipv4](127.0.0.1:8000/x)") == (
+        '<a href="//127.0.0.1:8000/x">ipv4</a>'
+    )
+    assert md.markdown_link_to_html("[ipv6]([::1]:8000/x)") == (
+        '<a href="//[::1]:8000/x">ipv6</a>'
+    )
+
+
+def test_host_port_normalization_does_not_open_custom_schemes():
+    assert md.markdown_link_to_html("[custom](foo:123/path)") == "custom"
+    assert md.markdown_link_to_html("[custom](javascript:123/path)") == "custom"
+    assert md.markdown_link_to_html("[badport](example.com:70000/path)") == "badport"
+
+
+def test_dom_host_port_reference_uses_network_path_form():
+    tree = md.parse_html_dom('<a href="example.com:8080/path">local</a>')
+    assert md.dom_to_html(tree) == '<a href="//example.com:8080/path">local</a>'
