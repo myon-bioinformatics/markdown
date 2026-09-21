@@ -96,3 +96,35 @@ def test_rejected_url_targets_never_emit_empty_markdown_targets():
         result = md.html_to_markdown(html)
         assert "]()" not in result
         assert "![](" not in result
+
+
+EMPTY_OUTPUT_CASES = [
+    "",
+    "   ",
+    "<script>alert(1)</script>",
+    "<style>body{display:none}</style>",
+    '<a href="javascript:x"></a>',
+    '<img src="javascript:x" alt="">',
+]
+
+
+def test_empty_html_to_markdown_normalizes_to_empty_string():
+    for html in EMPTY_OUTPUT_CASES:
+        assert md.html_to_markdown(html) == "", html
+
+
+def test_empty_output_matches_dom_path():
+    for html in EMPTY_OUTPUT_CASES:
+        legacy = md.html_to_markdown(html)
+        dom = md.dom_to_markdown(md.parse_html_dom(html))
+        assert legacy == dom == "", html
+
+
+def test_non_empty_html_to_markdown_keeps_single_trailing_newline():
+    samples = [
+        ("<p>Hello</p>", "Hello\n"),
+        ('<a href="https://example.com">x</a>', "[x](https://example.com)\n"),
+        ('<img src="/x.png" alt="pic">', "![pic](/x.png)\n"),
+    ]
+    for html, expected in samples:
+        assert md.html_to_markdown(html) == expected
