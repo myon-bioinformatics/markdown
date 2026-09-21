@@ -64,6 +64,8 @@ __all__ = [
     "markdown_table_to_records",
     "csv_to_markdown_table",
     "markdown_table_to_csv",
+    "markdown_to_ipynb",
+    "ipynb_to_markdown",
     "key_value_table",
     "section",
     "inline_code",
@@ -1468,6 +1470,75 @@ def markdown_table_to_csv(content: str) -> str:
     writer.writerow(headers)
     writer.writerows(rows)
     return out.getvalue()
+
+
+def markdown_to_ipynb(content: str, *, indent: int | None = 2) -> str:
+    """Make a minimal nbformat-4 JSON notebook from Markdown and Python fences.
+
+    Fenced-code state comes from the shared ``_scan_lines`` scanner. The
+    converter does not execute cells, create outputs, or infer kernels.
+    """
+    lines = content.splitlines(keepends=True)
+    scanned = _scan_lines([line.rstrip("\r\n") for line in lines])
+    cells: list[dict[str, Any]] = []
+    prose: list[str] = []
+    index = 0
+    while index < len(lines):
+        item = scanned[index]
+        match = _FENCE_RE.match(item.text)
+        info = match.group(2).strip() if match else ""
+        language = info.split()[0].lower() if info else ""
+        if item.is_fence_open and language in {"python", "py", "python3"}:
+            if prose:
+                cells.append({"cell_type": "markdown", "metadata": {}, "source": prose})
+                prose = []
+            index += 1
+            code: list[str] = []
+            while index < len(lines) and not scanned[index].is_fence_close:
+                code.append(lines[index])
+                index += 1
+            if index < len(lines):
+                index += 1
+            cells.append({
+                "cell_type": "code",
+                "execution_count": None,
+                "metadata": {},
+                "outputs": [],
+                "source": code,
+            })
+            continue
+        prose.append(lines[index])
+        index += 1
+    if prose:
+        cells.append({"cell_type": "markdown", "metadata": {}, "source": prose})
+    notebook = {
+        "cells": cells,
+        "metadata": {"kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"}},
+        "nbformat": 4,
+        "nbformat_minor": 5,
+    }
+    return json.dumps(notebook, ensure_ascii=False, indent=indent) + "\n"
+
+
+def ipynb_to_markdown(notebook: str | dict[str, Any]) -> str:
+    """Render Markdown and code cell sources from a minimal nbformat notebook.
+
+    Outputs and execution counts are deliberately ignored.
+    """
+    data = json.loads(notebook) if isinstance(notebook, str) else notebook
+    if not isinstance(data, dict) or not isinstance(data.get("cells"), list):
+        raise ValueError("notebook must be an nbformat object with a cells list")
+    parts: list[str] = []
+    for cell in data["cells"]:
+        if not isinstance(cell, dict):
+            continue
+        source = cell.get("source", [])
+        text = source if isinstance(source, str) else "".join(source)
+        if cell.get("cell_type") == "markdown":
+            parts.append(text)
+        elif cell.get("cell_type") == "code":
+            parts.append("```python\n" + text + ("" if text.endswith("\n") or not text else "\n") + "```\n")
+    return "".join(parts)
 
 
 def key_value_table(
