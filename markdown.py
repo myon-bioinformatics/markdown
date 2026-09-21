@@ -214,7 +214,7 @@ _REF_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\[([^\]]+)\]")
 _ANGLE_URL_RE = re.compile(r"<(https?://[^>\s]+)>")
 _BARE_URL_RE = re.compile(r"(?<![\"'(\\[])(https?://[^\s)<>\"]+)")
 _DATA_URI_RE = re.compile(r"(?<![A-Za-z0-9_-])data:([^,\s]*),([^\s]*)", re.IGNORECASE)
-_DATA_URI_MEDIA_TYPE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9._+-]*/[A-Za-z0-9._+-]+\\Z")
+_DATA_URI_MEDIA_TYPE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9._+-]*/[A-Za-z0-9._+-]+\Z")
 _HTML_TAG_RE = re.compile(r"</?([A-Za-z][A-Za-z0-9]*)\b[^>]*>", re.DOTALL)
 _HTML_IMG_RE = re.compile(
     r"<img\b([^>]*)/?>",
@@ -673,8 +673,10 @@ def extract_data_uris(content: str) -> list[dict[str, str]]:
         if any(part and "=" not in part and part.lower() != "base64" for part in parts[1:]):
             continue
         uri = match.group(0).rstrip("\\\"'>")
-        # Drop only an unmatched Markdown delimiter; payload punctuation is data.
-        while uri.endswith(")") and uri.count("(") < uri.count(")"):
+        # Drop only unmatched Markdown closing parens, plus any trailing
+        # prose punctuation that was only wrapping them (e.g. "...hello)."
+        # from "(data:...,hello)."); payload punctuation is otherwise data.
+        while uri and uri.count("(") < uri.count(")"):
             uri = uri[:-1]
         found.append({
             "uri": uri,
