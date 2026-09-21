@@ -2686,7 +2686,12 @@ class _HTMLToMarkdownParser(HTMLParser):
             if self._list_stack:
                 target = self._table_cell if self._table_cell is not None else self.parts
                 if target and target[-1]:
-                    target[-1] = target[-1].rstrip()
+                    marker_only = re.search(
+                        r"(?:^|\n)\s*(?:[-*+]|\d+\.) $",
+                        target[-1],
+                    )
+                    if marker_only is None:
+                        target[-1] = target[-1].rstrip()
             self._list_stack.append(tag)
             self._li_index.append(0)
             if len(self._list_stack) == 1:
