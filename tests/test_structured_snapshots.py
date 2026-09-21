@@ -152,3 +152,75 @@ def test_markdown_to_structured_rejects_bad_parent_reference():
     )
     with pytest.raises(ValueError, match="earlier node"):
         md.markdown_to_structured(source)
+
+
+
+def test_markdown_to_structured_requires_format_marker():
+    source = (
+        "| id | parent | slot | type | value |\n"
+        "| --- | --- | --- | --- | --- |\n"
+        "| 0 |  |  | dict |  |\n"
+    )
+    with pytest.raises(ValueError, match="marker"):
+        md.markdown_to_structured(source)
+
+
+def test_structured_markdown_round_trip_tricky_keys_and_values():
+    value = {
+        "a|b": "pipe|value",
+        "quote\"key": "backslash\\value",
+        "日本語": ["改行\n入り", "", False],
+    }
+    assert md.markdown_to_structured(md.structured_to_markdown(value)) == value
+
+
+def test_structured_markdown_rejects_tuple_and_bytes():
+    with pytest.raises(TypeError):
+        md.structured_to_markdown(("a", "b"))
+    with pytest.raises(TypeError):
+        md.structured_to_markdown(b"bytes")
+
+
+def test_structured_markdown_rejects_positive_and_negative_infinity():
+    for value in [float("inf"), float("-inf")]:
+        with pytest.raises(ValueError):
+            md.structured_to_markdown(value)
+
+
+def test_markdown_to_structured_rejects_duplicate_mapping_key():
+    source = (
+        "# Structured data\n"
+        "<!-- markdown.py:structured-v1 -->\n"
+        "| id | parent | slot | type | value |\n"
+        "| --- | --- | --- | --- | --- |\n"
+        "| 0 |  |  | dict |  |\n"
+        "| 1 | 0 | \"x\" | int | 1 |\n"
+        "| 2 | 0 | \"x\" | int | 2 |\n"
+    )
+    with pytest.raises(ValueError, match="duplicate key"):
+        md.markdown_to_structured(source)
+
+
+def test_markdown_to_structured_rejects_out_of_order_list_slot():
+    source = (
+        "# Structured data\n"
+        "<!-- markdown.py:structured-v1 -->\n"
+        "| id | parent | slot | type | value |\n"
+        "| --- | --- | --- | --- | --- |\n"
+        "| 0 |  |  | list |  |\n"
+        "| 1 | 0 | 1 | int | 1 |\n"
+    )
+    with pytest.raises(ValueError, match="contiguous"):
+        md.markdown_to_structured(source)
+
+
+def test_markdown_to_structured_rejects_unknown_type_tag():
+    source = (
+        "# Structured data\n"
+        "<!-- markdown.py:structured-v1 -->\n"
+        "| id | parent | slot | type | value |\n"
+        "| --- | --- | --- | --- | --- |\n"
+        "| 0 |  |  | datetime | \"2026-09-21T00:00:00\" |\n"
+    )
+    with pytest.raises(ValueError, match="Unknown structured node type"):
+        md.markdown_to_structured(source)
