@@ -103,13 +103,19 @@ entry point is ever evaluated for a DOM-first implementation.
 
 PR #37 treats DOM/legacy parity as an **observability contract**, not as a
 requirement that every existing path already be identical. Representative
-supported cases are required to stay equal, while known pre-existing gaps are
-recorded separately so later work can decide whether to close them without
-mixing behavior changes into this refactor. In particular, lightweight DOM
-sanitization currently makes unsupported structural tags such as `caption`,
-`colgroup`, and `col` transparent before the legacy HTML→Markdown table
-engine sees them. That difference is deliberate baseline data for subsequent
-converter-integration work, not a reason to silently expand #37's scope.
+supported cases are required to stay equal, while only **observed final
+Markdown differences** are recorded as known gaps. Intermediate DOM/HTML shape
+changes are not classified as parity failures when both paths still produce
+the same Markdown. For example, `caption` / `colgroup` / `col` may be
+transparent in the lightweight DOM, but the legacy engine already ignores
+those structures in supported table output, so they are not a known final
+Markdown gap by themselves.
+
+One current observed gap is safety normalization: an unsafe HTML link may be
+preserved by the legacy HTML→Markdown parser, while the DOM path removes the
+unsafe URL before conversion. That difference is recorded deliberately as
+baseline data for later converter-integration work rather than being silently
+"fixed" inside this refactor.
 
 DOM-specific preprocessing such as `details` handling stays in
 `dom_to_markdown()`; the internal HTML engine remains DOM-agnostic. Nested-list
