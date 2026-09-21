@@ -118,6 +118,14 @@ links/images. The shared host:port normalization also applies consistently, so
 an unambiguous value such as `example.com:8080/path` becomes the network-path
 reference `//example.com:8080/path`.
 
+URL scheme safety for conversion paths is centralized in
+`_sanitize_url_scheme()`: new HTML→Markdown or Markdown→HTML URL-consuming
+conversion code must reuse that helper rather than introduce an independent
+scheme check. Extraction helpers such as `extract_links()` /
+`extract_images()` only report source content, and builders such as
+`make_link()` / `make_image()` continue to treat the caller-supplied URL as
+caller responsibility; changing those contracts is a separate design decision.
+
 DOM-specific preprocessing such as `details` handling stays in
 `dom_to_markdown()`; the internal HTML engine remains DOM-agnostic. Nested-list
 behavior, whitespace normalization, safe-tag expansion, and any eventual
