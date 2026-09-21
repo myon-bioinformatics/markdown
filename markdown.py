@@ -2510,6 +2510,7 @@ class _HTMLToMarkdownParser(HTMLParser):
         self._table_row_is_header = False
         self._in_thead = False
         self._block_attr_suffixes: list[str] = []
+        self._details_stack: list[dict[str, Any]] = []
 
     def _emit(self, text: str) -> None:
         if self._table_cell is not None:
@@ -2676,6 +2677,16 @@ class _HTMLToMarkdownParser(HTMLParser):
             else:
                 bullet = "-"
             self._emit(f"\n{indent}{bullet} ")
+        elif tag == "details":
+            self._details_stack.append(
+                {
+                    "start": len(self.parts),
+                    "summary_start": None,
+                    "summary": "Details",
+                }
+            )
+        elif tag == "summary" and self._details_stack:
+            self._details_stack[-1]["summary_start"] = len(self.parts)
         elif tag == "blockquote":
             self._emit("\n\n> ")
 
@@ -2741,6 +2752,25 @@ class _HTMLToMarkdownParser(HTMLParser):
             else:
                 self._emit(f"]({self._link_href})")
             self._link_open = False
+        elif tag == "summary" and self._details_stack:
+            current = self._details_stack[-1]
+            summary_start = current.get("summary_start")
+            if isinstance(summary_start, int):
+                summary = "".join(self.parts[summary_start:]).strip()
+                del self.parts[summary_start:]
+                current["summary"] = summary or "Details"
+                current["summary_start"] = None
+        elif tag == "details" and self._details_stack:
+            current = self._details_stack.pop()
+            start = current["start"]
+            body = "".join(self.parts[start:])
+            del self.parts[start:]
+            body = re.sub(r"\n{3,}", "\n\n", body).strip()
+            summary = str(current.get("summary") or "Details")
+            if body:
+                self._emit(f"\n\n:::details {summary}\n{body}\n:::\n\n")
+            else:
+                self._emit(f"\n\n:::details {summary}\n:::\n\n")
         elif tag in {"ul", "ol"}:
             if self._list_stack:
                 self._list_stack.pop()
