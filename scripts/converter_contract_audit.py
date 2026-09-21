@@ -364,6 +364,8 @@ def collect_report() -> dict[str, Any]:
             )
         )
 
+    structured_cycles, unavailable_cycle_ids = _collect_structured_cycles()
+
     raw_divergent: list[str] = []
     expected_lossy: list[str] = []
     divergent: list[str] = []
@@ -385,7 +387,7 @@ def collect_report() -> dict[str, Any]:
             divergent.append(case_key)
 
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "case_count": len(cases),
         "stable_case_count": sum(
             case["classification"] == "stable" for case in cases
@@ -396,6 +398,20 @@ def collect_report() -> dict[str, Any]:
         "expected_lossy_case_ids": expected_lossy,
         "divergent_case_ids": divergent,
         "real_world_html_count": len(real_world_paths),
+        "conversion_graph": _conversion_graph(),
+        "structured_cycle_count": len(structured_cycles),
+        "structured_cycle_stable_count": sum(
+            cycle["classification"] == "stable" for cycle in structured_cycles
+        ),
+        "structured_cycle_divergent_count": sum(
+            cycle["classification"] == "divergent" for cycle in structured_cycles
+        ),
+        "structured_cycle_divergent_ids": [
+            cycle["id"] for cycle in structured_cycles
+            if cycle["classification"] == "divergent"
+        ],
+        "structured_cycle_unavailable_ids": unavailable_cycle_ids,
+        "structured_cycles": structured_cycles,
         "note": (
             "Exact round-trip loss is classified separately when it is an "
             "explicit converter contract (expected_lossy). Remaining "
@@ -422,7 +438,9 @@ def main(argv: list[str] | None = None) -> int:
         f"stable={report['stable_case_count']} "
         f"expected_lossy={report['expected_lossy_case_count']} "
         f"divergent={report['divergent_case_count']} "
-        f"real_world={report['real_world_html_count']}"
+        f"real_world={report['real_world_html_count']} "
+        f"cycles={report['structured_cycle_count']} "
+        f"cycle_divergent={report['structured_cycle_divergent_count']}"
     )
     return 0
 
