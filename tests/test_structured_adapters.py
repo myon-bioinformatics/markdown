@@ -118,3 +118,19 @@ def test_toml_reader_requires_python_311_when_tomllib_unavailable(monkeypatch):
     monkeypatch.setattr(md, "tomllib", None)
     with pytest.raises(RuntimeError, match="3.11"):
         md.toml_to_markdown('x = 1\n')
+
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        {"bad\nsection": {"key": "value"}},
+        {"bad\rsection": {"key": "value"}},
+        {"section": {"bad\nkey": "value"}},
+        {"section": {"bad\rkey": "value"}},
+    ],
+)
+def test_markdown_to_ini_rejects_embedded_newlines_in_names(value):
+    document = md.structured_to_markdown(value)
+    with pytest.raises(ValueError, match="single-line"):
+        md.markdown_to_ini(document)
