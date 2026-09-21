@@ -67,6 +67,127 @@ EXPECTED_LOSSY_CASES = {
 }
 
 
+# The graph deliberately distinguishes two Markdown carriers.  "markdown_prose"
+# is ordinary human-authored Markdown handled by the HTML/DOM converters;
+# "markdown_structured_v1" is the canonical table envelope emitted by
+# structured_to_markdown().  Sharing a text syntax does not make those domains
+# interchangeable.
+CONVERSION_EDGES = (
+    {
+        "id": "html_to_markdown_prose",
+        "source": "html",
+        "target": "markdown_prose",
+        "family": "prose",
+        "domain": "conservative HTML subset supported by html_to_markdown",
+        "runtime_available": True,
+    },
+    {
+        "id": "markdown_prose_to_html",
+        "source": "markdown_prose",
+        "target": "html",
+        "family": "prose",
+        "domain": "Markdown subset supported by markdown_to_html",
+        "runtime_available": True,
+    },
+    {
+        "id": "markdown_prose_to_dom",
+        "source": "markdown_prose",
+        "target": "dom",
+        "family": "prose",
+        "domain": "Markdown subset supported by markdown_to_dom",
+        "runtime_available": True,
+    },
+    {
+        "id": "dom_to_markdown_prose",
+        "source": "dom",
+        "target": "markdown_prose",
+        "family": "prose",
+        "domain": "HtmlNode trees supported by dom_to_markdown",
+        "runtime_available": True,
+    },
+    {
+        "id": "ini_to_markdown_structured_v1",
+        "source": "ini",
+        "target": "markdown_structured_v1",
+        "family": "structured-v1",
+        "domain": "INI section/key/string-value semantic subset",
+        "runtime_available": True,
+    },
+    {
+        "id": "markdown_structured_v1_to_ini",
+        "source": "markdown_structured_v1",
+        "target": "ini",
+        "family": "structured-v1",
+        "domain": "mapping[section, mapping[key, str]]",
+        "runtime_available": True,
+    },
+    {
+        "id": "toml_to_markdown_structured_v1",
+        "source": "toml",
+        "target": "markdown_structured_v1",
+        "family": "structured-v1",
+        "domain": "JSON-compatible TOML values excluding datetime/date/time",
+        "runtime_available": md.tomllib is not None,
+    },
+    {
+        "id": "markdown_structured_v1_to_toml",
+        "source": "markdown_structured_v1",
+        "target": "toml",
+        "family": "structured-v1",
+        "domain": "TOML-representable structured values without null",
+        "runtime_available": True,
+    },
+    {
+        "id": "dotenv_to_markdown_structured_v1",
+        "source": "dotenv",
+        "target": "markdown_structured_v1",
+        "family": "structured-v1",
+        "domain": "flat mapping[str, str] accepted by the narrow dotenv parser",
+        "runtime_available": True,
+    },
+    {
+        "id": "markdown_structured_v1_to_dotenv",
+        "source": "markdown_structured_v1",
+        "target": "dotenv",
+        "family": "structured-v1",
+        "domain": "flat mapping[valid dotenv key, str]",
+        "runtime_available": True,
+    },
+)
+
+
+STRUCTURED_CYCLE_CASES = (
+    {
+        "id": "ini_via_toml",
+        "source_format": "ini",
+        "via_format": "toml",
+        "input": "[server]\nhost=localhost\nport=8080\n",
+        "requires_tomllib": True,
+    },
+    {
+        "id": "dotenv_via_toml",
+        "source_format": "dotenv",
+        "via_format": "toml",
+        "input": 'NAME="demo"\nMODE="safe"\n',
+        "requires_tomllib": True,
+    },
+    {
+        "id": "toml_via_ini",
+        "source_format": "toml",
+        "via_format": "ini",
+        "input": '[server]\nhost = "localhost"\nport = "8080"\n',
+        "requires_tomllib": True,
+    },
+    {
+        "id": "toml_via_dotenv",
+        "source_format": "toml",
+        "via_format": "dotenv",
+        "input": 'NAME = "demo"\nMODE = "safe"\n',
+        "requires_tomllib": True,
+    },
+)
+
+
 def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
