@@ -64,6 +64,11 @@ __all__ = [
     "markdown_table_to_records",
     "csv_to_markdown_table",
     "markdown_table_to_csv",
+    "json_to_markdown",
+    "markdown_to_json",
+    "redis_snapshot_to_markdown",
+    "sql_ddl_to_markdown",
+    "markdown_to_sql_ddl",
     "markdown_to_ipynb",
     "ipynb_to_markdown",
     "key_value_table",
@@ -1547,6 +1552,62 @@ def ipynb_to_markdown(notebook: str | dict[str, Any]) -> str:
             parts.append("```python\n" + text + ("" if text.endswith("\n") or not text else "\n") + "```\n")
     return "".join(parts)
 
+
+# === SECTION: structured snapshots ===
+
+_CREATE_TABLE_NAME_RE = re.compile(
+    r"\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"
+    r"(\"[^\"]*\"|`[^`]*`|\[[^\]]*\]|[\w.]+)",
+    re.IGNORECASE,
+)
+_SQL_TRAILING_NEWLINES_RE = re.compile(
+    r"<!-- markdown\.py:sql-trailing-newlines=(\d+) -->"
+)
+
+
+def json_to_markdown(value: Any, title: str = "JSON") -> str:
+    """Wrap JSON data as a Markdown document without performing I/O."""
+    return heading(title) + json_block(value)
+
+
+def markdown_to_json(content: str) -> Any:
+    """Read the first JSON fence emitted by :func:`json_to_markdown`."""
+    for block in extract_code_blocks(content):
+        if block["language"].lower() == "json":
+            return json.loads(block["code"])
+    raise ValueError("No fenced JSON block found")
+
+
+def redis_snapshot_to_markdown(snapshot: Any, title: str = "Redis snapshot") -> str:
+    """Document an already obtained Redis/RedisJSON snapshot without connecting."""
+    return json_to_markdown(snapshot, title)
+
+
+def sql_ddl_to_markdown(sql: str, title: str = "SQL schema") -> str:
+    """Document a supplied SQL DDL snapshot without parsing or executing it.
+
+    The original LF trailing-newline count is recorded in a Markdown comment
+    so the companion reader restores it exactly. CRLF input is normalized to
+    the module-wide LF fence convention.
+    """
+    names = _CREATE_TABLE_NAME_RE.findall(sql)
+    outline = bullet_list(["Table: " + name for name in names]) if names else ""
+    trailing_newlines = len(sql) - len(sql.rstrip("\n"))
+    body = sql.rstrip("\n")
+    fence = _adaptive_fence(sql, "`")
+    fenced = fence + "sql\n" + body + "\n" + fence + "\n"
+    marker = "<!-- markdown.py:sql-trailing-newlines=" + str(trailing_newlines) + " -->\n"
+    return heading(title) + outline + marker + fenced
+
+
+def markdown_to_sql_ddl(content: str) -> str:
+    """Return the first SQL snapshot without validating or executing it."""
+    for block in extract_code_blocks(content):
+        if block["language"].lower() == "sql":
+            marker = _SQL_TRAILING_NEWLINES_RE.search(content)
+            trailing_newlines = int(marker.group(1)) if marker else 0
+            return block["code"].rstrip("\n") + "\n" * trailing_newlines
+    raise ValueError("No fenced SQL block found")
 
 def key_value_table(
     data: Any,
