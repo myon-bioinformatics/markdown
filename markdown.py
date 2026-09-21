@@ -167,6 +167,8 @@ SUPPORTED = {
         "as Pandoc-style {#id .class key=\"value\"} so markdown_to_kramdown can attach IAL",
         "structured_to_markdown / markdown_to_structured for JSON-compatible Python data "
         "(typed canonical Markdown table; reusable by INI/TOML adapters)",
+        "INI / TOML / dotenv <-> canonical structured Markdown adapters "
+        "(semantic round-trip; source comments/spacing/quote style are canonicalized)",
         "markdown_to_kramdown: Pandoc/PHP-Extra {#id .class key=value} on headings/paragraphs "
         "-> Kramdown block IAL ({: #id .class key=\"value\"}); ordinary Markdown left alone",
         "kramdown_to_markdown: strip known heading/paragraph IAL back to plain Markdown "
