@@ -1821,6 +1821,8 @@ def markdown_to_structured(content: str) -> Any:
     Malformed node ids, parent references, slots, type tags, or scalar JSON
     values raise ValueError instead of being guessed.
     """
+    if _STRUCTURED_MARKER.strip() not in content:
+        raise ValueError("No structured-data marker found")
     headers, rows = markdown_table_to_rows(content)
     if headers != _STRUCTURED_TABLE_HEADERS:
         raise ValueError("No canonical structured-data table found")
