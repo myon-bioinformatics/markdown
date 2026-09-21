@@ -672,19 +672,20 @@ def extract_data_uris(content: str) -> list[dict[str, str]]:
             continue
         if any(part and "=" not in part and part.lower() != "base64" for part in parts[1:]):
             continue
-        uri = match.group(0).rstrip("\\\"'>")
-        # Drop a trailing run of only ")" / prose punctuation, but only when
-        # that whole run contains the unmatched Markdown ")" it is wrapping
-        # -- e.g. "...hello)." from "(data:...,hello)." strips both chars,
-        # while "...hello)world!" or "...x)y" leave payload bytes (and any
-        # punctuation past them) untouched, since the run stops at the
-        # first character that isn't ")" or punctuation.
+        uri = match.group(0).rstrip("\"'>")
+        # Drop an unmatched Markdown ")" and any prose punctuation trailing
+        # *after* it (e.g. "...hello)." from "(data:...,hello)."), but keep
+        # payload punctuation that sits *before* the paren (e.g. the "!" in
+        # "(data:...,Hello!)" is data, not a delimiter). Find the rightmost
+        # ")" in the trailing ")"/punctuation run and cut from there -- text
+        # to its left in the run is payload; text at/after it is wrapping.
         trim = len(uri)
         while trim > 0 and uri[trim - 1] in ").,;:!?":
             trim -= 1
         tail = uri[trim:]
-        if ")" in tail and uri.count("(") < uri.count(")"):
-            uri = uri[:trim]
+        last_paren = tail.rfind(")")
+        if last_paren != -1 and uri.count("(") < uri.count(")"):
+            uri = uri[: trim + last_paren]
         found.append({
             "uri": uri,
             "media_type": declared_type or "text/plain",

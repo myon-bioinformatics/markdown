@@ -52,6 +52,29 @@ def test_data_uri_keeps_ordinary_payload_bytes_around_unmatched_parens():
         assert result[0]["uri"] == expected, source
 
 
+def test_data_uri_keeps_payload_punctuation_immediately_before_the_paren():
+    """Punctuation that sits *before* an unmatched ")" is payload, not a
+    delimiter -- only punctuation trailing *after* the ")" (the prose that
+    was wrapping it) gets stripped along with it."""
+    cases = [
+        ("See (data:text/plain,Hello!).", "data:text/plain,Hello!"),
+        ("See (data:text/plain,Hello?).", "data:text/plain,Hello?"),
+        ("See (data:text/plain,done.).", "data:text/plain,done."),
+        ("(data:text/plain,Hello!)", "data:text/plain,Hello!"),
+        ("![x](data:text/plain,Hello!)", "data:text/plain,Hello!"),
+    ]
+    for source, expected in cases:
+        result = md.extract_data_uris(source)
+        assert result[0]["uri"] == expected, source
+
+
+def test_data_uri_trailing_backslash_is_kept():
+    """rstrip() here only removes surrounding quote/angle delimiters, same
+    as the rest of this module -- a payload ending in "\\" is not one."""
+    result = md.extract_data_uris("data:text/plain,ends\\")
+    assert result[0]["uri"] == "data:text/plain,ends\\"
+
+
 def test_data_uri_rejects_prefixed_false_positives():
     assert md.extract_data_uris("notdata:text/plain,x") == []
     assert md.extract_data_uris("foo_data:text/plain,x") == []
