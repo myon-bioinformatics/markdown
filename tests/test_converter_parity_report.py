@@ -86,3 +86,10 @@ def test_converter_parity_report_flags_thin_real_world_corpus():
     assert "real-world html coverage" in report["corpus_note"].lower()
     if report["real_world_case_count"] < 2 and report["mismatch_count"] == 0:
         assert report["decision_hint"] == "expand_real_world_corpus_before_dom_first"
+
+
+def test_tohoho_real_world_fixture_matches_dom_path():
+    report_module = _load_report_module()
+    report = report_module.collect_report()
+    tohoho = next(case for case in report["cases"] if case["id"] == "tohoho_web_home")
+    assert tohoho["equal"] is True
