@@ -90,3 +90,11 @@ def test_blockquote_is_no_longer_a_converter_audit_divergence():
     report = audit.collect_report()
 
     assert "markdown:blockquote" not in report["divergent_case_ids"]
+
+
+def test_mixed_lists_are_no_longer_converter_audit_divergences():
+    audit = _load_module()
+    report = audit.collect_report()
+
+    assert "html:mixed_lists" not in report["divergent_case_ids"]
+    assert "markdown:mixed_lists" not in report["divergent_case_ids"]
