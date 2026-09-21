@@ -52,3 +52,15 @@ def test_markdown_hard_break_survives_html_round_trip() -> None:
 
     assert "<br />" in html
     assert md.html_to_markdown(html) == source
+
+
+def test_source_text_ending_like_blockquote_prefix_is_still_trimmed() -> None:
+    html = "<span>literal &gt; </span><h2>Heading</h2>"
+
+    assert md.html_to_markdown(html) == "literal >\n\n## Heading\n"
+
+
+def test_nested_list_marker_space_is_preserved_by_parser_provenance() -> None:
+    html = "<ul><li><ol><li>nested</li></ol></li></ul>"
+
+    assert md.html_to_markdown(html) == "- \n  1. nested\n"
