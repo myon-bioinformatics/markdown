@@ -128,9 +128,16 @@ PR #40 adds a deterministic legacy-vs-DOM parity report for the next
 architecture decision. The report runs both HTML→Markdown paths over synthetic
 edge cases plus every vendored real-world HTML fixture under
 `fixtures/benchmark/`, records equality, output lengths, SHA-256 hashes, and
-short previews for mismatches, and emits a decision hint. The hint is evidence,
-not an automatic switch: DOM-first remains a review decision based on observed
-mismatches, compatibility, and complexity.
+short previews for mismatches, and emits a decision hint. Synthetic coverage
+explicitly includes blockquotes, inline/preformatted code, and alt-only image
+fallbacks in addition to lists/tables/details/URL cases.
+
+The report also records `real_world_case_count` separately. At present the
+repository has only one vendored real-world HTML page, so even a hypothetical
+zero-mismatch run is **not** enough to recommend DOM-first; the hint remains
+`expand_real_world_corpus_before_dom_first` until the real-world corpus is less
+thin. The hint is evidence, not an automatic switch: DOM-first remains a review
+decision based on observed mismatches, compatibility, and complexity.
 
 The current real-world HTML corpus is intentionally small: today it contains
 one vendored page (`tohoho_web_home.html`). That is enough to catch at least
