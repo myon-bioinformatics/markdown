@@ -144,3 +144,49 @@ def test_control_characters_cannot_bypass_url_scheme_checks():
     assert "java\tscript:" not in sanitized
     assert "java\nscript:" not in sanitized
     assert 'href=' not in sanitized
+
+
+def test_shared_url_policy_applies_to_direct_markdown_helpers():
+    assert md.markdown_link_to_html("[safe](https://example.com)") == (
+        '<a href="https://example.com">safe</a>'
+    )
+    assert md.markdown_link_to_html("[mail](mailto:a@example.com)") == (
+        '<a href="mailto:a@example.com">mail</a>'
+    )
+    assert md.markdown_link_to_html("[rel](docs/page.html)") == (
+        '<a href="docs/page.html">rel</a>'
+    )
+    assert md.markdown_link_to_html("[bad](javascript:evil)") == "bad"
+    assert md.markdown_link_to_html("[bad](java\x00script:evil)") == "bad"
+
+    assert md.markdown_image_to_html("![safe](/img.png)") == (
+        '<img src="/img.png" alt="safe" />'
+    )
+    assert md.markdown_image_to_html("![bad](data:text/html,boom)") == "bad"
+
+
+def test_shared_url_policy_applies_to_markdown_to_html():
+    html = md.markdown_to_html(
+        "[safe](https://example.com) [bad](javascript:evil) "
+        "![badimg](data:text/html,boom)"
+    )
+
+    assert '<a href="https://example.com">safe</a>' in html
+    assert 'href="javascript:' not in html
+    assert 'src="data:' not in html
+    assert "bad" in html
+    assert "badimg" in html
+
+
+def test_dom_rejected_urls_degrade_without_empty_link_or_image():
+    html = (
+        '<a href="javascript:evil">click</a>'
+        '<img src="data:text/html,boom" alt="picture">'
+    )
+    tree = md.parse_html_dom(html)
+
+    assert md.dom_to_html(tree) == "clickpicture"
+    back = md.dom_to_markdown(tree)
+    assert "[click]()" not in back
+    assert "click" in back
+    assert "picture" in back
