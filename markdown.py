@@ -2033,7 +2033,7 @@ def _dotenv_dumps(value: Any) -> str:
         if not isinstance(item, str):
             raise ValueError("dotenv values must be strings")
         lines.append(f"{key}={_structured_json_dumps(item)}")
-    return "".join(line + "\\n" for line in lines)
+    return "".join(line + "\n" for line in lines)
 
 
 def dotenv_to_markdown(content: str, title: str = ".env") -> str:
@@ -2090,7 +2090,7 @@ def _toml_dumps(value: Any) -> str:
         if not isinstance(key, str):
             raise ValueError("TOML mappings require string keys")
         lines.append(f"{_toml_key(key)} = {_toml_value(item)}")
-    return "".join(line + "\\n" for line in lines)
+    return "".join(line + "\n" for line in lines)
 
 
 def toml_to_markdown(content: str, title: str = "TOML") -> str:
