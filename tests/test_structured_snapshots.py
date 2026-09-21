@@ -89,3 +89,66 @@ def test_sql_snapshot_normalizes_lone_cr_to_lf():
     assert md.markdown_to_sql_ddl(md.sql_ddl_to_markdown(ddl)) == (
         "CREATE TABLE t (id int);\nCREATE TABLE u (id int);\n"
     )
+
+
+
+def test_structured_markdown_round_trip_nested_json_compatible_values():
+    value = {
+        "user": {"name": "妙本", "active": True, "score": 1.5},
+        "tags": ["ai", "a|b", "line\nbreak"],
+        "empty_map": {},
+        "empty_list": [],
+        "none": None,
+        "count": 3,
+    }
+
+    document = md.structured_to_markdown(value)
+
+    assert "<!-- markdown.py:structured-v1 -->" in document
+    assert md.markdown_to_structured(document) == value
+
+
+def test_structured_markdown_round_trip_root_scalars_and_containers():
+    for value in [None, True, 0, -3, 1.25, "日本語|\\n", [], {}]:
+        assert md.markdown_to_structured(md.structured_to_markdown(value)) == value
+
+
+def test_structured_markdown_rejects_non_string_mapping_keys():
+    with pytest.raises(TypeError, match="string keys"):
+        md.structured_to_markdown({1: "value"})
+
+
+def test_structured_markdown_rejects_non_finite_float():
+    with pytest.raises(ValueError):
+        md.structured_to_markdown(float("nan"))
+
+
+def test_markdown_to_structured_rejects_noncanonical_headers():
+    source = "| key | value |\n| --- | --- |\n| a | 1 |\n"
+    with pytest.raises(ValueError, match="canonical"):
+        md.markdown_to_structured(source)
+
+
+def test_markdown_to_structured_rejects_type_mismatch():
+    source = (
+        "# Structured data\n"
+        "<!-- markdown.py:structured-v1 -->\n"
+        "| id | parent | slot | type | value |\n"
+        "| --- | --- | --- | --- | --- |\n"
+        "| 0 |  |  | int | \"text\" |\n"
+    )
+    with pytest.raises(ValueError, match="type mismatch"):
+        md.markdown_to_structured(source)
+
+
+def test_markdown_to_structured_rejects_bad_parent_reference():
+    source = (
+        "# Structured data\n"
+        "<!-- markdown.py:structured-v1 -->\n"
+        "| id | parent | slot | type | value |\n"
+        "| --- | --- | --- | --- | --- |\n"
+        "| 0 |  |  | dict |  |\n"
+        "| 1 | 9 | \"x\" | int | 1 |\n"
+    )
+    with pytest.raises(ValueError, match="earlier node"):
+        md.markdown_to_structured(source)
