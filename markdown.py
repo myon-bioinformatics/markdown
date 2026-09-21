@@ -1634,6 +1634,7 @@ def markdown_links_to_dot(content: str) -> str:
     out.append("}")
     return "\n".join(out) + "\n"
 
+
 def json_block(obj: Any, indent: int = 2) -> str:
     """Serialize ``obj`` as JSON and wrap it in a ```json fenced code block."""
     text = json.dumps(obj, ensure_ascii=False, indent=indent)
