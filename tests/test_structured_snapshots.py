@@ -15,8 +15,8 @@ def test_sql_snapshot_preserves_multiline_values_and_trailing_newlines():
 def test_sql_snapshot_lists_quoted_and_bracket_table_names():
     tick = chr(96)
     ddl = (
-        'CREATE TABLE "my table" (id int);\\n'
-        + "CREATE TABLE " + tick + "order items" + tick + " (id int);\\n"
+        'CREATE TABLE "my table" (id int);\n'
+        + "CREATE TABLE " + tick + "order items" + tick + " (id int);\n"
         + "CREATE TABLE [select] (id int);"
     )
     document = md.sql_ddl_to_markdown(ddl)
