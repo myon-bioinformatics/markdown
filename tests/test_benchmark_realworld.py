@@ -160,3 +160,32 @@ def test_changelog_fixture_is_long_and_stable() -> None:
 
     html = md.markdown_to_html(content)
     assert len(html) > len(content) * 0.5  # sanity: output isn't truncated/empty
+
+
+def test_github_docs_structural_generators_scale_to_real_document() -> None:
+    """Recent one-way structural generators should handle a real docs excerpt."""
+    content = _github_docs_content()
+    inv = md.inventory(content)
+
+    mindmap = md.markdown_headings_to_mermaid_mindmap(content, root="GitHub Docs")
+    dot = md.markdown_links_to_dot(content)
+
+    assert mindmap.startswith("mindmap\n")
+    assert mindmap.count('["') >= inv["heading_count"] + 1
+    assert dot.startswith("digraph markdown_links {\n")
+    assert dot.count(" -> ") >= inv["link_count"]
+
+
+def test_changelog_structural_generators_are_deterministic_on_long_input() -> None:
+    """Long real-world input stays deterministic for the new graph generators."""
+    content = (BENCHMARK / "changelog_example.md").read_text(encoding="utf-8")
+
+    first_mindmap = md.markdown_headings_to_mermaid_mindmap(content)
+    second_mindmap = md.markdown_headings_to_mermaid_mindmap(content)
+    first_dot = md.markdown_links_to_dot(content)
+    second_dot = md.markdown_links_to_dot(content)
+
+    assert first_mindmap == second_mindmap
+    assert first_dot == second_dot
+    assert len(first_mindmap) > 500
+    assert len(first_dot) > 1000
