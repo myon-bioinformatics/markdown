@@ -126,7 +126,7 @@ benchmark_fixtures:
       - {heading: Alerts, file: content/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax.md, lines: [422, 449]}
     fetch_example: |
       curl -sS "https://raw.githubusercontent.com/github/docs/2320b38e746de554f7f3d2b83520bc0f26485abc/content/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax.md"
-    covers: [headings, links, images, fenced_code, nested_lists, tables, task_lists, autolinks, alerts, footnotes, inline_html]
+    covers: [headings, links, images, fenced_code, nested_lists, tables, task_lists, autolinks, alerts, footnotes, inline_html, mermaid_mindmap, graphviz_dot]
     note: >
       GitHub Docs' own Alerts, Quoting text, and Creating a table sections
       are now supported markdown_to_html subsets (uppercase > [!NOTE] etc.
@@ -175,7 +175,7 @@ benchmark_fixtures:
     fetched_at: "2026-09-18"
     fetch_example: |
       curl -sS "https://raw.githubusercontent.com/axios/axios/56a5f1acdc41965f464eb59bec6cc828113ba546/CHANGELOG.md" | head -400
-    covers: [many_headings, many_links, lists, version_strings, long_input_stability, inline_html_avatars]
+    covers: [many_headings, many_links, lists, version_strings, long_input_stability, inline_html_avatars, structural_generator_determinism]
 
   # --- Real-world HTML -> html_to_markdown() fixtures ---
   #
