@@ -80,9 +80,12 @@ print(md.markdown_to_kramdown("# Title {#intro .hero}"))
 The boundary is intentionally conservative: `script` / `style` subtrees,
 event attributes such as `onclick`, inline `style=`, and unsafe absolute URL
 schemes are dropped. `http`, `https`, `mailto`, and relative URLs remain
-allowed; this is a dangerous-scheme rejection policy, not an absolute-URL-only
-allowlist. The same URL policy is shared by DOM serialization and the existing
-Markdown link/image/autolink HTML helpers. Rejected links degrade to plain text
+allowed; unambiguous `host:port` references such as `example.com:8080/path`
+are normalized to network-path form (`//example.com:8080/path`) so they are
+not mistaken for custom schemes. This is a dangerous-scheme rejection policy,
+not an absolute-URL-only allowlist. The same URL policy is shared by DOM
+serialization and the existing Markdown link/image/autolink HTML helpers.
+Rejected links degrade to plain text
 and rejected images to alt text rather than leaving empty `href` / `src`
 attributes or `[text]()` intermediates. Unknown tags degrade to transparent
 containers so safe text and supported descendants remain available. Existing
