@@ -2820,6 +2820,12 @@ class _HTMLToMarkdownParser(HTMLParser):
             return
         if self._table_depth and self._table_cell is None:
             return
+        if (
+            not data.strip()
+            and self._open_tags
+            and self._open_tags[-1] == "blockquote"
+        ):
+            return
         if self._in_pre or self._in_code:
             self._emit(data)
         else:
