@@ -2649,7 +2649,10 @@ class _HTMLToMarkdownParser(HTMLParser):
             self._trim_structural_boundary()
             if parent_tag == "blockquote" and self._blockquote_paragraphs:
                 if self._blockquote_paragraphs[-1] > 0:
-                    self._emit("\n>\n> ")
+                    self._emit(
+                        "\n>\n> ",
+                        trailing_space_kind="blockquote-prefix",
+                    )
                 self._blockquote_paragraphs[-1] += 1
                 self._block_attr_suffixes.append(_html_attrs_to_pandoc_suffix(attr))
             else:
