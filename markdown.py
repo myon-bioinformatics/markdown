@@ -1,5 +1,5 @@
 # markdown.py
-# metadata: __all__=83 | base_sha=f989a1e66b652c9b923494d94214f9e1481414b1 | updated_at=2026-09-21T10:02:22Z
+# metadata: __all__=89 | base_sha=e8284c2f1404361b3d96812558ff4fa0f7ef92aa | updated_at=2026-09-21T11:31:00Z
 """Stdlib-only Markdown utility functions.
 
 This module is intentionally a single file with no CLI / ``main`` entry point.
@@ -77,6 +77,12 @@ __all__ = [
     "markdown_to_json",
     "structured_to_markdown",
     "markdown_to_structured",
+    "ini_to_markdown",
+    "markdown_to_ini",
+    "toml_to_markdown",
+    "markdown_to_toml",
+    "dotenv_to_markdown",
+    "markdown_to_dotenv",
     "redis_snapshot_to_markdown",
     "sql_ddl_to_markdown",
     "markdown_to_sql_ddl",
@@ -99,6 +105,7 @@ __all__ = [
 ]
 
 import html as html_module
+import configparser
 import csv
 import doctest
 import io
@@ -112,6 +119,11 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin, urlparse
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python < 3.11
+    tomllib = None
 
 # ---------------------------------------------------------------------------
 # Capability notes (kept in-module so a vendored single file stays honest)
@@ -1905,6 +1917,205 @@ def markdown_to_structured(content: str) -> Any:
         nodes.append(node)
 
     return nodes[0]
+
+
+
+_INI_DEFAULT_SENTINEL = "\\x00markdown.py:no-default\\x00"
+_DOTENV_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_TOML_BARE_KEY_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _ini_loads(content: str) -> dict[str, dict[str, str]]:
+    """Parse the supported INI subset without interpolation or case folding."""
+    parser = configparser.ConfigParser(interpolation=None, strict=True)
+    parser.optionxform = str
+    parser.default_section = _INI_DEFAULT_SENTINEL
+    try:
+        parser.read_string(content)
+    except configparser.Error as exc:
+        raise ValueError(f"Invalid INI: {exc}") from exc
+    return {
+        section_name: dict(parser.items(section_name, raw=True))
+        for section_name in parser.sections()
+    }
+
+
+def _ini_dumps(value: Any) -> str:
+    if not isinstance(value, dict):
+        raise ValueError("INI root must be a mapping of sections")
+    parser = configparser.ConfigParser(interpolation=None, strict=True)
+    parser.optionxform = str
+    parser.default_section = _INI_DEFAULT_SENTINEL
+    for section_name, options in value.items():
+        if not isinstance(section_name, str) or "\\n" in section_name or "\\r" in section_name:
+            raise ValueError("INI section names must be single-line strings")
+        if section_name == _INI_DEFAULT_SENTINEL:
+            raise ValueError("INI section name is reserved")
+        if not isinstance(options, dict):
+            raise ValueError("INI sections must contain key/value mappings")
+        parser.add_section(section_name)
+        for key, item in options.items():
+            if (
+                not isinstance(key, str)
+                or not key
+                or "\\n" in key
+                or "\\r" in key
+                or "=" in key
+                or ":" in key
+            ):
+                raise ValueError("INI keys must be non-empty single-line strings without = or :")
+            if not isinstance(item, str):
+                raise ValueError("INI values must be strings")
+            parser.set(section_name, key, item)
+    stream = io.StringIO()
+    parser.write(stream, space_around_delimiters=False)
+    return stream.getvalue()
+
+
+def ini_to_markdown(content: str, title: str = "INI") -> str:
+    """Convert INI to canonical structured Markdown.
+
+    Section names, key case, and string values round-trip. Comments, delimiter
+    choice, and whitespace are intentionally canonicalized. [DEFAULT] is
+    treated as an ordinary section so implicit interpolation/inheritance is not
+    invented during conversion.
+    """
+    return structured_to_markdown(_ini_loads(content), title)
+
+
+def markdown_to_ini(content: str) -> str:
+    """Convert canonical structured Markdown to deterministic INI text."""
+    return _ini_dumps(markdown_to_structured(content))
+
+
+def _dotenv_loads(content: str) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for line_number, raw_line in enumerate(content.splitlines(), 1):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[7:].lstrip()
+        key, separator, raw_value = line.partition("=")
+        key = key.strip()
+        if not separator or not _DOTENV_KEY_RE.fullmatch(key):
+            raise ValueError(f"Invalid dotenv assignment on line {line_number}")
+        if key in result:
+            raise ValueError(f"Duplicate dotenv key: {key}")
+
+        raw_value = raw_value.strip()
+        if raw_value.startswith('"'):
+            try:
+                value = json.loads(raw_value)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"Invalid quoted dotenv value on line {line_number}") from exc
+            if not isinstance(value, str):
+                raise ValueError(f"Dotenv values must be strings on line {line_number}")
+        elif raw_value.startswith("'"):
+            if len(raw_value) < 2 or not raw_value.endswith("'"):
+                raise ValueError(f"Invalid quoted dotenv value on line {line_number}")
+            value = raw_value[1:-1]
+        else:
+            value = raw_value
+        result[key] = value
+    return result
+
+
+def _dotenv_dumps(value: Any) -> str:
+    if not isinstance(value, dict):
+        raise ValueError("dotenv root must be a mapping")
+    lines: list[str] = []
+    for key, item in value.items():
+        if not isinstance(key, str) or not _DOTENV_KEY_RE.fullmatch(key):
+            raise ValueError(f"Invalid dotenv key: {key!r}")
+        if not isinstance(item, str):
+            raise ValueError("dotenv values must be strings")
+        lines.append(f"{key}={_structured_json_dumps(item)}")
+    return "".join(line + "\\n" for line in lines)
+
+
+def dotenv_to_markdown(content: str, title: str = ".env") -> str:
+    """Convert a narrow dotenv subset to canonical structured Markdown.
+
+    Blank lines and full-line comments are ignored; optional export is
+    accepted. Variable expansion is never performed. The canonical writer uses
+    deterministic double-quoted JSON-compatible string escaping.
+    """
+    return structured_to_markdown(_dotenv_loads(content), title)
+
+
+def markdown_to_dotenv(content: str) -> str:
+    """Convert canonical structured Markdown to deterministic dotenv text."""
+    return _dotenv_dumps(markdown_to_structured(content))
+
+
+def _toml_key(key: str) -> str:
+    if _TOML_BARE_KEY_RE.fullmatch(key):
+        return key
+    return _structured_json_dumps(key)
+
+
+def _toml_value(value: Any) -> str:
+    if isinstance(value, str):
+        return _structured_json_dumps(value)
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("TOML canonical writer requires finite floats")
+        return repr(value)
+    if isinstance(value, list):
+        return "[" + ", ".join(_toml_value(item) for item in value) + "]"
+    if isinstance(value, dict):
+        fields = []
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise ValueError("TOML mappings require string keys")
+            fields.append(f"{_toml_key(key)} = {_toml_value(item)}")
+        return "{ " + ", ".join(fields) + " }"
+    if value is None:
+        raise ValueError("TOML has no null value")
+    raise ValueError(f"Unsupported TOML value type: {type(value).__name__}")
+
+
+def _toml_dumps(value: Any) -> str:
+    if not isinstance(value, dict):
+        raise ValueError("TOML document root must be a mapping")
+    lines = []
+    for key, item in value.items():
+        if not isinstance(key, str):
+            raise ValueError("TOML mappings require string keys")
+        lines.append(f"{_toml_key(key)} = {_toml_value(item)}")
+    return "".join(line + "\\n" for line in lines)
+
+
+def toml_to_markdown(content: str, title: str = "TOML") -> str:
+    """Convert TOML to canonical structured Markdown on Python 3.11+.
+
+    The reversible subset is the JSON-compatible TOML value space. TOML
+    datetime/date/time values and non-finite floats are rejected rather than
+    silently stringified.
+    """
+    if tomllib is None:
+        raise RuntimeError("toml_to_markdown requires Python 3.11+ (tomllib)")
+    try:
+        value = tomllib.loads(content)
+    except tomllib.TOMLDecodeError as exc:
+        raise ValueError(f"Invalid TOML: {exc}") from exc
+    try:
+        _structured_validate(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "TOML contains values outside the reversible structured subset"
+        ) from exc
+    return structured_to_markdown(value, title)
+
+
+def markdown_to_toml(content: str) -> str:
+    """Convert canonical structured Markdown to deterministic TOML text."""
+    return _toml_dumps(markdown_to_structured(content))
 
 
 def redis_snapshot_to_markdown(snapshot: Any, title: str = "Redis snapshot") -> str:
