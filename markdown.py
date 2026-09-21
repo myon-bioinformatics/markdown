@@ -1709,6 +1709,7 @@ def markdown_to_json(content: str) -> Any:
 
 _STRUCTURED_TABLE_HEADERS = ["id", "parent", "slot", "type", "value"]
 _STRUCTURED_MARKER = "<!-- markdown.py:structured-v1 -->\n"
+_STRUCTURED_SCALAR_TYPES = {"str", "int", "float", "bool", "null"}
 
 
 def _structured_scalar_type(value: Any) -> str | None:
@@ -1725,6 +1726,45 @@ def _structured_scalar_type(value: Any) -> str | None:
     return None
 
 
+def _structured_json_dumps(value: Any) -> str:
+    """Encode one structured scalar/key with stable JSON settings."""
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        allow_nan=False,
+        separators=(",", ":"),
+    )
+
+
+def _structured_json_loads(text: str, *, what: str) -> Any:
+    """Decode one JSON-backed structured field with a focused error."""
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Structured {what} is not valid JSON") from exc
+
+
+def _structured_encode_scalar(value: Any) -> tuple[str, str]:
+    kind = _structured_scalar_type(value)
+    if kind is None:
+        raise TypeError(
+            "structured data must use JSON-compatible dict/list/scalar values"
+        )
+    return kind, _structured_json_dumps(value)
+
+
+def _structured_decode_scalar(kind: str, encoded: str) -> Any:
+    if kind not in _STRUCTURED_SCALAR_TYPES:
+        raise ValueError(f"Unknown structured node type: {kind!r}")
+    value = _structured_json_loads(encoded, what="scalar value")
+    actual = _structured_scalar_type(value)
+    if actual != kind:
+        raise ValueError(
+            f"Structured scalar type mismatch: declared {kind}, got {actual}"
+        )
+    return value
+
+
 def _structured_validate(value: Any) -> None:
     if isinstance(value, dict):
         for key, child in value.items():
@@ -1736,13 +1776,7 @@ def _structured_validate(value: Any) -> None:
         for child in value:
             _structured_validate(child)
         return
-    scalar_type = _structured_scalar_type(value)
-    if scalar_type is None:
-        raise TypeError(
-            "structured data must use JSON-compatible dict/list/scalar values"
-        )
-    if scalar_type == "float":
-        json.dumps(value, allow_nan=False)
+    _structured_encode_scalar(value)
 
 
 def structured_to_markdown(value: Any, title: str = "Structured data") -> str:
@@ -1765,11 +1799,7 @@ def structured_to_markdown(value: Any, title: str = "Structured data") -> str:
         if isinstance(node, dict):
             rows.append([node_id, parent, slot, "dict", ""])
             for key, child in node.items():
-                visit(
-                    child,
-                    node_id,
-                    json.dumps(key, ensure_ascii=False, separators=(",", ":")),
-                )
+                visit(child, node_id, _structured_json_dumps(key))
             return
         if isinstance(node, list):
             rows.append([node_id, parent, slot, "list", ""])
@@ -1777,15 +1807,8 @@ def structured_to_markdown(value: Any, title: str = "Structured data") -> str:
                 visit(child, node_id, str(index))
             return
 
-        scalar_type = _structured_scalar_type(node)
-        assert scalar_type is not None
-        encoded = json.dumps(
-            node,
-            ensure_ascii=False,
-            allow_nan=False,
-            separators=(",", ":"),
-        )
-        rows.append([node_id, parent, slot, scalar_type, encoded])
+        kind, encoded = _structured_encode_scalar(node)
+        rows.append([node_id, parent, slot, kind, encoded])
 
     visit(value)
     return heading(title) + _STRUCTURED_MARKER + table(_STRUCTURED_TABLE_HEADERS, rows)
@@ -1822,23 +1845,8 @@ def markdown_to_structured(content: str) -> Any:
             if encoded:
                 raise ValueError("Structured container rows must have empty values")
             node = []
-        elif kind in {"str", "int", "float", "bool", "null"}:
-            try:
-                node = json.loads(encoded)
-            except json.JSONDecodeError as exc:
-                raise ValueError("Structured scalar value is not valid JSON") from exc
-            actual = _structured_scalar_type(node)
-            if actual != kind:
-                raise ValueError(
-                    f"Structured scalar type mismatch: declared {kind}, got {actual}"
-                )
-            if kind == "float":
-                try:
-                    json.dumps(node, allow_nan=False)
-                except ValueError as exc:
-                    raise ValueError("Structured floats must be finite") from exc
         else:
-            raise ValueError(f"Unknown structured node type: {kind!r}")
+            node = _structured_decode_scalar(kind, encoded)
 
         if expected_id == 0:
             if raw_parent or slot:
@@ -1855,10 +1863,7 @@ def markdown_to_structured(content: str) -> Any:
 
         parent = nodes[parent_id]
         if isinstance(parent, dict):
-            try:
-                key = json.loads(slot)
-            except json.JSONDecodeError as exc:
-                raise ValueError("Structured mapping slot must be a JSON string") from exc
+            key = _structured_json_loads(slot, what="mapping slot")
             if not isinstance(key, str):
                 raise ValueError("Structured mapping slot must decode to a string")
             if key in parent:
