@@ -2679,9 +2679,8 @@ class _HTMLToMarkdownParser(HTMLParser):
                 mark = "x" if "checked" in attr else " "
                 self._emit(f"[{mark}]")
         elif tag == "blockquote":
-            if self._blockquote_paragraphs:
-                self._blockquote_paragraphs.pop()
-            self._emit("\n\n")
+            self._blockquote_paragraphs.append(0)
+            self._emit("\n\n> ")
         elif tag in {"ul", "ol"}:
             self._list_stack.append(tag)
             self._li_index.append(0)
@@ -2713,9 +2712,6 @@ class _HTMLToMarkdownParser(HTMLParser):
             current = self._details_stack[-1]
             if current.get("special") and parent_tag == "details":
                 current["summary_start"] = len(self.parts)
-        elif tag == "blockquote":
-            self._blockquote_paragraphs.append(0)
-            self._emit("\n\n> ")
 
     def handle_endtag(self, tag: str) -> None:
         tag = tag.lower()
@@ -2808,6 +2804,10 @@ class _HTMLToMarkdownParser(HTMLParser):
                         self._emit(f"\n\n:::details {summary}\n{body}\n:::\n\n")
                     else:
                         self._emit(f"\n\n:::details {summary}\n:::\n\n")
+        elif tag == "blockquote":
+            if self._blockquote_paragraphs:
+                self._blockquote_paragraphs.pop()
+            self._emit("\n\n")
         elif tag in {"ul", "ol"}:
             if self._list_stack:
                 self._list_stack.pop()
