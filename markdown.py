@@ -14,6 +14,7 @@ from __future__ import annotations
 __all__ = [
     "save_markdown",
     "read_markdown",
+    "run_markdown_doctest",
     "extract_sections",
     "split_sections",
     "extract_links",
@@ -64,6 +65,8 @@ __all__ = [
     "csv_to_markdown_table",
     "markdown_table_to_csv",
     "markdown_table_statistics",
+    "markdown_to_ipynb",
+    "ipynb_to_markdown",
     "key_value_table",
     "section",
     "inline_code",
@@ -82,6 +85,7 @@ __all__ = [
 
 import html as html_module
 import csv
+import doctest
 import io
 import json
 import re
@@ -403,12 +407,57 @@ def read_markdown(filepath: str, count_hashtags: bool = False) -> dict:
     return result
 
 
+def run_markdown_doctest(content: str, name: str = "<markdown>", globs: Any = None) -> doctest.TestResults:
+    """Run Python doctest prompts found in fenced Markdown code blocks.
+
+    Only Python-family fences participate. The examples are executed, so this
+    helper is for trusted project documentation and test suites only.
+    """
+    source = _markdown_doctest_source(content)
+    test = doctest.DocTestParser().get_doctest(
+        source, dict(globs or {}), name, name, 0,
+    )
+    runner = doctest.DocTestRunner()
+    runner.run(test, out=lambda _message: None)
+    return doctest.TestResults(runner.failures, runner.tries)
+
+
+def _markdown_doctest_source(content: str) -> str:
+    """Keep Python fence contents while preserving Markdown line numbers.
+
+    Fence state is supplied by the shared P0 scanner rather than a parallel
+    fence parser. Fence info strings use their first token as the language.
+    """
+    lines = content.splitlines(keepends=True)
+    scanned = _scan_lines([line.rstrip("\r\n") for line in lines])
+    output: list[str] = []
+    in_python = False
+    for line, item in zip(lines, scanned):
+        match = _FENCE_RE.match(item.text)
+        if item.is_fence_open:
+            info = match.group(2).strip() if match else ""
+            language = info.split()[0].lower() if info else ""
+            in_python = language in {"python", "python3", "py", "pycon"}
+            output.append("\n" if line.endswith("\n") else "")
+        elif item.is_fence_close:
+            in_python = False
+            output.append("\n" if line.endswith("\n") else "")
+        elif in_python:
+            output.append(item.text + ("\n" if line.endswith("\n") else ""))
+        else:
+            output.append("\n" if line.endswith("\n") else "")
+    return "".join(output)
+
 # ---------------------------------------------------------------------------
 # Structure extraction
 # ---------------------------------------------------------------------------
 
 def extract_sections(content: str) -> list[dict[str, Any]]:
-    """Extract ATX heading names from Markdown content."""
+    """List ATX headings (``level`` + ``title``), without their body text.
+
+    For heading-delimited sections that keep each section's body, use
+    ``split_sections()`` instead.
+    """
     sections: list[dict[str, Any]] = []
     for line in content.splitlines():
         match = _HEADING_RE.match(line)
@@ -423,10 +472,13 @@ def extract_sections(content: str) -> list[dict[str, Any]]:
 
 
 def split_sections(content: str) -> list[dict[str, Any]]:
-    """Split content into heading-delimited sections.
+    """Split content into heading-delimited sections, each with its body text.
 
-    The prelude before the first heading is returned with ``level`` 0 and
-    an empty ``title`` when it is non-empty.
+    Each item has ``level``, ``title``, and ``content`` (the heading line
+    plus everything up to the next heading of any level). The prelude
+    before the first heading is returned with ``level`` 0 and an empty
+    ``title`` when it is non-empty. For a heading list without body text,
+    use ``extract_sections()`` instead.
     """
     lines = content.splitlines(keepends=True)
     parts: list[dict[str, Any]] = []
@@ -1462,6 +1514,76 @@ def markdown_table_statistics(content: str) -> dict[str, Any]:
         "headers": headers,
         "numeric_columns": numeric_columns,
     }
+
+
+def markdown_to_ipynb(content: str, *, indent: int | None = 2) -> str:
+    """Make a minimal nbformat-4 JSON notebook from Markdown and Python fences.
+
+    Fenced-code state comes from the shared ``_scan_lines`` scanner. The
+    converter does not execute cells, create outputs, or infer kernels.
+    """
+    lines = content.splitlines(keepends=True)
+    scanned = _scan_lines([line.rstrip("\r\n") for line in lines])
+    cells: list[dict[str, Any]] = []
+    prose: list[str] = []
+    index = 0
+    while index < len(lines):
+        item = scanned[index]
+        match = _FENCE_RE.match(item.text)
+        info = match.group(2).strip() if match else ""
+        language = info.split()[0].lower() if info else ""
+        if item.is_fence_open and language in {"python", "py", "python3"}:
+            if prose:
+                cells.append({"cell_type": "markdown", "metadata": {}, "source": prose})
+                prose = []
+            index += 1
+            code: list[str] = []
+            while index < len(lines) and not scanned[index].is_fence_close:
+                code.append(lines[index])
+                index += 1
+            if index < len(lines):
+                index += 1
+            cells.append({
+                "cell_type": "code",
+                "execution_count": None,
+                "metadata": {},
+                "outputs": [],
+                "source": code,
+            })
+            continue
+        prose.append(lines[index])
+        index += 1
+    if prose:
+        cells.append({"cell_type": "markdown", "metadata": {}, "source": prose})
+    notebook = {
+        "cells": cells,
+        "metadata": {"kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"}},
+        "nbformat": 4,
+        "nbformat_minor": 5,
+    }
+    return json.dumps(notebook, ensure_ascii=False, indent=indent) + "\n"
+
+
+def ipynb_to_markdown(notebook: str | dict[str, Any]) -> str:
+    """Render Markdown and code cell sources from a minimal nbformat notebook.
+
+    Outputs and execution counts are deliberately ignored.
+    """
+    data = json.loads(notebook) if isinstance(notebook, str) else notebook
+    if not isinstance(data, dict) or not isinstance(data.get("cells"), list):
+        raise ValueError("notebook must be an nbformat object with a cells list")
+    parts: list[str] = []
+    for cell in data["cells"]:
+        if not isinstance(cell, dict):
+            continue
+        source = cell.get("source", [])
+        text = source if isinstance(source, str) else "".join(source)
+        if cell.get("cell_type") == "markdown":
+            parts.append(text)
+        elif cell.get("cell_type") == "code":
+            parts.append("```python\n" + text + ("" if text.endswith("\n") or not text else "\n") + "```\n")
+    return "".join(parts)
+
 
 def key_value_table(
     data: Any,
