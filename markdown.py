@@ -1949,7 +1949,7 @@ def _ini_dumps(value: Any) -> str:
     parser.optionxform = str
     parser.default_section = _INI_DEFAULT_SENTINEL
     for section_name, options in value.items():
-        if not isinstance(section_name, str) or "\\n" in section_name or "\\r" in section_name:
+        if not isinstance(section_name, str) or "\n" in section_name or "\r" in section_name:
             raise ValueError("INI section names must be single-line strings")
         if section_name == _INI_DEFAULT_SENTINEL:
             raise ValueError("INI section name is reserved")
