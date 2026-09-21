@@ -57,3 +57,39 @@ def test_nested_list_keeps_inline_formatting() -> None:
     assert "<strong>bold</strong>" in html
     assert "<code>code</code>" in html
     assert md.html_to_markdown(html) == source
+
+
+def test_ordered_parent_with_unordered_child_round_trip() -> None:
+    source = "1. parent\n   - child\n2. tail\n"
+    html = md.markdown_to_html(source)
+
+    assert "<ol>" in html
+    assert "<ul>" in html
+    assert "<li>parent\n<ul>" in html
+    assert md.html_to_markdown(html) == source
+
+
+def test_nested_task_items_use_same_list_nesting_engine() -> None:
+    source = "- parent\n  - [ ] todo\n  - [x] done\n"
+    html = md.markdown_to_html(source)
+
+    assert html.count('type="checkbox"') == 2
+    assert '<input type="checkbox" disabled /> todo' in html
+    assert '<input type="checkbox" disabled checked /> done' in html
+    assert md.html_to_markdown(html) == source
+
+
+def test_tab_indented_child_list_is_nested() -> None:
+    source = "- parent\n\t1. child\n"
+    html = md.markdown_to_html(source)
+
+    assert "<li>parent\n<ol>" in html
+    # Canonical Markdown emitted by HTML conversion uses two spaces per depth.
+    assert md.html_to_markdown(html) == "- parent\n  1. child\n"
+
+
+def test_list_kind_switches_at_same_indent_start_new_sibling_list() -> None:
+    source = "- bullet\n1. numbered\n"
+    html = md.markdown_to_html(source)
+
+    assert html == "<ul>\n<li>bullet</li>\n</ul>\n<ol>\n<li>numbered</li>\n</ol>\n"
