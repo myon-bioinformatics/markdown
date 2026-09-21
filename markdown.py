@@ -83,6 +83,8 @@ __all__ = [
     "markdown_to_toml",
     "dotenv_to_markdown",
     "markdown_to_dotenv",
+    "convert_via_markdown",
+    "via_markdown_routes",
     "redis_snapshot_to_markdown",
     "sql_ddl_to_markdown",
     "markdown_to_sql_ddl",
@@ -2118,6 +2120,106 @@ def toml_to_markdown(content: str, title: str = "TOML") -> str:
 def markdown_to_toml(content: str) -> str:
     """Convert canonical structured Markdown to deterministic TOML text."""
     return _toml_dumps(markdown_to_structured(content))
+
+
+_VIA_MARKDOWN_ADAPTERS = {
+    "ini": {
+        "carrier": "structured-v1",
+        "to_markdown": ini_to_markdown,
+        "from_markdown": markdown_to_ini,
+        "read_available": lambda: True,
+    },
+    "toml": {
+        "carrier": "structured-v1",
+        "to_markdown": toml_to_markdown,
+        "from_markdown": markdown_to_toml,
+        "read_available": lambda: tomllib is not None,
+    },
+    "dotenv": {
+        "carrier": "structured-v1",
+        "to_markdown": dotenv_to_markdown,
+        "from_markdown": markdown_to_dotenv,
+        "read_available": lambda: True,
+    },
+}
+
+# Only pairs with a meaningful reversible domain intersection are exposed.
+# INI <-> dotenv is intentionally absent: INI is a mapping of sections to
+# mappings while dotenv is a flat string mapping, and inventing/flattening a
+# section name would no longer be an identity-preserving conversion.
+_VIA_MARKDOWN_ROUTE_DOMAINS = {
+    ("ini", "ini"): "INI section/key/string-value semantic subset",
+    ("ini", "toml"): "mapping[section, mapping[key, str]] representable by TOML",
+    ("toml", "toml"): "JSON-compatible TOML values excluding datetime/date/time",
+    ("toml", "ini"): "mapping[section, mapping[key, str]]",
+    ("toml", "dotenv"): "flat mapping[valid dotenv key, str]",
+    ("dotenv", "dotenv"): "flat mapping[valid dotenv key, str]",
+    ("dotenv", "toml"): "flat mapping[str, str] representable by TOML",
+}
+
+
+def via_markdown_routes() -> list[dict[str, Any]]:
+    """Return currently available reversible routes through Markdown.
+
+    A listed route means the source reader exists in this Python runtime and a
+    declared canonical domain intersection exists. It does not claim arbitrary
+    source documents are accepted; content outside that intersection is
+    rejected by the target adapter instead of being coerced.
+    """
+    routes: list[dict[str, Any]] = []
+    for (source, target), domain in sorted(_VIA_MARKDOWN_ROUTE_DOMAINS.items()):
+        source_adapter = _VIA_MARKDOWN_ADAPTERS[source]
+        if not source_adapter["read_available"]():
+            continue
+        routes.append({
+            "from": source,
+            "to": target,
+            "via": "markdown",
+            "carrier": source_adapter["carrier"],
+            "domain": domain,
+        })
+    return routes
+
+
+def convert_via_markdown(content: str, from_format: str, to_format: str) -> str:
+    """Convert between compatible formats by composing adapters via Markdown.
+
+    Format names are case-insensitive. Only route/domain pairs declared by
+    via_markdown_routes() are allowed; unsupported structural coercions
+    (for example INI <-> dotenv flattening) are intentionally rejected.
+    """
+    source = from_format.strip().lower()
+    target = to_format.strip().lower()
+    if source not in _VIA_MARKDOWN_ADAPTERS:
+        raise ValueError(f"Unsupported via-Markdown source format: {from_format!r}")
+    if target not in _VIA_MARKDOWN_ADAPTERS:
+        raise ValueError(f"Unsupported via-Markdown target format: {to_format!r}")
+
+    route = (source, target)
+    if route not in _VIA_MARKDOWN_ROUTE_DOMAINS:
+        raise ValueError(
+            f"No reversible via-Markdown route declared for {source!r} -> {target!r}"
+        )
+
+    source_adapter = _VIA_MARKDOWN_ADAPTERS[source]
+    target_adapter = _VIA_MARKDOWN_ADAPTERS[target]
+    if not source_adapter["read_available"]():
+        raise RuntimeError(
+            f"via-Markdown source reader for {source!r} is unavailable in this Python runtime"
+        )
+    if source_adapter["carrier"] != target_adapter["carrier"]:
+        raise ValueError(
+            f"Incompatible via-Markdown carriers: {source_adapter['carrier']!r} "
+            f"!= {target_adapter['carrier']!r}"
+        )
+
+    markdown = source_adapter["to_markdown"](content)
+    try:
+        return target_adapter["from_markdown"](markdown)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"Content is outside the reversible domain for {source!r} -> {target!r}: {exc}"
+        ) from exc
 
 
 def redis_snapshot_to_markdown(snapshot: Any, title: str = "Redis snapshot") -> str:
