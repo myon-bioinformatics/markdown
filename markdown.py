@@ -1817,13 +1817,33 @@ def structured_to_markdown(value: Any, title: str = "Structured data") -> str:
 def markdown_to_structured(content: str) -> Any:
     """Restore data emitted by structured_to_markdown.
 
-    The first live pipe table must use the exact canonical structured headers.
-    Malformed node ids, parent references, slots, type tags, or scalar JSON
-    values raise ValueError instead of being guessed.
+    A live structured marker must be paired with the immediately following
+    canonical pipe table. Node ids and rows use contiguous pre-order traversal;
+    that ordering is part of the canonical representation. Malformed node ids,
+    parent references, slots, type tags, or scalar JSON values raise ValueError
+    instead of being guessed.
     """
-    if _STRUCTURED_MARKER.strip() not in content:
+    lines = content.splitlines()
+    scanned = _scan_lines(lines)
+    marker = _STRUCTURED_MARKER.strip()
+    marker_index = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if not scanned[index].in_fenced_code and line.strip() == marker
+        ),
+        None,
+    )
+    if marker_index is None:
         raise ValueError("No structured-data marker found")
-    headers, rows = markdown_table_to_rows(content)
+
+    table_index = marker_index + 1
+    while table_index < len(lines) and not lines[table_index].strip():
+        table_index += 1
+    if table_index >= len(lines) or not _is_table_start(lines, table_index):
+        raise ValueError("Structured-data marker is not paired with a table")
+
+    headers, rows = markdown_table_to_rows("\n".join(lines[table_index:]))
     if headers != _STRUCTURED_TABLE_HEADERS:
         raise ValueError("No canonical structured-data table found")
     if not rows:
