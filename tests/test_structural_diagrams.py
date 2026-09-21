@@ -137,3 +137,15 @@ def test_structural_diagram_outputs_are_deterministic():
     ]
     for func, source in calls:
         assert func(source) == func(source)
+
+
+def test_markdown_links_to_dot_empty_heading_falls_back_to_document():
+    source = "# \n[Docs](https://example.com/docs)\n"
+
+    assert md.markdown_links_to_dot(source) == (
+        "digraph markdown_links {\n"
+        '  s0 [label="Document"];\n'
+        '  u0 [label="https://example.com/docs"];\n'
+        '  s0 -> u0 [label="Docs"];\n'
+        "}\n"
+    )
