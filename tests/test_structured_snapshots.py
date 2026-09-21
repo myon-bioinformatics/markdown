@@ -46,3 +46,25 @@ def test_markdown_table_statistics_reports_only_fully_numeric_columns():
             "score": {"count": 2, "min": 1.0, "max": 3.0, "mean": 2.0, "median": 2.0}
         },
     }
+
+
+def test_sql_snapshot_normalizes_crlf_to_lf():
+    ddl = "CREATE TABLE t (id int);\r\n"
+    document = md.sql_ddl_to_markdown(ddl)
+
+    assert "\r" not in document
+    assert md.markdown_to_sql_ddl(document) == "CREATE TABLE t (id int);\n"
+
+
+def test_sql_snapshot_preserves_normalized_trailing_newline_count():
+    ddl = "CREATE TABLE t (id int);\r\n\r\n"
+    assert md.markdown_to_sql_ddl(md.sql_ddl_to_markdown(ddl)) == (
+        "CREATE TABLE t (id int);\n\n"
+    )
+
+
+def test_sql_snapshot_normalizes_lone_cr_to_lf():
+    ddl = "CREATE TABLE t (id int);\rCREATE TABLE u (id int);\r"
+    assert md.markdown_to_sql_ddl(md.sql_ddl_to_markdown(ddl)) == (
+        "CREATE TABLE t (id int);\nCREATE TABLE u (id int);\n"
+    )
