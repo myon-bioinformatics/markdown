@@ -478,10 +478,13 @@ def mermaid_mindmap_to_markdown(content: str) -> str:
     """
     headings: list[str] = []
     for line in content.splitlines():
-        match = re.match(r"^( +)(?!root\(\()(.+?)\s*$", line)
+        match = re.match(r"^( +)(.+?)\s*$", line)
         if not match:
             continue
-        title = match.group(2).replace("\\\"", '"').replace("\\\\", "\\")
+        title = match.group(2)
+        if title.startswith("root(("):
+            continue
+        title = title.replace("\\\"", '"').replace("\\\\", "\\")
         level = max(1, len(match.group(1)) // 2 - 1)
         headings.append("#" * level + " " + title)
     return "\n".join(headings) + ("\n" if headings else "")
