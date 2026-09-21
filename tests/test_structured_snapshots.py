@@ -1,3 +1,5 @@
+import pytest
+
 import markdown as md
 
 
@@ -46,6 +48,25 @@ def test_markdown_table_statistics_reports_only_fully_numeric_columns():
             "score": {"count": 2, "min": 1.0, "max": 3.0, "mean": 2.0, "median": 2.0}
         },
     }
+
+
+def test_markdown_table_statistics_excludes_nan_and_inf_spellings():
+    """float() happily parses "nan"/"inf"/"infinity" -- a text column
+    using those words is not numeric data and must not be aggregated."""
+    source = "| name | flag |\n| --- | --- |\n| a | nan |\n| b | NaN |\n"
+    assert md.markdown_table_statistics(source)["numeric_columns"] == {}
+
+    inf_source = "| name | score |\n| --- | --- |\n| a | 1 |\n| b | inf |\n"
+    assert md.markdown_table_statistics(inf_source)["numeric_columns"] == {}
+
+
+def test_markdown_table_statistics_rejects_duplicate_headers():
+    """numeric_columns is keyed by header text, which can't represent two
+    columns of the same name losslessly -- same contract as
+    markdown_table_to_records, which also raises on duplicate headers."""
+    source = "| score | score |\n| --- | --- |\n| 1 | 100 |\n| 3 | 200 |\n"
+    with pytest.raises(ValueError, match="unique"):
+        md.markdown_table_statistics(source)
 
 
 def test_sql_snapshot_normalizes_crlf_to_lf():

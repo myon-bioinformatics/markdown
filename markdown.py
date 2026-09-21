@@ -93,6 +93,7 @@ import csv
 import doctest
 import io
 import json
+import math
 import re
 import statistics
 import unicodedata
@@ -1561,11 +1562,19 @@ def markdown_table_statistics(content: str) -> dict[str, Any]:
     """Return a small, non-mutating summary of the first Markdown table.
 
     Numeric aggregates appear only when every non-empty value in a column
-    parses as a number; no schema inference or value conversion is applied.
+    parses as a finite number (``nan``/``inf`` spellings are treated as
+    non-numeric text, not data); no schema inference or value conversion
+    is applied.
+
+    :raises ValueError: if two columns share a header -- ``numeric_columns``
+        is keyed by header text, which cannot represent both losslessly
+        (same contract as :func:`markdown_table_to_records`).
     """
     headers, data_rows = markdown_table_to_rows(content)
     if not headers:
         return {"rows": 0, "columns": 0, "headers": [], "numeric_columns": {}}
+    if len(set(headers)) != len(headers):
+        raise ValueError("Markdown table headers must be unique for statistics")
     numeric_columns: dict[str, dict[str, float | int]] = {}
     for index, header in enumerate(headers):
         values = [row[index] for row in data_rows if index < len(row) and row[index] != ""]
@@ -1574,6 +1583,8 @@ def markdown_table_statistics(content: str) -> dict[str, Any]:
         try:
             numbers = [float(value) for value in values]
         except ValueError:
+            continue
+        if not all(math.isfinite(number) for number in numbers):
             continue
         numeric_columns[header] = {
             "count": len(numbers),
