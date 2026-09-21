@@ -69,9 +69,10 @@ def test_converter_contract_audit_reports_real_world_html():
     )
     assert report["real_world_html_count"] >= 1
     assert report["divergent_case_ids"] == [
-        case["id"] for case in report["cases"]
+        f'{case["kind"]}:{case["id"]}' for case in report["cases"]
         if not case["all_checks_pass"]
     ]
+    assert len(report["divergent_case_ids"]) == len(set(report["divergent_case_ids"]))
 
 
 def test_converter_contract_audit_keeps_divergence_observational():
