@@ -2761,7 +2761,8 @@ class _HTMLToMarkdownParser(HTMLParser):
     def output(self) -> str:
         text = "".join(self.parts)
         text = re.sub(r"\n{3,}", "\n\n", text)
-        return text.strip() + "\n"
+        normalized = text.strip()
+        return normalized + "\n" if normalized else ""
 
 
 def _html_to_markdown_impl(html: str) -> str:
