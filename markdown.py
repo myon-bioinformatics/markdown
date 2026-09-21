@@ -2682,6 +2682,10 @@ class _HTMLToMarkdownParser(HTMLParser):
             self._blockquote_paragraphs.append(0)
             self._emit("\n\n> ")
         elif tag in {"ul", "ol"}:
+            if self._list_stack:
+                target = self._table_cell if self._table_cell is not None else self.parts
+                if target and target[-1]:
+                    target[-1] = target[-1].rstrip()
             self._list_stack.append(tag)
             self._li_index.append(0)
             if len(self._list_stack) == 1:
