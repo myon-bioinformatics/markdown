@@ -173,3 +173,16 @@ def test_distribution_to_markdown_missing_distribution(monkeypatch):
 def test_distribution_to_markdown_rejects_empty_name():
     with pytest.raises(ValueError, match="non-empty"):
         md.distribution_to_markdown("   ")
+
+
+def test_argparse_boolean_optional_action_name():
+    parser = argparse.ArgumentParser(prog="demo")
+    parser.add_argument(
+        "--feature",
+        action=argparse.BooleanOptionalAction,
+        help="Toggle feature",
+    )
+
+    result = md.argparse_to_markdown(parser)
+
+    assert "| --feature, --no-feature | no | 0 |  |  |  |  | boolean_optional | Toggle feature |" in result
