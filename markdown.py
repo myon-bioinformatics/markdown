@@ -2443,11 +2443,11 @@ def _dom_details_to_markdown(node: HtmlNode) -> str:
     body_nodes: list[HtmlNode] = []
     for child in node.children or []:
         if child.kind == "element" and child.tag == "summary":
-            summary = html_to_markdown(dom_to_html(child)).strip() or "Details"
+            summary = _html_to_markdown_impl(dom_to_html(child)).strip() or "Details"
         else:
             body_nodes.append(child)
     body_root = HtmlNode("root", children=body_nodes)
-    body = html_to_markdown(dom_to_html(body_root)).strip()
+    body = _html_to_markdown_impl(dom_to_html(body_root)).strip()
     if body:
         return f":::details {summary}\n{body}\n:::\n"
     return f":::details {summary}\n:::\n"
