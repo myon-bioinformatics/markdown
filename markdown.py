@@ -2814,7 +2814,8 @@ class _HTMLToMarkdownParser(HTMLParser):
                 self._list_stack.pop()
             if self._li_index:
                 self._li_index.pop()
-            self._emit("\n")
+            if not self._list_stack:
+                self._emit("\n")
 
     def handle_data(self, data: str) -> None:
         if self._suppress:
