@@ -229,3 +229,40 @@ def test_markdown_to_structured_rejects_unknown_type_tag():
     )
     with pytest.raises(ValueError, match="Unknown structured node type"):
         md.markdown_to_structured(source)
+
+
+
+def test_markdown_to_structured_rejects_marker_only_as_substring():
+    source = (
+        "prose <!-- markdown.py:structured-v1 --> prose\n"
+        "| id | parent | slot | type | value |\n"
+        "| --- | --- | --- | --- | --- |\n"
+        "| 0 |  |  | dict |  |\n"
+    )
+    with pytest.raises(ValueError, match="marker"):
+        md.markdown_to_structured(source)
+
+
+def test_markdown_to_structured_rejects_marker_in_fenced_example():
+    source = (
+        "```markdown\n"
+        "<!-- markdown.py:structured-v1 -->\n"
+        "| id | parent | slot | type | value |\n"
+        "| --- | --- | --- | --- | --- |\n"
+        "| 0 |  |  | dict |  |\n"
+        "```\n"
+    )
+    with pytest.raises(ValueError, match="marker"):
+        md.markdown_to_structured(source)
+
+
+def test_markdown_to_structured_requires_table_paired_with_marker():
+    source = (
+        "<!-- markdown.py:structured-v1 -->\n"
+        "intervening prose\n"
+        "| id | parent | slot | type | value |\n"
+        "| --- | --- | --- | --- | --- |\n"
+        "| 0 |  |  | dict |  |\n"
+    )
+    with pytest.raises(ValueError, match="paired"):
+        md.markdown_to_structured(source)
