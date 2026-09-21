@@ -296,7 +296,7 @@ Results, CommonMark spec examples:
 | --- | --- |
 | ATX headings, emphasis (basic), fenced code, inline code, horizontal rule, links | PASS |
 | nested emphasis (`**foo *bar* baz**`) | DEGRADED — the inner `*bar*` parses, the outer `**` doesn't |
-| nested lists | DEGRADED — flattens to one `<ul>`, no text lost |
+| nested lists | PASS — simple indentation-based nested ul/ol structure is preserved |
 | blockquotes | DEGRADED — consecutive `>` lines become `<blockquote><p>…</p></blockquote>`; inner ATX headings/lists/tables stay paragraph text; blank `>` lines split paragraphs |
 | backslash escaping | FAIL — not implemented; `\*` stays literal instead of suppressing emphasis |
 | emphasis edge cases (asymmetric delimiter runs, whitespace-adjacent delimiters) | FAIL |
