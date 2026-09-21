@@ -61,7 +61,7 @@ def test_converter_contract_audit_reports_real_world_html():
     audit = _load_module()
     report = audit.collect_report()
 
-    assert report["schema_version"] == 2
+    assert report["schema_version"] == 3
     assert report["case_count"] == len(report["cases"])
     assert (
         report["case_count"]
@@ -123,3 +123,80 @@ def test_footnote_is_classified_as_expected_lossy():
     )
     assert footnote["classification"] == "expected_lossy"
     assert "[^id]" in footnote["expected_loss_reason"]
+
+
+
+def test_conversion_graph_distinguishes_prose_and_structured_markdown():
+    audit = _load_module()
+    graph = audit.collect_report()["conversion_graph"]
+
+    assert "markdown_prose" in graph["nodes"]
+    assert "markdown_structured_v1" in graph["nodes"]
+    assert "not that arbitrary inputs round-trip" in graph["note"]
+
+    edge_ids = {edge["id"] for edge in graph["edges"]}
+    assert {
+        "html_to_markdown_prose",
+        "markdown_prose_to_html",
+        "ini_to_markdown_structured_v1",
+        "markdown_structured_v1_to_ini",
+        "toml_to_markdown_structured_v1",
+        "markdown_structured_v1_to_toml",
+        "dotenv_to_markdown_structured_v1",
+        "markdown_structured_v1_to_dotenv",
+    } <= edge_ids
+    assert all(edge["domain"] for edge in graph["edges"])
+
+
+def test_conversion_graph_reports_reachability_without_crossing_carriers():
+    audit = _load_module()
+    graph = audit.collect_report()["conversion_graph"]
+    pairs = {(route["source"], route["target"]) for route in graph["routes"]}
+
+    assert ("html", "dom") in pairs
+    assert ("ini", "toml") in pairs
+    assert ("dotenv", "ini") in pairs
+    assert ("html", "toml") not in pairs
+    assert ("ini", "html") not in pairs
+
+    if audit.md.tomllib is None:
+        assert ("toml", "ini") not in pairs
+    else:
+        assert ("toml", "ini") in pairs
+
+
+def test_structured_cycles_are_stable_on_supported_python():
+    audit = _load_module()
+    report = audit.collect_report()
+    expected_ids = {case["id"] for case in audit.STRUCTURED_CYCLE_CASES}
+
+    if audit.md.tomllib is None:
+        assert report["structured_cycle_count"] == 0
+        assert set(report["structured_cycle_unavailable_ids"]) == expected_ids
+        return
+
+    assert report["structured_cycle_count"] == len(expected_ids)
+    assert report["structured_cycle_stable_count"] == len(expected_ids)
+    assert report["structured_cycle_divergent_count"] == 0
+    assert report["structured_cycle_divergent_ids"] == []
+    assert report["structured_cycle_unavailable_ids"] == []
+    assert {cycle["id"] for cycle in report["structured_cycles"]} == expected_ids
+    for cycle in report["structured_cycles"]:
+        assert cycle["carrier"] == "markdown_structured_v1"
+        assert cycle["classification"] == "stable"
+        assert cycle["all_checks_pass"]
+        assert all(cycle["checks"].values())
+
+
+def test_structured_cycles_cover_cross_format_paths():
+    audit = _load_module()
+    pairs = {
+        (case["source_format"], case["via_format"])
+        for case in audit.STRUCTURED_CYCLE_CASES
+    }
+    assert {
+        ("ini", "toml"),
+        ("dotenv", "toml"),
+        ("toml", "ini"),
+        ("toml", "dotenv"),
+    } <= pairs
