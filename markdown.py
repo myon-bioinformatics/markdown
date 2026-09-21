@@ -2755,10 +2755,29 @@ class _HTMLToMarkdownParser(HTMLParser):
 
     def handle_endtag(self, tag: str) -> None:
         tag = tag.lower()
+        implicitly_closed: list[str] = []
+        matched_open_tag = False
         for index in range(len(self._open_tags) - 1, -1, -1):
             if self._open_tags[index] == tag:
+                matched_open_tag = True
+                implicitly_closed = self._open_tags[index + 1:]
                 del self._open_tags[index:]
                 break
+
+        # html.parser does not synthesize end-tag callbacks for malformed
+        # descendants. The lightweight DOM path nevertheless serializes those
+        # descendants as balanced HTML before conversion. Mirror that narrow
+        # recovery for inline Markdown delimiters when an ancestor closes.
+        for implicit_tag in reversed(implicitly_closed):
+            if implicit_tag in {"strong", "b"}:
+                self._emit("**")
+            elif implicit_tag in {"em", "i"}:
+                self._emit("*")
+            elif implicit_tag in {"del", "s"}:
+                self._emit("~~")
+            elif implicit_tag == "code" and self._in_code and not self._in_pre:
+                self._emit("`")
+                self._in_code = False
         if tag in {"script", "style"}:
             self._suppress = max(0, self._suppress - 1)
             return
@@ -2806,13 +2825,13 @@ class _HTMLToMarkdownParser(HTMLParser):
                 if parent_tag == "blockquote":
                     return
             self._emit("\n\n")
-        elif tag in {"strong", "b"}:
+        elif tag in {"strong", "b"} and matched_open_tag:
             self._emit("**")
-        elif tag in {"em", "i"}:
+        elif tag in {"em", "i"} and matched_open_tag:
             self._emit("*")
-        elif tag in {"del", "s"}:
+        elif tag in {"del", "s"} and matched_open_tag:
             self._emit("~~")
-        elif tag == "code" and not self._in_pre:
+        elif tag == "code" and matched_open_tag and self._in_code and not self._in_pre:
             self._emit("`")
             self._in_code = False
         elif tag == "pre":
