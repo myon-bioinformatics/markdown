@@ -158,6 +158,18 @@ engine does not gain a dependency on the DOM layer.
 python scripts/converter_parity_report.py --out converter_parity.json
 ```
 
+PR #42 broadens that observability into a converter-contract audit. It records
+HTML→Markdown parity plus Markdown→HTML→Markdown and Markdown→DOM→Markdown
+stability across core constructs (lists, tables, details, tasks, footnotes,
+attributes, malformed input, Unicode, URL safety, and empty input) and vendored
+real-world HTML. Divergence is reported, not automatically treated as a bug:
+lossy or unsupported behavior should be documented and handled in focused
+follow-up PRs rather than silently changed by the audit itself.
+
+```bash
+python scripts/converter_contract_audit.py --out converter_contract_audit.json
+```
+
 URL scheme safety for conversion paths is centralized in
 `_sanitize_url_scheme()`: new HTML→Markdown or Markdown→HTML URL-consuming
 conversion code must reuse that helper rather than introduce an independent

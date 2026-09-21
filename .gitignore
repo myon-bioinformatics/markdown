@@ -10,3 +10,6 @@ venv/
 
 # Local output from scripts/converter_parity_report.py
 /converter_parity.json
+
+# Local output from scripts/converter_contract_audit.py
+/converter_contract_audit.json
