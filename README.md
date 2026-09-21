@@ -124,6 +124,18 @@ than a lone newline. Non-empty Markdown output keeps the existing contract of
 exactly one trailing newline. This deliberately treats empty-output
 normalization separately from broader whitespace or nested-list behavior.
 
+PR #40 adds a deterministic legacy-vs-DOM parity report for the next
+architecture decision. The report runs both HTML→Markdown paths over synthetic
+edge cases plus every vendored real-world HTML fixture under
+`fixtures/benchmark/`, records equality, output lengths, SHA-256 hashes, and
+short previews for mismatches, and emits a decision hint. The hint is evidence,
+not an automatic switch: DOM-first remains a review decision based on observed
+mismatches, compatibility, and complexity.
+
+```bash
+python scripts/converter_parity_report.py --out converter_parity.json
+```
+
 URL scheme safety for conversion paths is centralized in
 `_sanitize_url_scheme()`: new HTML→Markdown or Markdown→HTML URL-consuming
 conversion code must reuse that helper rather than introduce an independent
