@@ -1727,7 +1727,7 @@ def inspect_to_markdown(obj: Any, *, title: str | None = None) -> str:
 
 def _argparse_value(value: Any) -> str:
     """Render argparse metadata without unstable object reprs."""
-    if value is argparse.SUPPRESS:
+    if value == argparse.SUPPRESS:
         return "SUPPRESS"
     if value is None:
         return ""
@@ -1761,7 +1761,7 @@ def argparse_to_markdown(parser: argparse.ArgumentParser, *, title: str | None =
     for action in parser._actions:
         if action.__class__.__name__ == "_SubParsersAction":
             for command, child in sorted(action.choices.items()):
-                subcommands.append([command, child.description or _reference_summary(child) or ""])
+                subcommands.append([command, child.description or ""])
             continue
         if action.dest == argparse.SUPPRESS:
             continue
@@ -1778,7 +1778,7 @@ def argparse_to_markdown(parser: argparse.ArgumentParser, *, title: str | None =
             _argparse_value(action.nargs),
             choices,
             _argparse_value(action.default),
-            "" if action.help is argparse.SUPPRESS else str(action.help or ""),
+            "" if action.help == argparse.SUPPRESS else str(action.help or ""),
         ])
 
     if argument_rows:
@@ -1842,6 +1842,7 @@ def distribution_to_markdown(name: str, *, title: str | None = None) -> str:
             [[item.group, item.name, item.value] for item in entry_points],
         ))
     return "\n".join(part.rstrip("\n") for part in output if part) + "\n"
+
 
 def json_block(obj: Any, indent: int = 2) -> str:
     """Serialize ``obj`` as JSON and wrap it in a ```json fenced code block."""
