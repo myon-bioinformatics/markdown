@@ -2630,7 +2630,7 @@ class _HTMLToMarkdownParser(HTMLParser):
                 if self._blockquote_paragraphs[-1] > 0:
                     self._emit("\n>\n> ")
                 self._blockquote_paragraphs[-1] += 1
-                self._block_attr_suffixes.append("")
+                self._block_attr_suffixes.append(_html_attrs_to_pandoc_suffix(attr))
             else:
                 self._emit("\n\n")
                 self._block_attr_suffixes.append(_html_attrs_to_pandoc_suffix(attr))
