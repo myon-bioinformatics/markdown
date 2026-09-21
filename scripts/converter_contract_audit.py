@@ -301,6 +301,11 @@ def _from_structured_markdown(format_name: str, content: str) -> str:
     return converter(content)
 
 
+def _canonical_structured_markdown(content: str) -> str:
+    """Normalize adapter-specific headings while preserving structured-v1 data."""
+    return md.structured_to_markdown(md.markdown_to_structured(content))
+
+
 def _structured_cycle_record(case: dict[str, Any]) -> dict[str, Any]:
     source_format = case["source_format"]
     via_format = case["via_format"]
@@ -312,9 +317,14 @@ def _structured_cycle_record(case: dict[str, Any]) -> dict[str, Any]:
     back_text = _from_structured_markdown(source_format, via_md)
     back_md = _to_structured_markdown(source_format, back_text)
 
+    canonical_hub = _canonical_structured_markdown(source_md)
     checks = {
-        "source_to_via_hub_stable": source_md == via_md,
-        "cycle_hub_stable": source_md == back_md,
+        "source_to_via_hub_stable": (
+            canonical_hub == _canonical_structured_markdown(via_md)
+        ),
+        "cycle_hub_stable": (
+            canonical_hub == _canonical_structured_markdown(back_md)
+        ),
         "source_canonical_stable": canonical_source == back_text,
     }
     return {
