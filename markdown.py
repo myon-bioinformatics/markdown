@@ -2786,7 +2786,20 @@ class _HTMLToMarkdownParser(HTMLParser):
         if self._in_pre or self._in_code:
             self._emit(data)
         else:
-            self._emit(re.sub(r"\s+", " ", data))
+            collapsed = re.sub(r"\s+", " ", data)
+            # HTML comments and transparent/ignored markup can split what is
+            # semantically one whitespace run into multiple handle_data()
+            # callbacks. Coalesce that boundary so legacy conversion matches
+            # the DOM path, which removes such nodes before re-serialization.
+            target = self._table_cell if self._table_cell is not None else self.parts
+            if (
+                collapsed.startswith(" ")
+                and target
+                and target[-1]
+                and target[-1][-1].isspace()
+            ):
+                collapsed = collapsed[1:]
+            self._emit(collapsed)
 
     def output(self) -> str:
         text = "".join(self.parts)
