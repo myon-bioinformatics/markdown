@@ -1582,7 +1582,12 @@ def python_to_mermaid_class_diagram(source: str) -> str:
 
 
 def markdown_links_to_dot(content: str) -> str:
-    """Generate a deterministic DOT link graph grouped by current heading."""
+    """Generate a deterministic DOT link graph grouped by current heading.
+
+    Links before the first heading belong to ``Document``. If a syntactically
+    matched ATX heading becomes empty after stripping, that section also falls
+    back to ``Document`` instead of creating an empty node label.
+    """
     normalized = content.replace("\r\n", "\n").replace("\r", "\n")
     lines = normalized.split("\n")
     scanned = _scan_lines(lines)
