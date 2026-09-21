@@ -30,6 +30,10 @@ SYNTHETIC_CASES = {
         '<a href="https://example.com">link</a>.</p>'
     ),
     "lists": "<ul><li>one</li><li><ol><li>nested</li></ol></li></ul>",
+    "blockquote": "<blockquote><p>Quoted <strong>text</strong>.</p></blockquote>",
+    "inline_code": "<p>Use <code>print(1)</code> here.</p>",
+    "preformatted_code": "<pre><code>def hello():\n    return 1\n</code></pre>",
+    "alt_only_image": '<img src="/missing.png" alt="description">',
     "table": (
         "<table><thead><tr><th>a</th><th>b</th></tr></thead>"
         "<tbody><tr><td>1</td><td>2</td></tr></tbody></table>"
