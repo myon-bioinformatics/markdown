@@ -451,7 +451,11 @@ def _markdown_doctest_source(content: str) -> str:
 # ---------------------------------------------------------------------------
 
 def extract_sections(content: str) -> list[dict[str, Any]]:
-    """Extract ATX heading names from Markdown content."""
+    """List ATX headings (``level`` + ``title``), without their body text.
+
+    For heading-delimited sections that keep each section's body, use
+    ``split_sections()`` instead.
+    """
     sections: list[dict[str, Any]] = []
     for line in content.splitlines():
         match = _HEADING_RE.match(line)
@@ -466,10 +470,13 @@ def extract_sections(content: str) -> list[dict[str, Any]]:
 
 
 def split_sections(content: str) -> list[dict[str, Any]]:
-    """Split content into heading-delimited sections.
+    """Split content into heading-delimited sections, each with its body text.
 
-    The prelude before the first heading is returned with ``level`` 0 and
-    an empty ``title`` when it is non-empty.
+    Each item has ``level``, ``title``, and ``content`` (the heading line
+    plus everything up to the next heading of any level). The prelude
+    before the first heading is returned with ``level`` 0 and an empty
+    ``title`` when it is non-empty. For a heading list without body text,
+    use ``extract_sections()`` instead.
     """
     lines = content.splitlines(keepends=True)
     parts: list[dict[str, Any]] = []

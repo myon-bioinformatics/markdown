@@ -67,6 +67,14 @@ def test_unclosed_angle_url_is_escaped_not_linked() -> None:
     assert "&lt;https://example.com" in html
 
 
+def test_angle_autolink_keeps_trailing_underscore_and_parens() -> None:
+    """A URL boundary case: ``_`` and ``()`` right after the path are part
+    of the URL, not emphasis markers or link-syntax delimiters."""
+    html = md.markdown_to_html("<https://a.com/_(test)_>\n")
+    assert '<a href="https://a.com/_(test)_">https://a.com/_(test)_</a>' in html
+    assert "<em>" not in html
+
+
 def test_vscode_fixture_live_autolink_renders() -> None:
     content = (FIXTURES / "vscode_readme_snippet.md").read_text(encoding="utf-8")
     html = md.markdown_to_html(content)
