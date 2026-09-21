@@ -2517,15 +2517,33 @@ class _HTMLToMarkdownParser(HTMLParser):
         self._details_stack: list[dict[str, Any]] = []
         self._blockquote_paragraphs: list[int] = []
         self._skip_next_list_structural_whitespace = False
+        self._protected_trailing_space_kind: str | None = None
         self._open_tags: list[str] = []
 
-    def _emit(self, text: str) -> None:
+    def _emit(self, text: str, *, trailing_space_kind: str | None = None) -> None:
         if self._table_cell is not None:
             self._table_cell.append(text)
         elif self._table_depth:
             return
         else:
             self.parts.append(text)
+        if text:
+            self._protected_trailing_space_kind = trailing_space_kind
+
+    def _trim_structural_boundary(self) -> None:
+        """Drop source-formatting whitespace before a block boundary.
+
+        Markdown syntax emitted by this parser can intentionally end in one
+        space. Those spaces are tracked by provenance instead of inferred from
+        the rendered text, so source text that merely looks similar is still
+        normalized normally.
+        """
+        target = self._table_cell if self._table_cell is not None else self.parts
+        if not target or not target[-1]:
+            return
+        if self._protected_trailing_space_kind is not None:
+            return
+        target[-1] = target[-1].rstrip(" \t")
 
     def _flush_cell(self) -> None:
         if self._table_cell is None or self._table_row is None:
@@ -2623,13 +2641,18 @@ class _HTMLToMarkdownParser(HTMLParser):
         if tag in {"tbody", "tfoot", "caption", "colgroup", "col"}:
             return
         if tag in {"h1", "h2", "h3", "h4", "h5", "h6"}:
+            self._trim_structural_boundary()
             level = int(tag[1])
             self._emit("\n\n" + ("#" * level) + " ")
             self._block_attr_suffixes.append(_html_attrs_to_pandoc_suffix(attr))
         elif tag == "p":
+            self._trim_structural_boundary()
             if parent_tag == "blockquote" and self._blockquote_paragraphs:
                 if self._blockquote_paragraphs[-1] > 0:
-                    self._emit("\n>\n> ")
+                    self._emit(
+                        "\n>\n> ",
+                        trailing_space_kind="blockquote-prefix",
+                    )
                 self._blockquote_paragraphs[-1] += 1
                 self._block_attr_suffixes.append(_html_attrs_to_pandoc_suffix(attr))
             else:
@@ -2681,22 +2704,25 @@ class _HTMLToMarkdownParser(HTMLParser):
                 self._emit(f"[{mark}]")
         elif tag == "blockquote":
             self._blockquote_paragraphs.append(0)
-            self._emit("\n\n> ")
+            self._emit(
+                "\n\n> ",
+                trailing_space_kind="blockquote-prefix",
+            )
         elif tag in {"ul", "ol"}:
             if self._list_stack:
                 target = self._table_cell if self._table_cell is not None else self.parts
-                if target and target[-1]:
-                    marker_only = re.search(
-                        r"(?:^|\n)\s*(?:[-*+]|\d+\.) $",
-                        target[-1],
-                    )
-                    if marker_only is None:
-                        target[-1] = target[-1].rstrip()
+                if (
+                    target
+                    and target[-1]
+                    and self._protected_trailing_space_kind != "list-marker"
+                ):
+                    target[-1] = target[-1].rstrip()
             self._list_stack.append(tag)
             self._li_index.append(0)
             if len(self._list_stack) == 1:
                 self._emit("\n")
         elif tag == "li":
+            self._trim_structural_boundary()
             depth = max(len(self._list_stack) - 1, 0)
             indent = "  " * depth
             kind = self._list_stack[-1] if self._list_stack else "ul"
@@ -2705,7 +2731,10 @@ class _HTMLToMarkdownParser(HTMLParser):
                 bullet = f"{self._li_index[-1]}."
             else:
                 bullet = "-"
-            self._emit(f"\n{indent}{bullet} ")
+            self._emit(
+                f"\n{indent}{bullet} ",
+                trailing_space_kind="list-marker",
+            )
         elif tag == "details":
             # A fenced :::details block cannot live safely inside one GFM table
             # cell. Preserve the pre-#41 behavior there by flattening the
@@ -2764,6 +2793,7 @@ class _HTMLToMarkdownParser(HTMLParser):
                 self._flush_cell()
             return
         if tag in {"h1", "h2", "h3", "h4", "h5", "h6", "p"}:
+            self._trim_structural_boundary()
             suffix = (
                 self._block_attr_suffixes.pop()
                 if self._block_attr_suffixes
@@ -3689,7 +3719,12 @@ def markdown_to_html(content: str) -> str:
         while i < len(lines) and not paragraph_interrupt(i):
             para.append(lines[i])
             i += 1
-        out.append(f"<p>{render_inline(' '.join(s.strip() for s in para))}</p>")
+        rendered_para: list[str] = []
+        for index, raw in enumerate(para):
+            rendered_para.append(render_inline(raw.strip()))
+            if index + 1 < len(para):
+                rendered_para.append("<br />" if raw.endswith("  ") else " ")
+        out.append(f"<p>{''.join(rendered_para)}</p>")
 
     close_list()
     if footnote_order:
