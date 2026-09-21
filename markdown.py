@@ -690,6 +690,9 @@ def extract_data_uris(content: str) -> list[dict[str, str]]:
         if paren_positions and excess > 0:
             cut_at = paren_positions[-min(excess, len(paren_positions))]
             uri = uri[: trim + cut_at]
+            # Removing a wrapping ")" can expose a quote/angle delimiter
+            # that was only hidden behind it, e.g. "(<data:...,x>)".
+            uri = uri.rstrip("\"'>")
         found.append({
             "uri": uri,
             "media_type": declared_type or "text/plain",

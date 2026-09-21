@@ -92,6 +92,19 @@ def test_data_uri_strips_all_excess_closers_from_stacked_wrappers():
         assert result[0]["uri"] == expected, source
 
 
+def test_data_uri_strips_angle_bracket_exposed_by_paren_removal():
+    """Removing a wrapping ")" can expose a "<...>"-style delimiter that
+    was hidden behind it -- e.g. "(<data:...,x>)" -- and that exposed ">"
+    must also be dropped, not left dangling on the observed URI."""
+    cases = [
+        ("See (<data:text/plain,Hello!>).", "data:text/plain,Hello!"),
+        ("(<data:text/plain,Hello!>)", "data:text/plain,Hello!"),
+    ]
+    for source, expected in cases:
+        result = md.extract_data_uris(source)
+        assert result[0]["uri"] == expected, source
+
+
 def test_data_uri_rejects_prefixed_false_positives():
     assert md.extract_data_uris("notdata:text/plain,x") == []
     assert md.extract_data_uris("foo_data:text/plain,x") == []
