@@ -1,5 +1,5 @@
 # markdown.py
-# metadata: __all__=81 | base_sha=e1f8bd086f547d032c3fa577a26a294602541dcb | updated_at=2026-09-21T09:45:55Z
+# metadata: __all__=83 | base_sha=f989a1e66b652c9b923494d94214f9e1481414b1 | updated_at=2026-09-21T10:02:22Z
 """Stdlib-only Markdown utility functions.
 
 This module is intentionally a single file with no CLI / ``main`` entry point.
@@ -75,6 +75,8 @@ __all__ = [
     "markdown_table_statistics",
     "json_to_markdown",
     "markdown_to_json",
+    "structured_to_markdown",
+    "markdown_to_structured",
     "redis_snapshot_to_markdown",
     "sql_ddl_to_markdown",
     "markdown_to_sql_ddl",
@@ -151,6 +153,8 @@ SUPPORTED = {
         "HTML <del> -> ~~text~~ and <li><input type=checkbox> -> - [ ] / - [x] in html_to_markdown",
         "heading/paragraph id+class (+ other simple attrs) in html_to_markdown "
         "as Pandoc-style {#id .class key=\"value\"} so markdown_to_kramdown can attach IAL",
+        "structured_to_markdown / markdown_to_structured for JSON-compatible Python data "
+        "(typed canonical Markdown table; reusable by INI/TOML adapters)",
         "markdown_to_kramdown: Pandoc/PHP-Extra {#id .class key=value} on headings/paragraphs "
         "-> Kramdown block IAL ({: #id .class key=\"value\"}); ordinary Markdown left alone",
         "kramdown_to_markdown: strip known heading/paragraph IAL back to plain Markdown "
@@ -1700,6 +1704,207 @@ def markdown_to_json(content: str) -> Any:
         if block["language"].lower() == "json":
             return json.loads(block["code"])
     raise ValueError("No fenced JSON block found")
+
+
+
+_STRUCTURED_TABLE_HEADERS = ["id", "parent", "slot", "type", "value"]
+_STRUCTURED_MARKER = "<!-- markdown.py:structured-v1 -->\n"
+_STRUCTURED_SCALAR_TYPES = {"str", "int", "float", "bool", "null"}
+
+
+def _structured_scalar_type(value: Any) -> str | None:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "bool"
+    if isinstance(value, str):
+        return "str"
+    if isinstance(value, int):
+        return "int"
+    if isinstance(value, float):
+        return "float"
+    return None
+
+
+def _structured_json_dumps(value: Any) -> str:
+    """Encode one structured scalar/key with stable JSON settings."""
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        allow_nan=False,
+        separators=(",", ":"),
+    )
+
+
+def _structured_json_loads(text: str, *, what: str) -> Any:
+    """Decode one JSON-backed structured field with a focused error."""
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Structured {what} is not valid JSON") from exc
+
+
+def _structured_encode_scalar(value: Any) -> tuple[str, str]:
+    kind = _structured_scalar_type(value)
+    if kind is None:
+        raise TypeError(
+            "structured data must use JSON-compatible dict/list/scalar values"
+        )
+    return kind, _structured_json_dumps(value)
+
+
+def _structured_decode_scalar(kind: str, encoded: str) -> Any:
+    if kind not in _STRUCTURED_SCALAR_TYPES:
+        raise ValueError(f"Unknown structured node type: {kind!r}")
+    value = _structured_json_loads(encoded, what="scalar value")
+    actual = _structured_scalar_type(value)
+    if actual != kind:
+        raise ValueError(
+            f"Structured scalar type mismatch: declared {kind}, got {actual}"
+        )
+    return value
+
+
+def _structured_validate(value: Any) -> None:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if not isinstance(key, str):
+                raise TypeError("structured mappings require string keys")
+            _structured_validate(child)
+        return
+    if isinstance(value, list):
+        for child in value:
+            _structured_validate(child)
+        return
+    _structured_encode_scalar(value)
+
+
+def structured_to_markdown(value: Any, title: str = "Structured data") -> str:
+    """Render JSON-compatible Python data as a canonical typed Markdown table.
+
+    The representation is intended as a small common layer for format adapters
+    such as INI and TOML. Mapping keys must be strings. Supported values are
+    dict, list, str, int, finite float, bool and None. Object order and list
+    order are preserved.
+
+    This is a semantic round-trip format, not a source-text preservation
+    format: whitespace, comments, quoting style, and source-format trivia from
+    an upstream format belong to that adapter's declared lossiness contract.
+    """
+    _structured_validate(value)
+    rows: list[list[str]] = []
+
+    def visit(node: Any, parent: str = "", slot: str = "") -> None:
+        node_id = str(len(rows))
+        if isinstance(node, dict):
+            rows.append([node_id, parent, slot, "dict", ""])
+            for key, child in node.items():
+                visit(child, node_id, _structured_json_dumps(key))
+            return
+        if isinstance(node, list):
+            rows.append([node_id, parent, slot, "list", ""])
+            for index, child in enumerate(node):
+                visit(child, node_id, str(index))
+            return
+
+        kind, encoded = _structured_encode_scalar(node)
+        rows.append([node_id, parent, slot, kind, encoded])
+
+    visit(value)
+    return heading(title) + _STRUCTURED_MARKER + table(_STRUCTURED_TABLE_HEADERS, rows)
+
+
+def markdown_to_structured(content: str) -> Any:
+    """Restore data emitted by structured_to_markdown.
+
+    A live structured marker must be paired with the immediately following
+    canonical pipe table. Node ids and rows use contiguous pre-order traversal;
+    that ordering is part of the canonical representation. Malformed node ids,
+    parent references, slots, type tags, or scalar JSON values raise ValueError
+    instead of being guessed.
+    """
+    lines = content.splitlines()
+    scanned = _scan_lines(lines)
+    marker = _STRUCTURED_MARKER.strip()
+    marker_index = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if not scanned[index].in_fenced_code and line.strip() == marker
+        ),
+        None,
+    )
+    if marker_index is None:
+        raise ValueError("No structured-data marker found")
+
+    table_index = marker_index + 1
+    while table_index < len(lines) and not lines[table_index].strip():
+        table_index += 1
+    if table_index >= len(lines) or not _is_table_start(lines, table_index):
+        raise ValueError("Structured-data marker is not paired with a table")
+
+    headers, rows = markdown_table_to_rows("\n".join(lines[table_index:]))
+    if headers != _STRUCTURED_TABLE_HEADERS:
+        raise ValueError("No canonical structured-data table found")
+    if not rows:
+        raise ValueError("Structured-data table has no root node")
+
+    nodes: list[Any] = []
+    for expected_id, row in enumerate(rows):
+        raw_id, raw_parent, slot, kind, encoded = row
+        try:
+            node_id = int(raw_id)
+        except ValueError as exc:
+            raise ValueError("Structured node id must be an integer") from exc
+        if node_id != expected_id:
+            raise ValueError("Structured node ids must be contiguous and ordered")
+
+        if kind == "dict":
+            if encoded:
+                raise ValueError("Structured container rows must have empty values")
+            node: Any = {}
+        elif kind == "list":
+            if encoded:
+                raise ValueError("Structured container rows must have empty values")
+            node = []
+        else:
+            node = _structured_decode_scalar(kind, encoded)
+
+        if expected_id == 0:
+            if raw_parent or slot:
+                raise ValueError("Structured root node cannot have parent or slot")
+            nodes.append(node)
+            continue
+
+        try:
+            parent_id = int(raw_parent)
+        except ValueError as exc:
+            raise ValueError("Structured parent id must be an integer") from exc
+        if parent_id < 0 or parent_id >= len(nodes):
+            raise ValueError("Structured parent must reference an earlier node")
+
+        parent = nodes[parent_id]
+        if isinstance(parent, dict):
+            key = _structured_json_loads(slot, what="mapping slot")
+            if not isinstance(key, str):
+                raise ValueError("Structured mapping slot must decode to a string")
+            if key in parent:
+                raise ValueError("Structured mapping contains a duplicate key")
+            parent[key] = node
+        elif isinstance(parent, list):
+            try:
+                index = int(slot)
+            except ValueError as exc:
+                raise ValueError("Structured list slot must be an integer") from exc
+            if index != len(parent):
+                raise ValueError("Structured list slots must be contiguous and ordered")
+            parent.append(node)
+        else:
+            raise ValueError("Structured scalar nodes cannot have children")
+
+        nodes.append(node)
+
+    return nodes[0]
 
 
 def redis_snapshot_to_markdown(snapshot: Any, title: str = "Redis snapshot") -> str:
