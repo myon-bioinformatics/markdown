@@ -132,6 +132,15 @@ short previews for mismatches, and emits a decision hint. The hint is evidence,
 not an automatic switch: DOM-first remains a review decision based on observed
 mismatches, compatibility, and complexity.
 
+The current real-world HTML corpus is intentionally small: today it contains
+one vendored page (`tohoho_web_home.html`). That is enough to catch at least
+one real-page whitespace divergence, but not enough to treat a zero-mismatch
+result as broad production evidence. Synthetic coverage therefore also pins
+blockquotes, inline/preformatted code, image alt handling, lists, tables,
+details, URL safety, Unicode, empty output, and host:port behavior. Expanding
+the vendored real-HTML corpus remains follow-up work before any public
+DOM-first cutover.
+
 ```bash
 python scripts/converter_parity_report.py --out converter_parity.json
 ```
