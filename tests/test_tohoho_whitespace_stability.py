@@ -64,3 +64,11 @@ def test_nested_list_marker_space_is_preserved_by_parser_provenance() -> None:
     html = "<ul><li><ol><li>nested</li></ol></li></ul>"
 
     assert md.html_to_markdown(html) == "- \n  1. nested\n"
+
+
+def test_blockquote_continuation_prefix_survives_empty_paragraph_before_list() -> None:
+    html = "<blockquote><p>a</p><p></p><ul><li>x</li></ul></blockquote>"
+
+    markdown = md.html_to_markdown(html)
+
+    assert ">\n> " in markdown
