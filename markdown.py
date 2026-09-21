@@ -66,6 +66,10 @@ __all__ = [
     "code_block",
     "mermaid_block",
     "extract_mermaid_blocks",
+    "markdown_headings_to_mermaid_mindmap",
+    "markdown_tasks_to_mermaid_flowchart",
+    "python_to_mermaid_class_diagram",
+    "markdown_links_to_dot",
     "table",
     "aligned_table",
     "markdown_table_to_rows",
@@ -106,10 +110,12 @@ __all__ = [
     "UNSUPPORTED",
 ]
 
+import ast
 import html as html_module
 import configparser
 import csv
 import doctest
+import graphlib
 import io
 import json
 import math
@@ -1437,6 +1443,189 @@ def extract_mermaid_blocks(content: str) -> list[str]:
         if block["language"].lower() == "mermaid"
     ]
 
+
+def _diagram_label(text: Any) -> str:
+    """Escape a label for quoted Mermaid/DOT output."""
+    return str(text).replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
+
+
+def _live_markdown_lines(content: str) -> list[tuple[str, str]]:
+    """Return ``(raw, inline-masked)`` lines outside fenced code."""
+    lines = content.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    scanned = _scan_lines(lines)
+    result: list[tuple[str, str]] = []
+    for line, item in zip(lines, scanned):
+        if item.in_fenced_code:
+            continue
+        result.append((line, _mask_inline_code(line)))
+    return result
+
+
+def markdown_headings_to_mermaid_mindmap(content: str, *, root: str = "Document") -> str:
+    """Generate deterministic Mermaid mindmap source from live ATX headings."""
+    headings: list[tuple[int, str]] = []
+    for raw, masked in _live_markdown_lines(content):
+        match = _HEADING_RE.match(masked)
+        if match:
+            headings.append((len(match.group(1)), raw[len(match.group(1)):].strip()))
+
+    out = ["mindmap", f'  root["{_diagram_label(root)}"]']
+    stack: list[tuple[int, str]] = []
+    for index, (level, title) in enumerate(headings):
+        while stack and stack[-1][0] >= level:
+            stack.pop()
+        depth = len(stack) + 2
+        node_id = f"n{index}"
+        out.append("  " * depth + f'{node_id}["{_diagram_label(title)}"]')
+        stack.append((level, node_id))
+    return "\n".join(out) + "\n"
+
+
+_TASK_DEP_RE = re.compile(r"^\s*[-*+]\s+\[[ xX]\]\s+(.+?)(?:\s+<-\s+(.+))?\s*$")
+
+
+def markdown_tasks_to_mermaid_flowchart(content: str) -> str:
+    """Generate Mermaid flowchart source from narrow GFM task dependencies.
+
+    Syntax: ``- [ ] Deploy <- Build, Test`` means Deploy depends on Build and
+    Test. Every referenced dependency must also appear as a task item.
+    """
+    tasks: list[tuple[str, list[str]]] = []
+    seen: set[str] = set()
+    for raw, masked in _live_markdown_lines(content):
+        match = _TASK_DEP_RE.match(masked)
+        if not match:
+            continue
+        name = raw[match.start(1):match.end(1)].strip()
+        deps_text = match.group(2)
+        if " <- " in name:
+            name = name.split(" <- ", 1)[0].rstrip()
+        if not name or name in seen:
+            raise ValueError(f"Task names must be unique and non-empty: {name!r}")
+        seen.add(name)
+        deps = [part.strip() for part in deps_text.split(",")] if deps_text else []
+        if any(not dep for dep in deps):
+            raise ValueError(f"Empty dependency for task {name!r}")
+        tasks.append((name, deps))
+
+    names = {name for name, _ in tasks}
+    missing = sorted({dep for _, deps in tasks for dep in deps if dep not in names})
+    if missing:
+        raise ValueError("Unknown task dependencies: " + ", ".join(missing))
+
+    graph = {name: set(deps) for name, deps in tasks}
+    try:
+        tuple(graphlib.TopologicalSorter(graph).static_order())
+    except graphlib.CycleError as exc:
+        raise ValueError("Task dependency cycle detected") from exc
+
+    ids = {name: f"n{index}" for index, (name, _) in enumerate(tasks)}
+    out = ["flowchart TD"]
+    for name, _ in tasks:
+        out.append(f'  {ids[name]}["{_diagram_label(name)}"]')
+    for name, deps in tasks:
+        for dep in deps:
+            out.append(f"  {ids[dep]} --> {ids[name]}")
+    return "\n".join(out) + "\n"
+
+
+def _ast_base_name(node: ast.expr) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        left = _ast_base_name(node.value)
+        return f"{left}.{node.attr}" if left else node.attr
+    return ""
+
+
+def python_to_mermaid_class_diagram(source: str) -> str:
+    """Generate Mermaid ``classDiagram`` source from Python class structure."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as exc:
+        raise ValueError(f"Invalid Python source: {exc}") from exc
+
+    classes = [node for node in tree.body if isinstance(node, ast.ClassDef)]
+    known_names = [node.name for node in classes]
+    external_bases: list[str] = []
+    for node in classes:
+        for base in node.bases:
+            name = _ast_base_name(base)
+            if name and name not in known_names and name not in external_bases:
+                external_bases.append(name)
+
+    ids: dict[str, str] = {}
+    for index, name in enumerate(known_names + external_bases):
+        ids[name] = f"c{index}"
+
+    out = ["classDiagram"]
+    for node in classes:
+        class_id = ids[node.name]
+        out.append(f'  class {class_id}["{_diagram_label(node.name)}"] {{')
+        for item in node.body:
+            if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                args = [arg.arg for arg in item.args.args]
+                if args and args[0] in {"self", "cls"}:
+                    args = args[1:]
+                out.append(f"    {item.name}({', '.join(args)})")
+        out.append("  }")
+    for name in external_bases:
+        out.append(f'  class {ids[name]}["{_diagram_label(name)}"]')
+    for node in classes:
+        for base in node.bases:
+            name = _ast_base_name(base)
+            if name:
+                out.append(f"  {ids[name]} <|-- {ids[node.name]}")
+    return "\n".join(out) + "\n"
+
+
+def markdown_links_to_dot(content: str) -> str:
+    """Generate a deterministic DOT link graph grouped by current heading."""
+    normalized = content.replace("\r\n", "\n").replace("\r", "\n")
+    lines = normalized.split("\n")
+    scanned = _scan_lines(lines)
+    current = "Document"
+    edges: list[tuple[str, str, str]] = []
+    refs = _reference_map(normalized)
+    for line, item in zip(lines, scanned):
+        if item.in_fenced_code:
+            continue
+        masked = _mask_inline_code(line)
+        heading_match = _HEADING_RE.match(masked)
+        if heading_match:
+            current = line[len(heading_match.group(1)):].strip() or "Document"
+            continue
+        safe = _INLINE_IMAGE_RE.sub(lambda m: " " * len(m.group(0)), masked)
+        for match in _INLINE_LINK_RE.finditer(safe):
+            edges.append((current, match.group(2), match.group(1)))
+        for match in _REF_LINK_RE.finditer(safe):
+            text_value = match.group(1)
+            key = (match.group(2) or text_value).strip().lower()
+            target = refs.get(key, {}).get("url", "")
+            if target:
+                edges.append((current, target, text_value))
+
+    sources: list[str] = []
+    targets: list[str] = []
+    for source, target, _ in edges:
+        if source not in sources:
+            sources.append(source)
+        if target not in targets:
+            targets.append(target)
+    source_ids = {name: f"s{i}" for i, name in enumerate(sources)}
+    target_ids = {url: f"u{i}" for i, url in enumerate(targets)}
+
+    out = ["digraph markdown_links {"]
+    for name in sources:
+        out.append(f'  {source_ids[name]} [label="{_diagram_label(name)}"];')
+    for url in targets:
+        out.append(f'  {target_ids[url]} [label="{_diagram_label(url)}"];')
+    for source, target, label in edges:
+        out.append(
+            f'  {source_ids[source]} -> {target_ids[target]} [label="{_diagram_label(label)}"];'
+        )
+    out.append("}")
+    return "\n".join(out) + "\n"
 
 def json_block(obj: Any, indent: int = 2) -> str:
     """Serialize ``obj`` as JSON and wrap it in a ```json fenced code block."""
