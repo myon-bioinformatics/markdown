@@ -2517,32 +2517,33 @@ class _HTMLToMarkdownParser(HTMLParser):
         self._details_stack: list[dict[str, Any]] = []
         self._blockquote_paragraphs: list[int] = []
         self._skip_next_list_structural_whitespace = False
+        self._protected_trailing_space_kind: str | None = None
         self._open_tags: list[str] = []
 
-    def _emit(self, text: str) -> None:
+    def _emit(self, text: str, *, trailing_space_kind: str | None = None) -> None:
         if self._table_cell is not None:
             self._table_cell.append(text)
         elif self._table_depth:
             return
         else:
             self.parts.append(text)
+        if text:
+            self._protected_trailing_space_kind = trailing_space_kind
 
     def _trim_structural_boundary(self) -> None:
         """Drop source-formatting whitespace before a block boundary.
 
-        Preserve trailing spaces that are part of Markdown syntax emitted by
-        this parser itself: blockquote prefixes and bare list markers used
-        before nested lists.
+        Markdown syntax emitted by this parser can intentionally end in one
+        space. Those spaces are tracked by provenance instead of inferred from
+        the rendered text, so source text that merely looks similar is still
+        normalized normally.
         """
         target = self._table_cell if self._table_cell is not None else self.parts
         if not target or not target[-1]:
             return
-        tail = target[-1]
-        if tail.endswith("> "):
+        if self._protected_trailing_space_kind is not None:
             return
-        if re.search(r"(?:^|\n)\s*(?:[-*+]|\d+\.) $", tail):
-            return
-        target[-1] = tail.rstrip(" \t")
+        target[-1] = target[-1].rstrip(" \t")
 
     def _flush_cell(self) -> None:
         if self._table_cell is None or self._table_row is None:
@@ -2700,17 +2701,19 @@ class _HTMLToMarkdownParser(HTMLParser):
                 self._emit(f"[{mark}]")
         elif tag == "blockquote":
             self._blockquote_paragraphs.append(0)
-            self._emit("\n\n> ")
+            self._emit(
+                "\n\n> ",
+                trailing_space_kind="blockquote-prefix",
+            )
         elif tag in {"ul", "ol"}:
             if self._list_stack:
                 target = self._table_cell if self._table_cell is not None else self.parts
-                if target and target[-1]:
-                    marker_only = re.search(
-                        r"(?:^|\n)\s*(?:[-*+]|\d+\.) $",
-                        target[-1],
-                    )
-                    if marker_only is None:
-                        target[-1] = target[-1].rstrip()
+                if (
+                    target
+                    and target[-1]
+                    and self._protected_trailing_space_kind != "list-marker"
+                ):
+                    target[-1] = target[-1].rstrip()
             self._list_stack.append(tag)
             self._li_index.append(0)
             if len(self._list_stack) == 1:
@@ -2725,7 +2728,10 @@ class _HTMLToMarkdownParser(HTMLParser):
                 bullet = f"{self._li_index[-1]}."
             else:
                 bullet = "-"
-            self._emit(f"\n{indent}{bullet} ")
+            self._emit(
+                f"\n{indent}{bullet} ",
+                trailing_space_kind="list-marker",
+            )
         elif tag == "details":
             # A fenced :::details block cannot live safely inside one GFM table
             # cell. Preserve the pre-#41 behavior there by flattening the
