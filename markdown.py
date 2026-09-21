@@ -1443,7 +1443,8 @@ def markdown_to_ipynb(content: str, *, indent: int | None = 2) -> str:
     while index < len(lines):
         item = scanned[index]
         match = _FENCE_RE.match(item.text)
-        language = match.group(2).strip().lower() if match else ""
+        info = match.group(2).strip() if match else ""
+        language = info.split()[0].lower() if info else ""
         if item.is_fence_open and language in {"python", "py", "python3"}:
             if prose:
                 cells.append({"cell_type": "markdown", "metadata": {}, "source": prose})
