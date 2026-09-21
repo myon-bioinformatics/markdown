@@ -156,6 +156,10 @@ CONVERSION_EDGES = (
 )
 
 
+# Cycle fixtures intentionally stay inside the intersection of both adapters'
+# declared domains. In particular, TOML values that traverse INI/dotenv are
+# quoted strings: those adapters preserve string values only, so bare TOML
+# numbers would be outside the reversible subset rather than an audit failure.
 STRUCTURED_CYCLE_CASES = (
     {
         "id": "ini_via_toml",
@@ -261,6 +265,8 @@ def _conversion_graph() -> dict[str, Any]:
     for values in adjacency.values():
         values.sort()
 
+    # Keep one deterministic witness path per reachable (source, target) pair.
+    # This is a reachability inventory, not an exhaustive enumeration of paths.
     routes: list[dict[str, Any]] = []
     for source in nodes:
         queue: list[tuple[str, list[str]]] = [(source, [])]
@@ -285,8 +291,9 @@ def _conversion_graph() -> dict[str, Any]:
         "routes": sorted(routes, key=lambda item: (item["source"], item["target"])),
         "note": (
             "Reachability means a converter path exists, not that arbitrary inputs "
-            "round-trip. Each edge declares its supported domain. markdown_prose "
-            "and markdown_structured_v1 are intentionally distinct carriers."
+            "round-trip. routes contains one deterministic witness path per reachable "
+            "pair, not every possible path. Each edge declares its supported domain. "
+            "markdown_prose and markdown_structured_v1 are intentionally distinct carriers."
         ),
     }
 
