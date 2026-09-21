@@ -296,7 +296,7 @@ Results, CommonMark spec examples:
 | --- | --- |
 | ATX headings, emphasis (basic), fenced code, inline code, horizontal rule, links | PASS |
 | nested emphasis (`**foo *bar* baz**`) | DEGRADED — the inner `*bar*` parses, the outer `**` doesn't |
-| nested lists | DEGRADED — flattens to one `<ul>`, no text lost |
+| nested lists | PASS — simple indentation-based nested ul/ol structure is preserved |
 | blockquotes | DEGRADED — consecutive `>` lines become `<blockquote><p>…</p></blockquote>`; inner ATX headings/lists/tables stay paragraph text; blank `>` lines split paragraphs |
 | backslash escaping | FAIL — not implemented; `\*` stays literal instead of suppressing emphasis |
 | emphasis edge cases (asymmetric delimiter runs, whitespace-adjacent delimiters) | FAIL |
@@ -306,7 +306,7 @@ Results, GitHub-flavored constructs found inside the real GitHub Docs excerpt:
 | Construct | Classification |
 | --- | --- |
 | headings, links, images, fenced code (incl. fence-in-fence), inline code | PASS |
-| nested lists | DEGRADED |
+| nested lists | PASS — simple indentation-based nested ul/ol structure is preserved |
 | tables | PASS — simple GFM pipe tables (header + `\| --- \|` delimiter) render as `<table>/<thead>/<th>/<tbody>/<td>`; cell text is escaped and reuses the inline renderer. Alignment colons are accepted, not emitted as attributes. Pipe rows without a delimiter stay paragraphs. |
 | strikethrough (`~~text~~`) | PASS — renders as `<del>text</del>`; unmatched `~~` stays literal |
 | task lists | PASS — `- [ ]` / `- [x]` / `- [X]` (also `*` / `+`) become `<li>` with a disabled checkbox; mixed with ordinary bullets in one `<ul>`. This fixture's Task lists section only shows the syntax in inline code, so it stays literal there. `1. [ ]` is not a task. |
