@@ -73,9 +73,9 @@ This repository intentionally separates the **vendored filename** from the plann
 - Source/vendoring artifact: `markdown.py`
 - Typical vendored destination: `vendor/markdown.py`
 - Planned PyPI distribution name: `md-market`
-- Planned Python import name: `md_market`
+- Python module/file name: `markdown.py`
 
-The `md_market` name avoids claiming the generic `markdown` import namespace used by other established Python packages. Packaging support will be introduced separately so the current repository-wide `import markdown` test/demo surface does not need to be renamed as part of this organizational change.
+`md-market` is only the PyPI distribution name. The actual module remains the single-file `markdown.py`, preserving the project's stdlib-only, copy-one-file vendoring model.
 
 Ironmate is a vendored consumer: changes are developed here first, then a reviewed snapshot of `markdown.py` is refreshed in Ironmate.
 
