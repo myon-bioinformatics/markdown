@@ -13,13 +13,13 @@ ironmate などで使っていた `markdown.py` を、そのままのファイ�
 - **標準ライブラリ前提** — 実行時依存を増やさず、できる範囲で機能を厚くする
 - **関数提供に特化** — `main` / CLI エントリポイントは持たない。確認はテスト（`demos/*.py` の実処理もブラウザ不要のプレーンな関数呼び出しとして直接検証、任意で Streamlit / Gradio のフロント確認も可能）で行う
 - **想定 API の方向性** — 既存の read / write / section 抽出に加え、HTML↔Markdown（URL・画像ファイルなど）の変換ヘルパを拡充していく
-- **ascii_artist.py** — 本パッケージに同梱するか、別配置にするかは未決（要相談）
+- **ascii_artist** — ASCII art utilities は [`myon-bioinformatics/ascii_artist`](https://github.com/myon-bioinformatics/ascii_artist) に分離し、本リポジトリには同梱しない
 
 ## Layout
 
 | Path | Role |
 | --- | --- |
-| `markdown.py` | **The product** — vendored single module |
+| `markdown.py` | **Canonical vendoring artifact** — dependency-light single module; consumers may pin/copy it as `vendor/markdown.py` |
 | `tests/` | pytest = correctness |
 | `fixtures/` | Famous-README-inspired offline snippets + YAML/JSON/TOML + `benchmark/` (real, sourced Markdown) |
 | `demos/gradio_app.py` | Optional: paste/upload → instant analysis. `analyze()` has zero UI deps — call it directly |
@@ -62,6 +62,22 @@ print(html)
 print(md.with_attributes(md.heading("Intro"), id="intro", classes="hero"))
 print(md.markdown_to_kramdown("# Title {#intro .hero}"))
 ```
+
+
+
+
+## Distribution and vendoring names
+
+This repository intentionally separates the **vendored filename** from the planned **PyPI/import name**.
+
+- Source/vendoring artifact: `markdown.py`
+- Typical vendored destination: `vendor/markdown.py`
+- Planned PyPI distribution name: `md-market`
+- Planned Python import name: `md_market`
+
+The `md_market` name avoids claiming the generic `markdown` import namespace used by other established Python packages. Packaging support will be introduced separately so the current repository-wide `import markdown` test/demo surface does not need to be renamed as part of this organizational change.
+
+Ironmate is a vendored consumer: changes are developed here first, then a reviewed snapshot of `markdown.py` is refreshed in Ironmate.
 
 
 ## Lightweight HTML DOM helpers
