@@ -3386,6 +3386,8 @@ def find_html_text(html: str, *, tag: str | None = None, attrs: dict[str, str] |
     wanted_attrs = attrs or {}
     if wanted_tag is not None and wanted_tag not in _DOM_SAFE_TAGS:
         raise ValueError(f"unsupported HTML tag filter: {tag!r}")
+    if wanted_tag == "input" and wanted_attrs and wanted_attrs.get("type", "").lower() != "checkbox":
+        raise ValueError("attribute filters for input require type=checkbox")
     unsupported_attrs = [key for key in wanted_attrs if key.lower() not in _DOM_COMMON_ATTRS and not key.lower().startswith("data-")]
     if unsupported_attrs:
         raise ValueError(f"unsupported HTML attribute filter(s): {', '.join(unsupported_attrs)}")
@@ -3405,6 +3407,7 @@ def find_html_text(html: str, *, tag: str | None = None, attrs: dict[str, str] |
 
     found = walk(root)
     return None if found is None else html_text_content(found)
+
 
 def dom_to_html(node: HtmlNode) -> str:
     """Serialize a lightweight DOM tree to sanitized HTML."""
