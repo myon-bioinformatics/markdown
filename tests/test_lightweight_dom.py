@@ -216,3 +216,70 @@ def test_host_port_normalization_does_not_open_custom_schemes():
 def test_dom_host_port_reference_uses_network_path_form():
     tree = md.parse_html_dom('<a href="example.com:8080/path">local</a>')
     assert md.dom_to_html(tree) == '<a href="//example.com:8080/path">local</a>'
+
+
+def test_find_html_text_round_trips_unicode_and_entities():
+    source = "日本語 & < > \" \' 😀"
+    escaped = md.html_module.escape(source, quote=True)
+    html = '<p class="lead" data-testid="diagnostic" title="extra">' + escaped + "<strong> nested</strong></p>"
+    assert md.find_html_text(html, tag="p", attrs={"data-testid": "diagnostic"}) == source + " nested"
+
+
+def test_find_html_text_is_attribute_order_independent_and_missing_is_none():
+    first = '<p id="x" data-testid="diagnostic">成功 &amp; OK</p>'
+    second = '<p data-extra="1" data-testid="diagnostic" id="x">成功 &amp; OK</p>'
+    filters = {"id": "x", "data-testid": "diagnostic"}
+    assert md.find_html_text(first, tag="P", attrs=filters) == "成功 & OK"
+    assert md.find_html_text(second, tag="p", attrs=filters) == "成功 & OK"
+    assert md.find_html_text(second, tag="section", attrs=filters) is None
+
+
+def test_html_text_content_uses_existing_dom_drop_rules():
+    root = md.parse_html_dom("<p>Hello <em>世界</em><script>secret</script> 😀</p>")
+    assert md.html_text_content(root) == "Hello 世界 😀"
+
+
+def test_find_html_text_rejects_filters_removed_by_sanitizer():
+    import pytest
+
+    with pytest.raises(ValueError, match="unsupported HTML tag filter"):
+        md.find_html_text('<span data-testid="x">text</span>', tag="span", attrs={"data-testid": "x"})
+    with pytest.raises(ValueError, match="unsupported HTML attribute filter"):
+        md.find_html_text('<p role="alert">text</p>', tag="p", attrs={"role": "alert"})
+
+
+def test_find_html_text_exact_match_and_textcontent_semantics():
+    html = '<div><p class="lead extra">a<br>b</p><p>c</p></div>'
+    assert md.find_html_text(html, tag="p", attrs={"class": "lead"}) is None
+    assert md.find_html_text(html, tag="p", attrs={"class": "lead extra"}) == "ab"
+
+
+def test_find_html_text_rejects_non_checkbox_input_attribute_filters():
+    import pytest
+
+    with pytest.raises(ValueError, match="input require type=checkbox"):
+        md.find_html_text('<input type="text" id="x">', tag="input", attrs={"id": "x"})
+    assert md.find_html_text(
+        '<input type="checkbox" id="x">',
+        tag="input",
+        attrs={"type": "checkbox", "id": "x"},
+    ) == ""
+
+
+def test_find_html_text_input_filter_keys_are_case_insensitive():
+    assert md.find_html_text(
+        '<input type="checkbox" id="x">',
+        tag="INPUT",
+        attrs={"TYPE": "checkbox", "ID": "x"},
+    ) == ""
+
+
+def test_find_html_text_reports_unsupported_input_attribute_first():
+    import pytest
+
+    with pytest.raises(ValueError, match="unsupported HTML attribute filter.*role"):
+        md.find_html_text(
+            '<input type="text" role="alert">',
+            tag="input",
+            attrs={"role": "alert"},
+        )
