@@ -40,6 +40,8 @@ __all__ = [
     "markdown_to_web_ui_v1",
     "HtmlNode",
     "parse_html_dom",
+    "html_text_content",
+    "find_html_text",
     "dom_to_html",
     "dom_to_markdown",
     "markdown_to_dom",
@@ -3363,6 +3365,35 @@ def parse_html_dom(html: str) -> HtmlNode:
     parser.feed(html)
     parser.close()
     return parser.root
+
+
+def html_text_content(node: HtmlNode) -> str:
+    """Return decoded descendant text from a lightweight DOM node."""
+    if node.kind == "text":
+        return node.text
+    return "".join(html_text_content(child) for child in (node.children or []))
+
+
+def find_html_text(html: str, *, tag: str | None = None, attrs: dict[str, str] | None = None) -> str | None:
+    """Return decoded text for the first matching HTML element, or None."""
+    wanted_tag = tag.lower() if tag is not None else None
+    wanted_attrs = attrs or {}
+    root = parse_html_dom(html)
+
+    def walk(node: HtmlNode) -> HtmlNode | None:
+        if node.kind == "element":
+            node_attrs = node.attrs or {}
+            if ((wanted_tag is None or node.tag == wanted_tag)
+                    and all(node_attrs.get(key.lower()) == value for key, value in wanted_attrs.items())):
+                return node
+        for child in node.children or []:
+            found = walk(child)
+            if found is not None:
+                return found
+        return None
+
+    found = walk(root)
+    return None if found is None else html_text_content(found)
 
 
 def dom_to_html(node: HtmlNode) -> str:
