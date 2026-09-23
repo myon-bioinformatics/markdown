@@ -3384,13 +3384,14 @@ def find_html_text(html: str, *, tag: str | None = None, attrs: dict[str, str] |
     """
     wanted_tag = tag.lower() if tag is not None else None
     wanted_attrs = attrs or {}
+    normalized_attrs = {key.lower(): value for key, value in wanted_attrs.items()}
     if wanted_tag is not None and wanted_tag not in _DOM_SAFE_TAGS:
         raise ValueError(f"unsupported HTML tag filter: {tag!r}")
-    if wanted_tag == "input" and wanted_attrs and wanted_attrs.get("type", "").lower() != "checkbox":
-        raise ValueError("attribute filters for input require type=checkbox")
     unsupported_attrs = [key for key in wanted_attrs if key.lower() not in _DOM_COMMON_ATTRS and not key.lower().startswith("data-")]
     if unsupported_attrs:
         raise ValueError(f"unsupported HTML attribute filter(s): {', '.join(unsupported_attrs)}")
+    if wanted_tag == "input" and normalized_attrs and normalized_attrs.get("type", "").lower() != "checkbox":
+        raise ValueError("attribute filters for input require type=checkbox")
     root = parse_html_dom(html)
 
     def walk(node: HtmlNode) -> HtmlNode | None:
