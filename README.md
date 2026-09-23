@@ -493,3 +493,21 @@ tilde fence instead. See `tests/test_adaptive_fence.py`.
 ## License
 
 MIT
+
+
+## Web UI contract v1
+
+`markdown_to_web_ui_v1()` wraps the existing conservative Markdown-to-HTML
+subset in the stable semantic surface defined by
+`myon-bioinformatics/web-ui/contract/v1`.
+
+The helper emits semantic HTML only:
+
+- `body[data-ui-theme]`
+- `ui-page`
+- optional `ui-title`
+- `ui-panel`
+
+It does **not** fetch, vendor, or embed web-ui CSS. Consumers should pin the
+web-ui revision they load separately. This keeps `markdown.py` single-file and
+standard-library-only.
