@@ -252,3 +252,15 @@ def test_find_html_text_exact_match_and_textcontent_semantics():
     html = '<div><p class="lead extra">a<br>b</p><p>c</p></div>'
     assert md.find_html_text(html, tag="p", attrs={"class": "lead"}) is None
     assert md.find_html_text(html, tag="p", attrs={"class": "lead extra"}) == "ab"
+
+
+def test_find_html_text_rejects_non_checkbox_input_attribute_filters():
+    import pytest
+
+    with pytest.raises(ValueError, match="input require type=checkbox"):
+        md.find_html_text('<input type="text" id="x">', tag="input", attrs={"id": "x"})
+    assert md.find_html_text(
+        '<input type="checkbox" id="x">',
+        tag="input",
+        attrs={"type": "checkbox", "id": "x"},
+    ) == ""
