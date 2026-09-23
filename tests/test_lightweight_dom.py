@@ -264,3 +264,22 @@ def test_find_html_text_rejects_non_checkbox_input_attribute_filters():
         tag="input",
         attrs={"type": "checkbox", "id": "x"},
     ) == ""
+
+
+def test_find_html_text_input_filter_keys_are_case_insensitive():
+    assert md.find_html_text(
+        '<input type="checkbox" id="x">',
+        tag="INPUT",
+        attrs={"TYPE": "checkbox", "ID": "x"},
+    ) == ""
+
+
+def test_find_html_text_reports_unsupported_input_attribute_first():
+    import pytest
+
+    with pytest.raises(ValueError, match="unsupported HTML attribute filter.*role"):
+        md.find_html_text(
+            '<input type="text" role="alert">',
+            tag="input",
+            attrs={"role": "alert"},
+        )
