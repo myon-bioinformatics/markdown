@@ -3375,9 +3375,20 @@ def html_text_content(node: HtmlNode) -> str:
 
 
 def find_html_text(html: str, *, tag: str | None = None, attrs: dict[str, str] | None = None) -> str | None:
-    """Return decoded text for the first matching HTML element, or None."""
+    """Return textContent-like decoded text for the first matching safe element.
+
+    Matching is depth-first pre-order and attribute values use exact equality.
+    No separators are inserted between descendant text nodes. Filters apply to
+    the sanitized lightweight DOM; unsupported tags or filtered attributes
+    raise ValueError instead of being confused with a missing element.
+    """
     wanted_tag = tag.lower() if tag is not None else None
     wanted_attrs = attrs or {}
+    if wanted_tag is not None and wanted_tag not in _DOM_SAFE_TAGS:
+        raise ValueError(f"unsupported HTML tag filter: {tag!r}")
+    unsupported_attrs = [key for key in wanted_attrs if key.lower() not in _DOM_COMMON_ATTRS and not key.lower().startswith("data-")]
+    if unsupported_attrs:
+        raise ValueError(f"unsupported HTML attribute filter(s): {', '.join(unsupported_attrs)}")
     root = parse_html_dom(html)
 
     def walk(node: HtmlNode) -> HtmlNode | None:
@@ -3394,7 +3405,6 @@ def find_html_text(html: str, *, tag: str | None = None, attrs: dict[str, str] |
 
     found = walk(root)
     return None if found is None else html_text_content(found)
-
 
 def dom_to_html(node: HtmlNode) -> str:
     """Serialize a lightweight DOM tree to sanitized HTML."""
