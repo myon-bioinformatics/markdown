@@ -105,3 +105,17 @@ def test_markdown_to_web_ui_v1_document() -> None:
 def test_markdown_to_web_ui_v1_rejects_unknown_theme() -> None:
     with pytest.raises(ValueError):
         md.markdown_to_web_ui_v1("x", theme="unknown")
+
+
+def test_markdown_to_web_ui_v1_empty_content() -> None:
+    html = md.markdown_to_web_ui_v1("", theme="modern")
+    assert '<body data-ui-theme="modern">' in html
+    assert '<main class="ui-page">' in html
+    assert '<section class="ui-panel">' in html
+    assert '</section>' in html
+    assert '<h1 class="ui-title">' not in html
+
+
+def test_markdown_to_web_ui_v1_theme_is_case_sensitive() -> None:
+    with pytest.raises(ValueError):
+        md.markdown_to_web_ui_v1("x", theme="Modern")
