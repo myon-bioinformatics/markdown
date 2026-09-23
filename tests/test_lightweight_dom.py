@@ -231,7 +231,7 @@ def test_find_html_text_is_attribute_order_independent_and_missing_is_none():
     filters = {"id": "x", "data-testid": "diagnostic"}
     assert md.find_html_text(first, tag="P", attrs=filters) == "成功 & OK"
     assert md.find_html_text(second, tag="p", attrs=filters) == "成功 & OK"
-    assert md.find_html_text(second, tag="span", attrs=filters) is None
+    assert md.find_html_text(second, tag="section", attrs=filters) is None
 
 
 def test_html_text_content_uses_existing_dom_drop_rules():
