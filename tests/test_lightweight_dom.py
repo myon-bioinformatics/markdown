@@ -220,20 +220,20 @@ def test_dom_host_port_reference_uses_network_path_form():
 
 def test_find_html_text_round_trips_unicode_and_entities():
     source = "日本語 & < > \" \' 😀"
-    escaped = markdown.html_module.escape(source, quote=True)
+    escaped = md.html_module.escape(source, quote=True)
     html = '<p class="lead" data-testid="diagnostic" title="extra">' + escaped + "<strong> nested</strong></p>"
-    assert markdown.find_html_text(html, tag="p", attrs={"data-testid": "diagnostic"}) == source + " nested"
+    assert md.find_html_text(html, tag="p", attrs={"data-testid": "diagnostic"}) == source + " nested"
 
 
 def test_find_html_text_is_attribute_order_independent_and_missing_is_none():
     first = '<p id="x" data-testid="diagnostic">成功 &amp; OK</p>'
     second = '<p data-extra="1" data-testid="diagnostic" id="x">成功 &amp; OK</p>'
     filters = {"id": "x", "data-testid": "diagnostic"}
-    assert markdown.find_html_text(first, tag="P", attrs=filters) == "成功 & OK"
-    assert markdown.find_html_text(second, tag="p", attrs=filters) == "成功 & OK"
-    assert markdown.find_html_text(second, tag="span", attrs=filters) is None
+    assert md.find_html_text(first, tag="P", attrs=filters) == "成功 & OK"
+    assert md.find_html_text(second, tag="p", attrs=filters) == "成功 & OK"
+    assert md.find_html_text(second, tag="span", attrs=filters) is None
 
 
 def test_html_text_content_uses_existing_dom_drop_rules():
-    root = markdown.parse_html_dom("<p>Hello <em>世界</em><script>secret</script> 😀</p>")
-    assert markdown.html_text_content(root) == "Hello 世界 😀"
+    root = md.parse_html_dom("<p>Hello <em>世界</em><script>secret</script> 😀</p>")
+    assert md.html_text_content(root) == "Hello 世界 😀"
