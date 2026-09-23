@@ -237,3 +237,18 @@ def test_find_html_text_is_attribute_order_independent_and_missing_is_none():
 def test_html_text_content_uses_existing_dom_drop_rules():
     root = md.parse_html_dom("<p>Hello <em>世界</em><script>secret</script> 😀</p>")
     assert md.html_text_content(root) == "Hello 世界 😀"
+
+
+def test_find_html_text_rejects_filters_removed_by_sanitizer():
+    import pytest
+
+    with pytest.raises(ValueError, match="unsupported HTML tag filter"):
+        md.find_html_text('<span data-testid="x">text</span>', tag="span", attrs={"data-testid": "x"})
+    with pytest.raises(ValueError, match="unsupported HTML attribute filter"):
+        md.find_html_text('<p role="alert">text</p>', tag="p", attrs={"role": "alert"})
+
+
+def test_find_html_text_exact_match_and_textcontent_semantics():
+    html = '<div><p class="lead extra">a<br>b</p><p>c</p></div>'
+    assert md.find_html_text(html, tag="p", attrs={"class": "lead"}) is None
+    assert md.find_html_text(html, tag="p", attrs={"class": "lead extra"}) == "ab"
