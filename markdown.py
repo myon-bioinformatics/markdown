@@ -1,5 +1,5 @@
 # markdown.py
-# metadata: __all__=98 | base_sha=cae5618bd940ded29d4b61f71e4a11ee51faa9d9 | updated_at=2026-09-21T15:05:00Z
+# metadata: __all__=99 | base_sha=cae5618bd940ded29d4b61f71e4a11ee51faa9d9 | updated_at=2026-09-21T15:05:00Z
 """Stdlib-only Markdown utility functions.
 
 This module is intentionally a single file with no CLI / ``main`` entry point.
@@ -133,7 +133,7 @@ import unicodedata
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urljoin, urlparse
 
 try:
@@ -3903,7 +3903,7 @@ def markdown_to_web_ui_v1(
     content: str,
     *,
     title: str | None = None,
-    theme: str = "modern",
+    theme: Literal["modern", "github-like"] = "modern",
 ) -> str:
     """Render Markdown inside the stable web-ui HTML contract v1 surface.
 
@@ -3911,7 +3911,7 @@ def markdown_to_web_ui_v1(
     therefore preserves this module's single-file, standard-library-only
     runtime contract. Consumers may load their pinned web-ui assets separately.
 
-    ``theme`` is limited to the currently frozen v1 theme values.
+    ``theme`` is case-sensitive and limited to the currently frozen v1 theme values.
     ``title`` is escaped as text. Markdown body conversion follows
     ``markdown_to_html`` and its documented supported subset.
     """
@@ -3925,6 +3925,7 @@ def markdown_to_web_ui_v1(
         f'<body data-ui-theme="{theme}">',
         '<main class="ui-page">',
     ]
+    # The title is optional by contract; the body wrapper is always emitted.
     if title is not None:
         parts.append(f'<h1 class="ui-title">{html_module.escape(title)}</h1>')
     parts.extend([
