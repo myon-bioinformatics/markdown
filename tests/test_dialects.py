@@ -254,5 +254,15 @@ def test_chat_rejects_text_before_first_role() -> None:
         md.markdown_to_chat_messages("preamble\n## User\nhi\n")
 
 
+def test_placeholder_like_input_is_left_alone() -> None:
+    text = "odd \ue0010\ue002 and \ue000B chars *b*\n"
+    assert md.jira_to_markdown(text) == "odd \ue0010\ue002 and \ue000B chars **b**\n"
+    assert md.jira_to_markdown("{{a\ue000Bb}}\n") == "`a\ue000Bb`\n"
+    # A forged placeholder in the input stays literal; nested stashes resolve.
+    assert md.jira_to_markdown("[{{x}} *y*|https://a.example] \ue000P0; tail\n") == (
+        "[`x` **y**](https://a.example) \ue000P0; tail\n"
+    )
+
+
 def test_chat_roles_constant() -> None:
     assert md.CHAT_ROLES == ("system", "developer", "user", "assistant", "tool")

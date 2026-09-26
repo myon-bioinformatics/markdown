@@ -137,6 +137,11 @@ def test_email_attachments_are_listed_not_decoded_to_disk(tmp_path: Path) -> Non
     assert list(tmp_path.iterdir()) == []
 
 
+def test_email_unknown_charset_falls_back_to_replacement_decoding() -> None:
+    raw = "From: a@example.com\nSubject: s\nContent-Type: text/plain; charset=x-unknown\n\nhello\n"
+    assert md.email_to_markdown(raw).endswith("\nhello\n")
+
+
 def test_email_without_subject() -> None:
     assert md.email_to_markdown("From: a@example.com\n\nbody\n").startswith("# (no subject)\n")
 
@@ -188,5 +193,5 @@ def test_markdown_to_man_never_emits_injected_requests() -> None:
 def test_markdown_to_man_escapes_backslashes_and_nested_lists() -> None:
     out = md.markdown_to_man("C:\\path\n\n1. one\n   - nested\n", name="x")
     assert "C:\\epath" in out
-    assert ".IP \\(en 4" in out
+    assert ".IP 1. 4" in out
     assert ".IP \\(bu 6" in out

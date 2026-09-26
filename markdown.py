@@ -5369,7 +5369,10 @@ def email_to_markdown(message: str | bytes) -> str:
 
     body_part = parsed.get_body(preferencelist=("plain", "html"))
     if body_part is not None:
-        body = body_part.get_content()
+        try:
+            body = body_part.get_content()
+        except (LookupError, UnicodeDecodeError):
+            body = (body_part.get_payload(decode=True) or b"").decode("utf-8", "replace")
         if body_part.get_content_type() == "text/html":
             body = html_to_markdown(body)
         body = body.replace("\r\n", "\n").strip("\n")
@@ -5470,8 +5473,11 @@ def markdown_to_man(
     out = [f".TH {quoted(name.upper())} {quoted(section)} {quoted(date)} {quoted(source)} {quoted(manual)}"]
     in_paragraph = False
     in_quote = False
+    numberer = _MarkdownListNumberer()
     for block in _lite_blocks(content):
         kind = block[0]
+        if kind not in {"list", "blank"}:
+            numberer.reset()
         if in_quote and kind != "quote":
             out.append(".RE")
             in_quote = False
@@ -5492,7 +5498,8 @@ def markdown_to_man(
             in_paragraph = False
         elif kind == "list":
             ordered, depth, text = block[1], block[2], block[3]
-            bullet = "\\(bu" if not ordered else "\\(en"
+            count = numberer.count(depth, ordered)
+            bullet = f"{count}." if ordered else "\\(bu"
             out.append(f".IP {bullet} {4 + depth * 2}")
             out.append(_man_line(_man_inline(_lite_inline(text))))
             in_paragraph = True
@@ -5524,9 +5531,13 @@ def markdown_to_man(
 # dialect has no equivalent construct (documented per function). Literal
 # markup characters inside plain text are not escaped for the target.
 
-_DIALECT_MARK = {"bold": "\x01B", "italic": "\x01I", "strike": "\x01S"}
-_DIALECT_MD_MARK = {"\x01B": "**", "\x01I": "*", "\x01S": "~~"}
-_DIALECT_PLACEHOLDER_RE = re.compile("\x00(\\d+)\x00")
+# One private-use escape code point. Any literal occurrence in the input is
+# doubled to ESC+"E" first, so placeholders (ESC+"P<n>;") and emphasis
+# sentinels (ESC+"B"/"I"/"S") can never be forged by input text.
+_DIALECT_ESC = "\ue000"
+_DIALECT_MARK = {"bold": _DIALECT_ESC + "B", "italic": _DIALECT_ESC + "I", "strike": _DIALECT_ESC + "S"}
+_DIALECT_MD_MARK = {_DIALECT_ESC + "B": "**", _DIALECT_ESC + "I": "*", _DIALECT_ESC + "S": "~~"}
+_DIALECT_PLACEHOLDER_RE = re.compile(_DIALECT_ESC + r"P(\d+);")
 
 
 def _dialect_inline_to_markdown(
@@ -5548,8 +5559,9 @@ def _dialect_inline_to_markdown(
 
     def keep(rendered: str) -> str:
         stash.append(rendered)
-        return f"\x00{len(stash) - 1}\x00"
+        return f"{_DIALECT_ESC}P{len(stash) - 1};"
 
+    text = text.replace(_DIALECT_ESC, _DIALECT_ESC + "E")
     text = code.sub(lambda m: keep(inline_code(m.group(1))), text)
     for pattern, render in links:
         text = pattern.sub(lambda m, render=render: keep(render(m)), text)
@@ -5560,9 +5572,14 @@ def _dialect_inline_to_markdown(
         text = text.replace(sentinel, marker)
     if unescape is not None:
         text = unescape(text)
-    while _DIALECT_PLACEHOLDER_RE.search(text):
-        text = _DIALECT_PLACEHOLDER_RE.sub(lambda m: stash[int(m.group(1))], text)
-    return text
+    # Stashed renderings can nest (a link label holding a code placeholder).
+    # Input cannot forge a placeholder, so restoring until stable terminates.
+    while True:
+        restored = _DIALECT_PLACEHOLDER_RE.sub(lambda m: stash[int(m.group(1))], text)
+        if restored == text:
+            break
+        text = restored
+    return text.replace(_DIALECT_ESC + "E", _DIALECT_ESC)
 
 
 class _MarkdownListNumberer:
