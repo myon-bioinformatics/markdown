@@ -8,7 +8,7 @@ reformat unrelated code or reorder existing exports.
 | --- | --- | --- |
 | `scanner` | `_scan_lines`, `_mask_inline_code`, fence state | Reuse it for code-context decisions; do not widen it into a CommonMark parser. |
 | extraction | `extract_*`, `inventory`, context helpers | Add a focused extractor and its contract tests. |
-| conversion | HTML, Kramdown and dialect helpers | Declare the source/target subset and lossiness. |
+| conversion | HTML, Kramdown, dialect helpers, structured data core/adapters | Declare the source/target subset and lossiness; INI/TOML/dotenv reuse structured_to_markdown / markdown_to_structured and keep canonical round-trip contracts explicit. |
 | generation | Markdown builders | Keep output deterministic and testable without a renderer. |
 | tables | GFM table generators/conversion | Add width/CSV/statistics work here. |
 

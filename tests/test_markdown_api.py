@@ -86,3 +86,36 @@ def test_inventory_basic() -> None:
     assert inv["code_block_count"] >= 1
     assert inv["horizontal_rule_count"] >= 1
     assert "supported" in inv and "unsupported" in inv
+
+
+def test_markdown_to_web_ui_v1_document() -> None:
+    html = md.markdown_to_web_ui_v1(
+        "# Body\n\nHello **world**.",
+        title='Docs <unsafe>',
+        theme="github-like",
+    )
+    assert '<body data-ui-theme="github-like">' in html
+    assert '<main class="ui-page">' in html
+    assert '<h1 class="ui-title">Docs &lt;unsafe&gt;</h1>' in html
+    assert '<section class="ui-panel">' in html
+    assert "<strong>world</strong>" in html
+    assert "<style>" not in html
+
+
+def test_markdown_to_web_ui_v1_rejects_unknown_theme() -> None:
+    with pytest.raises(ValueError):
+        md.markdown_to_web_ui_v1("x", theme="unknown")
+
+
+def test_markdown_to_web_ui_v1_empty_content() -> None:
+    html = md.markdown_to_web_ui_v1("", theme="modern")
+    assert '<body data-ui-theme="modern">' in html
+    assert '<main class="ui-page">' in html
+    assert '<section class="ui-panel">' in html
+    assert '</section>' in html
+    assert '<h1 class="ui-title">' not in html
+
+
+def test_markdown_to_web_ui_v1_theme_is_case_sensitive() -> None:
+    with pytest.raises(ValueError):
+        md.markdown_to_web_ui_v1("x", theme="Modern")

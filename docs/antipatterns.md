@@ -1,24 +1,61 @@
-# Real chat UI smoke test: anti-patterns
+# Markdown anti-pattern catalog
 
-A running log of concrete ways the `real-chat-ui-smoke` GitHub Actions workflow
-(`.github/workflows/real-chat-ui-smoke.yml`) has actually failed against a real,
-unmodified chat product in Docker -- not predicted failures, only ones a live
-`workflow_dispatch` run produced. Each entry is a specific bug in *our* test
-setup that a real product's own behavior exposed, plus the fix.
+This document records recurring design traps, test failures, and integration
+mistakes observed while keeping `markdown.py` a stdlib-only, single-file
+library.
 
-The point of keeping this here rather than only in a commit message: the same
-handful of product behaviors (a first-run modal, an auth quirk, a selector
-that only exists after some async load) tend to recur across every real chat
-product this repo drives with Playwright, so a new entry here should be
-useful before writing the next test, not just as a record after the fact.
+It has two layers:
 
-## Format
+1. **Stable anti-pattern IDs** for reusable design and maintenance rules.
+2. **Observed incidents** from real CI / Docker / Playwright runs, kept as
+   concrete evidence with root cause and fix.
 
-Each entry: what we tried, what actually happened (with the concrete error),
-the root cause traced to the product's own source, and the fix. Link the
-GitHub Actions run that produced it.
+The rule is simple: when a failure is likely to recur, give it a stable ID and
+add a regression or contract test where practical. Do not leave important
+behavior only in a PR comment or commit message.
+
+## Stable catalog
+
+| ID | Anti-pattern | Why it is harmful | Preferred contract |
+| --- | --- | --- | --- |
+| `DUPLICATE_IMPLEMENTATION` | `markdown.py`, a package copy, or a vendored copy evolve independently | Fixes drift and behavior diverges silently | `markdown.py` is the sole implementation artifact; package/vendor forms wrap or copy it |
+| `PYPI_NAME_EQUALS_IMPORT_ASSUMPTION` | Treating the PyPI distribution name as if it must rename the implementation module | Creates needless second implementations or import churn | `md-market` may be the distribution name while the actual module remains `markdown.py` |
+| `NON_STDLIB_RUNTIME_DEPENDENCY` | Core helpers require PyYAML, BeautifulSoup, a browser, or another package | Breaks copy-one-file use and vendoring | Core runtime stays stdlib-only; optional demos/tests may use extra packages |
+| `REGEX_AS_FULL_MARKDOWN_PARSER` | Growing one regex into a CommonMark/GFM parser | Edge cases become impossible to reason about | Use narrow regexes/scanners for declared subsets; explicitly mark unsupported syntax |
+| `DUPLICATED_URL_POLICY` | Each converter implements its own URL scheme rules | Security and conversion behavior diverge between paths | Reuse the shared URL sanitization contract for conversion paths |
+| `SILENT_LOSSY_ROUNDTRIP` | A lossy transform is treated as exact round-trip without documentation | Expected information loss looks like a regression, or real regressions get hidden | Record expected-lossy cases separately from unexplained divergence |
+| `DOM_PARITY_BY_INTERMEDIATE_SHAPE` | Comparing intermediate DOM/HTML shape instead of final Markdown contract | Harmless internal differences are misclassified as bugs | Judge parity by declared final-output contract unless intermediate shape itself is public |
+| `DOM_FIRST_WITH_THIN_CORPUS` | Switching architecture after synthetic tests or one real page look clean | Evidence is too narrow to justify compatibility claims | Track real-world case count and expand corpus before broad cutover |
+| `EMPTY_OUTPUT_AS_NEWLINE` | Empty/suppressed input returns a lone newline | Empty-value contracts become inconsistent and downstream checks misbehave | Empty output is exactly `""`; non-empty normalized output follows its own newline contract |
+| `UNDECLARED_LOSSINESS` | Converter drops attributes, comments, whitespace, footnote syntax, etc. without saying so | Users cannot distinguish deliberate normalization from bugs | Declare source/target subset and lossiness in docs/tests |
+| `REIMPLEMENT_SHARED_SCANNER` | New helpers each invent their own fence/code-context detection | Code blocks and inline code get handled inconsistently | Reuse the shared scanner/masking helpers for code-context decisions |
+| `EXPORT_REORDER_CHURN` | Feature PRs reorder the whole `__all__` list | Parallel PRs conflict for no functional reason | Add exports adjacent to functional peers; avoid repository-wide reordering |
+| `VENDORED_SNAPSHOT_DRIFT` | A consumer's copied `markdown.py` changes without provenance or sync discipline | Vendored behavior no longer matches upstream | Treat this repo as source of truth and refresh reviewed snapshots intentionally |
+| `SUBSTRING_ONLY_ASSERTION` | Integration tests only check that expected text appears somewhere | Structurally wrong output can still pass | Assert parsed structure/DOM/records when structure matters |
+| `STALE_ELEMENT_HANDLE_WAIT` | Playwright polls a captured element while the framework replaces that node | Wait can time out although visible DOM is already correct | Re-query selectors during polling when node identity is unstable |
+| `SILENT_CLEANUP_EXCEPTION` | Cleanup/diagnostic code uses broad `except: pass` | The evidence needed to debug the original failure disappears | Preserve fixture ordering and log swallowed cleanup failures |
+| `HTTP11_SSE_WITHOUT_END_SIGNAL` | Hand-written SSE uses HTTP/1.1 without length/chunking/connection close | Clients hang waiting for a body that never terminates | Use chunking or close the connection explicitly |
+| `FRAMEWORK_WRAPPER_ASSUMPTION` | Code assumes a low-level SDK result shape survives unchanged through a larger product | Middleware envelopes break parsing unexpectedly | Observe and normalize the actual end-to-end shape |
+| `STANDARD_DOM_ASSUMPTION` | Tests assume rendered Markdown always becomes conventional HTML such as `<pre><code>` | Real products may mount editors/components instead | Inspect the actual product DOM before choosing selectors |
+
+## Contract rules derived from the catalog
+
+- Keep `markdown.py` as the only implementation source of truth.
+- Keep runtime behavior stdlib-only and usable by copying one file.
+- Prefer explicit supported/unsupported subsets over accidental partial parsing.
+- Centralize shared policies such as URL safety and code-context scanning.
+- Separate **expected lossiness** from unexplained divergence in audits.
+- Expand real-world fixtures before making architecture-wide compatibility claims.
+- When a CI failure reveals a reusable lesson, add both documentation and a
+  regression/contract test where practical.
 
 ---
+
+# Observed real chat / CI incidents
+
+The following entries are the original live-failure log from
+`real-chat-ui-smoke` and related Docker/Playwright runs. They remain here
+because they are concrete evidence behind several stable IDs above.
 
 ## 1. Open WebUI's "What's New" changelog modal blocks `#chat-input`
 

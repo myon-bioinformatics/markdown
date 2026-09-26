@@ -13,20 +13,20 @@ ironmate などで使っていた `markdown.py` を、そのままのファイ�
 - **標準ライブラリ前提** — 実行時依存を増やさず、できる範囲で機能を厚くする
 - **関数提供に特化** — `main` / CLI エントリポイントは持たない。確認はテスト（`demos/*.py` の実処理もブラウザ不要のプレーンな関数呼び出しとして直接検証、任意で Streamlit / Gradio のフロント確認も可能）で行う
 - **想定 API の方向性** — 既存の read / write / section 抽出に加え、HTML↔Markdown（URL・画像ファイルなど）の変換ヘルパを拡充していく
-- **ascii_artist.py** — 本パッケージに同梱するか、別配置にするかは未決（要相談）
+- **ascii_artist** — ASCII art utilities は [`myon-bioinformatics/ascii_artist`](https://github.com/myon-bioinformatics/ascii_artist) に分離し、本リポジトリには同梱しない
 
 ## Layout
 
 | Path | Role |
 | --- | --- |
-| `markdown.py` | **The product** — vendored single module |
+| `markdown.py` | **Canonical vendoring artifact** — dependency-light single module; consumers may pin/copy it as `vendor/markdown.py` |
 | `tests/` | pytest = correctness |
 | `fixtures/` | Famous-README-inspired offline snippets + YAML/JSON/TOML + `benchmark/` (real, sourced Markdown) |
 | `demos/gradio_app.py` | Optional: paste/upload → instant analysis. `analyze()` has zero UI deps — call it directly |
 | `demos/streamlit_app.py` | Optional: sectioned headings/links/images/HTML/code view. `build_view()` has zero UI deps — call it directly |
 | `demos/chat_ui_demo.py` | Optional: generic mock chat screen — assistant replies built with `markdown.py`'s generation helpers, rendered by Gradio's `Chatbot` |
 | `demos/openai_compat_mock.py` | Optional: OpenAI-compatible chat completions server (stdlib only) so a real chat product can be pointed at `render_assistant_turn()`'s output instead of a real LLM — also issues one real OpenAI-style tool call for the MCP round-trip test below |
-| `docs/antipatterns.md` | A running log of concrete ways a real chat product has broken the Docker/Playwright smoke tests in an actual CI run, with root cause and fix |
+| `docs/antipatterns.md` | Stable library/integration anti-pattern IDs plus concrete CI/Docker/Playwright incidents, root causes, fixes, and regression lessons |
 | `scripts/real_world_pages_report.py` | Builds the `real-world-pages` GitHub Actions workflow's Pages report: original vs. `html_to_markdown()`→`markdown_to_html()` round-trip, screenshotted via Playwright's own CLI, for every real HTML fixture in `fixtures/provenance.yaml` |
 
 ## Quick use
@@ -63,6 +63,147 @@ print(md.with_attributes(md.heading("Intro"), id="intro", classes="hero"))
 print(md.markdown_to_kramdown("# Title {#intro .hero}"))
 ```
 
+
+
+
+## Distribution and vendoring names
+
+This repository intentionally separates the **vendored filename** from the planned **PyPI/import name**.
+
+- Source/vendoring artifact: `markdown.py`
+- Typical vendored destination: `vendor/markdown.py`
+- Planned PyPI distribution name: `md-market`
+- Python module/file name: `markdown.py`
+
+`md-market` is only the PyPI distribution name. The actual module remains the single-file `markdown.py`, preserving the project's stdlib-only, copy-one-file vendoring model.
+
+Ironmate is a vendored consumer: changes are developed here first, then a reviewed snapshot of `markdown.py` is refreshed in Ironmate.
+
+
+## Lightweight HTML DOM helpers
+
+`HtmlNode` is a small, stdlib-only normalized tree for conversion work. It is
+**not** a browser DOM and does not claim HTML5 tree-construction fidelity.
+
+- `parse_html_dom(html)` builds a root/element/text tree with lowercase tags.
+- `dom_to_html(node)` serializes only the supported safe tag subset.
+- `dom_to_markdown(node)` reuses the existing conservative HTML→Markdown
+  contract; `<details><summary>` is preserved as the repository's
+  `:::details` form.
+- `markdown_to_dom(markdown)` converts through the existing
+  `markdown_to_html()` subset and then parses the sanitized tree.
+
+The boundary is intentionally conservative: `script` / `style` subtrees,
+event attributes such as `onclick`, inline `style=`, and unsafe absolute URL
+schemes are dropped. `http`, `https`, `mailto`, and relative URLs remain
+allowed; unambiguous `host:port` references such as `example.com:8080/path`
+are normalized to network-path form (`//example.com:8080/path`) so they are
+not mistaken for custom schemes. This is a dangerous-scheme rejection policy,
+not an absolute-URL-only allowlist. The same URL policy is shared by DOM
+serialization and the existing Markdown link/image/autolink HTML helpers.
+Rejected links degrade to plain text
+and rejected images to alt text rather than leaving empty `href` / `src`
+attributes or `[text]()` intermediates. Unknown tags degrade to transparent
+containers so safe text and supported descendants remain available. Existing
+`html_to_markdown()` and `markdown_to_html()` are not rewritten around the DOM
+layer in this first contract-focused step.
+
+
+## Converter integration scaffold
+
+The HTML→Markdown compatibility engine is intentionally split from its public
+entry point. `html_to_markdown()` remains the stable compatibility wrapper,
+while `_html_to_markdown_impl()` is the internal parser engine shared by the
+lightweight DOM path. This prevents a future recursion loop if the public HTML
+entry point is ever evaluated for a DOM-first implementation.
+
+PR #37 treats DOM/legacy parity as an **observability contract**, not as a
+requirement that every existing path already be identical. Representative
+supported cases are required to stay equal, while only **observed final
+Markdown differences** are recorded as known gaps. Intermediate DOM/HTML shape
+changes are not classified as parity failures when both paths still produce
+the same Markdown. For example, `caption` / `colgroup` / `col` may be
+transparent in the lightweight DOM, but the legacy engine already ignores
+those structures in supported table output, so they are not a known final
+Markdown gap by themselves.
+
+PR #38 closes the previously observed URL-safety gap between the legacy and
+DOM HTML→Markdown paths. Both now reuse the shared URL policy: unsafe absolute
+schemes degrade to visible link text / image alt text, while safe URLs remain
+links/images. The shared host:port normalization also applies consistently, so
+an unambiguous value such as `example.com:8080/path` becomes the network-path
+reference `//example.com:8080/path`.
+
+PR #39 normalizes the empty-output boundary between the legacy and DOM
+HTML→Markdown paths. Empty or fully-suppressed input now returns `""` rather
+than a lone newline. Non-empty Markdown output keeps the existing contract of
+exactly one trailing newline. This deliberately treats empty-output
+normalization separately from broader whitespace or nested-list behavior.
+
+PR #40 adds a deterministic legacy-vs-DOM parity report for the next
+architecture decision. The report runs both HTML→Markdown paths over synthetic
+edge cases plus every vendored real-world HTML fixture under
+`fixtures/benchmark/`, records equality, output lengths, SHA-256 hashes, and
+short previews for mismatches, and emits a decision hint. Synthetic coverage
+explicitly includes blockquotes, inline/preformatted code, and alt-only image
+fallbacks in addition to lists/tables/details/URL cases.
+
+The report also records `real_world_case_count` separately. At present the
+repository has only one vendored real-world HTML page, so even a hypothetical
+zero-mismatch run is **not** enough to recommend DOM-first; the hint remains
+`expand_real_world_corpus_before_dom_first` until the real-world corpus is less
+thin. The hint is evidence, not an automatic switch: DOM-first remains a review
+decision based on observed mismatches, compatibility, and complexity.
+
+The current real-world HTML corpus is intentionally small: today it contains
+one vendored page (`tohoho_web_home.html`). That is enough to catch at least
+one real-page whitespace divergence, but not enough to treat a zero-mismatch
+result as broad production evidence. Synthetic coverage therefore also pins
+blockquotes, inline/preformatted code, image alt handling, lists, tables,
+details, URL safety, Unicode, empty output, and host:port behavior. Expanding
+the vendored real-HTML corpus remains follow-up work before any public
+DOM-first cutover.
+
+PR #41 closes the synthetic `details` mismatch surfaced by that report.
+Legacy `html_to_markdown()` now preserves `<details><summary>` using the
+same `:::details Summary ... :::` Markdown contract as `dom_to_markdown()`.
+The implementation remains inside the legacy HTML parser, so the compatibility
+engine does not gain a dependency on the DOM layer.
+
+```bash
+python scripts/converter_parity_report.py --out converter_parity.json
+```
+
+PR #42 broadens that observability into a converter-contract audit. It records
+HTML→Markdown parity plus Markdown→HTML→Markdown and Markdown→DOM→Markdown
+stability across core constructs (lists, tables, details, tasks, footnotes,
+attributes, malformed input, Unicode, URL safety, and empty input) and vendored
+real-world HTML. Audit schema v2 keeps every exact-round-trip mismatch in
+`raw_divergent_case_ids`, but separates explicitly documented irreversible
+contracts into `expected_lossy_case_ids` from still-unexplained
+`divergent_case_ids`. Markdown footnotes are the first expected-lossy case:
+`[^id]` refs/definitions are intentionally lowered to ordinary HTML anchors
+and a footnotes section, and `html_to_markdown()` does not reconstruct the
+original footnote syntax. Remaining divergence is observational, not
+automatically treated as a bug.
+
+```bash
+python scripts/converter_contract_audit.py --out converter_contract_audit.json
+```
+
+URL scheme safety for conversion paths is centralized in
+`_sanitize_url_scheme()`: new HTML→Markdown or Markdown→HTML URL-consuming
+conversion code must reuse that helper rather than introduce an independent
+scheme check. Extraction helpers such as `extract_links()` /
+`extract_images()` only report source content, and builders such as
+`make_link()` / `make_image()` continue to treat the caller-supplied URL as
+caller responsibility; changing those contracts is a separate design decision.
+
+DOM-specific preprocessing such as `details` handling stays in
+`dom_to_markdown()`; the internal HTML engine remains DOM-agnostic. Nested-list
+behavior, whitespace normalization, safe-tag expansion, and any eventual
+DOM-first switch are intentionally deferred to later PRs after this scaffold
+has made their effects measurable.
 
 ## Context helpers
 
@@ -176,7 +317,7 @@ Results, CommonMark spec examples:
 | --- | --- |
 | ATX headings, emphasis (basic), fenced code, inline code, horizontal rule, links | PASS |
 | nested emphasis (`**foo *bar* baz**`) | DEGRADED — the inner `*bar*` parses, the outer `**` doesn't |
-| nested lists | DEGRADED — flattens to one `<ul>`, no text lost |
+| nested lists | PASS — simple indentation-based nested ul/ol structure is preserved |
 | blockquotes | DEGRADED — consecutive `>` lines become `<blockquote><p>…</p></blockquote>`; inner ATX headings/lists/tables stay paragraph text; blank `>` lines split paragraphs |
 | backslash escaping | FAIL — not implemented; `\*` stays literal instead of suppressing emphasis |
 | emphasis edge cases (asymmetric delimiter runs, whitespace-adjacent delimiters) | FAIL |
@@ -186,7 +327,7 @@ Results, GitHub-flavored constructs found inside the real GitHub Docs excerpt:
 | Construct | Classification |
 | --- | --- |
 | headings, links, images, fenced code (incl. fence-in-fence), inline code | PASS |
-| nested lists | DEGRADED |
+| nested lists | PASS — simple indentation-based nested ul/ol structure is preserved |
 | tables | PASS — simple GFM pipe tables (header + `\| --- \|` delimiter) render as `<table>/<thead>/<th>/<tbody>/<td>`; cell text is escaped and reuses the inline renderer. Alignment colons are accepted, not emitted as attributes. Pipe rows without a delimiter stay paragraphs. |
 | strikethrough (`~~text~~`) | PASS — renders as `<del>text</del>`; unmatched `~~` stays literal |
 | task lists | PASS — `- [ ]` / `- [x]` / `- [X]` (also `*` / `+`) become `<li>` with a disabled checkbox; mixed with ordinary bullets in one `<ul>`. This fixture's Task lists section only shows the syntax in inline code, so it stays literal there. `1. [ ]` is not a task. |
@@ -352,3 +493,25 @@ tilde fence instead. See `tests/test_adaptive_fence.py`.
 ## License
 
 MIT
+
+
+## Web UI contract v1
+
+`markdown_to_web_ui_v1()` wraps the existing conservative Markdown-to-HTML
+subset in the stable semantic surface defined by
+[`myon-bioinformatics/web-ui/contract/v1`](https://github.com/myon-bioinformatics/web-ui/tree/4f43617465a92c912efcd441208e1789b3508d32/contract/v1) (pinned reference: `4f436174`).
+
+The helper emits semantic HTML only:
+
+- `body[data-ui-theme]`
+- `ui-page`
+- optional `ui-title`
+- `ui-panel`
+
+It does **not** fetch, vendor, or embed web-ui CSS. Consumers should pin the
+web-ui revision they load separately. Theme names are case-sensitive.
+
+Future breaking contract support should use a separate versioned emitter such as
+`markdown_to_web_ui_v2()` rather than silently changing v1 output semantics.
+
+This keeps `markdown.py` single-file and standard-library-only.

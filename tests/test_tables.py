@@ -223,3 +223,52 @@ def test_colspan_is_ignored_as_a_single_cell() -> None:
     )
     assert "| wide |" in md_out or "| wide |  |" in md_out
 
+
+
+def test_table_section_tags_preserve_row_order() -> None:
+    html = (
+        "<table>"
+        "<thead><tr><th>h</th></tr></thead>"
+        "<tbody><tr><td>body</td></tr></tbody>"
+        "<tfoot><tr><td>foot</td></tr></tfoot>"
+        "</table>"
+    )
+    md_out = md.html_to_markdown(html)
+    lines = [line for line in md_out.splitlines() if line.startswith("|")]
+
+    assert lines[0] == "| h |"
+    assert "| body |" in md_out
+    assert "| foot |" in md_out
+    assert lines.index("| body |") < lines.index("| foot |")
+
+
+def test_pretty_printed_tr_whitespace_does_not_create_cells() -> None:
+    html = """
+<table>
+  <thead>
+    <tr>
+      <th>a</th>
+      <th>b</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>2</td>
+    </tr>
+  </tbody>
+</table>
+"""
+    md_out = md.html_to_markdown(html)
+
+    assert md_out == "| a | b |\n| --- | --- |\n| 1 | 2 |\n"
+
+
+def test_mixed_th_td_row_keeps_cell_order() -> None:
+    md_out = md.html_to_markdown(
+        "<table><tr><th>kind</th><td>value</td></tr>"
+        "<tr><td>x</td><td>1</td></tr></table>"
+    )
+
+    assert md_out.splitlines()[0] == "| kind | value |"
+    assert "| x | 1 |" in md_out

@@ -7,3 +7,9 @@ venv/
 .gradio/
 # Local clone for docker/openwebui-smoke's mcp-mock service -- see README.md
 /mcp-toolcall-lab/
+
+# Local output from scripts/converter_parity_report.py
+/converter_parity.json
+
+# Local output from scripts/converter_contract_audit.py
+/converter_contract_audit.json
