@@ -37,6 +37,7 @@ behavior only in a PR comment or commit message.
 | `HTTP11_SSE_WITHOUT_END_SIGNAL` | Hand-written SSE uses HTTP/1.1 without length/chunking/connection close | Clients hang waiting for a body that never terminates | Use chunking or close the connection explicitly |
 | `FRAMEWORK_WRAPPER_ASSUMPTION` | Code assumes a low-level SDK result shape survives unchanged through a larger product | Middleware envelopes break parsing unexpectedly | Observe and normalize the actual end-to-end shape |
 | `STANDARD_DOM_ASSUMPTION` | Tests assume rendered Markdown always becomes conventional HTML such as `<pre><code>` | Real products may mount editors/components instead | Inspect the actual product DOM before choosing selectors |
+| `FORGEABLE_INBAND_PLACEHOLDER` | A converter stashes spans behind in-band markers (private-use or control characters) without escaping those same characters in the input | Input that already contains the marker is read as a placeholder, so text silently disappears or is swapped, and pattern-based restore can loop | Escape the marker in the input first (escape-doubling), or use markers that sanitized input can never contain; test with input that forges a placeholder, and inspect such output with `repr()` because private-use glyphs render differently per platform |
 
 ## Contract rules derived from the catalog
 
@@ -274,6 +275,33 @@ because they are concrete evidence behind several stable IDs above.
   replacing wholesale rather than mutating. Prefer re-querying by selector
   string inside the polled function itself when the target node's identity
   isn't guaranteed stable across the wait.
+
+## 7. In-band placeholders in the dialect converters were forgeable by the input
+
+- **Product / run**: our own `markdown.py` dialect converters
+  (`jira_to_markdown` and its peers, PR #61), caught in local review before merge.
+- **What we tried**: inline conversion stashed code spans and links behind
+  private-use placeholders such as `<n>`, marked bold/italic/strike
+  with ``-prefixed sentinels, and restored them after the regex passes.
+- **What actually happened**:
+  `jira_to_markdown('odd 0 and B chars *b*\n')` returned
+  `'odd  and B chars **b**\n'`: the input's own `0` vanished,
+  because `0` looked exactly like placeholder 0. On the iOS app the
+  same tool output showed U+E001/U+E002 as emoji (the legacy SoftBank
+  private-use mapping) and U+E000 as a box, which hid what the characters were.
+- **Root cause**: the markers were in-band. Nothing distinguished a marker
+  from identical code points already present in the input, and restoring by
+  pattern could re-read restored text.
+- **Fix**: escape-doubling. Every input `` first becomes `E`;
+  placeholders are `P<n>;` and sentinels `B`/`I`/`S`, so no input can
+  spell a marker, and restore is iterative. Regression:
+  `test_placeholder_like_input_is_left_alone` in `tests/test_dialects.py`.
+- **Generalizable lesson**: an in-band marker needs either escaping of the
+  same code points in the input or a code point that sanitized input cannot
+  contain (browser-test-kit's `page_text.py` maps noncharacters U+FDD0-U+FDD2
+  to U+FFFD before using them as markers). Always test with input that forges
+  a marker. When checking such output, print `repr()`/`ascii()`: how a
+  private-use code point renders depends on the font and platform.
 
 <!--
 ## N. <short title>
