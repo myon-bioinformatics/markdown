@@ -93,6 +93,12 @@ __all__ = [
     "markdown_to_toml",
     "dotenv_to_markdown",
     "markdown_to_dotenv",
+    "markdown_to_directory_tree",
+    "directory_tree_to_markdown",
+    "directory_to_markdown",
+    "tree_text_to_markdown",
+    "markdown_to_tree_text",
+    "scaffold_from_markdown",
     "redis_snapshot_to_markdown",
     "sql_ddl_to_markdown",
     "markdown_to_sql_ddl",
@@ -187,6 +193,8 @@ SUPPORTED = {
         "(typed canonical Markdown table; reusable by INI/TOML adapters)",
         "INI / TOML / dotenv <-> canonical structured Markdown adapters "
         "(semantic round-trip; source comments/spacing/quote style are canonicalized)",
+        "directory tree <-> nested Markdown list (read-only directory listing, "
+        "tree-command text <-> list, traversal-safe non-overwriting scaffold creation)",
         "markdown_to_kramdown: Pandoc/PHP-Extra {#id .class key=value} on headings/paragraphs "
         "-> Kramdown block IAL ({: #id .class key=\"value\"}); ordinary Markdown left alone",
         "kramdown_to_markdown: strip known heading/paragraph IAL back to plain Markdown "
@@ -4885,3 +4893,227 @@ def is_probably_url(value: str) -> bool:
     """Return True if ``value`` looks like an http(s) URL."""
     parsed = urlparse(value.strip())
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+# === SECTION: directory tree ===
+# Directory trees <-> Markdown nested lists. A tree is plain data:
+# ``{name: subtree_dict}`` for a directory and ``{name: None}`` for a file,
+# in display order. Canonical Markdown marks directories with a trailing
+# ``/`` and nests children two spaces deeper.
+
+_TREE_LIST_ITEM_RE = re.compile(r"^( *)[-*+][ \t]+(.+?)[ \t]*$")
+_TREE_TEXT_BRANCH_RE = re.compile(r"(├──|└──|\|--|`--|\+--)[ \t]?")
+_TREE_TEXT_LEVEL_WIDTH = 4
+
+
+def _tree_entry_name(text: str) -> tuple[str, bool]:
+    """Split a list/tree label into ``(name, is_directory)``."""
+    name = text.strip()
+    if len(name) >= 2 and name.startswith("`") and name.endswith("`"):
+        name = name[1:-1].strip()
+    is_dir = name.endswith("/")
+    return name.rstrip("/"), is_dir
+
+
+def _validate_tree_name(name: str) -> None:
+    if name in {"", ".", ".."} or "/" in name or "\\" in name or "\x00" in name:
+        raise ValueError(f"invalid directory tree entry name: {name!r}")
+
+
+def _tree_insert(stack: list[tuple[int, dict[str, Any]]], depth: int, name: str, is_dir: bool) -> None:
+    while stack and stack[-1][0] >= depth:
+        stack.pop()
+    if not stack:
+        raise ValueError(f"directory tree entry {name!r} is nested under nothing")
+    parent = stack[-1][1]
+    _validate_tree_name(name)
+    if name in parent:
+        raise ValueError(f"duplicate directory tree entry: {name!r}")
+    parent[name] = {} if is_dir else None
+    if is_dir:
+        stack.append((depth, parent[name]))
+
+
+def markdown_to_directory_tree(content: str) -> dict[str, Any]:
+    """Parse a nested Markdown bullet list into a directory tree mapping.
+
+    Items ending in ``/`` (optionally wrapped in inline code) are
+    directories; an item with nested children is a directory too. Fenced
+    code and non-list lines are ignored. Names containing ``/``, ``\\``,
+    or equal to ``.`` / ``..`` raise ``ValueError`` so a tree can never
+    describe a path outside its root.
+    """
+    root: dict[str, Any] = {}
+    entries: list[tuple[int, str, bool]] = []
+    for item in _scan_lines(content.splitlines()):
+        if item.in_fenced_code:
+            continue
+        match = _TREE_LIST_ITEM_RE.match(item.text.expandtabs(4))
+        if not match:
+            continue
+        name, is_dir = _tree_entry_name(match.group(2))
+        entries.append((len(match.group(1)), name, is_dir))
+    # An entry followed by a deeper-indented entry is a directory.
+    for index, (indent, name, is_dir) in enumerate(entries):
+        if not is_dir and index + 1 < len(entries) and entries[index + 1][0] > indent:
+            entries[index] = (indent, name, True)
+    stack: list[tuple[int, dict[str, Any]]] = [(-1, root)]
+    for indent, name, is_dir in entries:
+        _tree_insert(stack, indent, name, is_dir)
+    return root
+
+
+def directory_tree_to_markdown(tree: dict[str, Any]) -> str:
+    """Render a directory tree mapping as a canonical nested Markdown list.
+
+    ``markdown_to_directory_tree(directory_tree_to_markdown(t)) == t`` for
+    any tree built from valid names (see :func:`markdown_to_directory_tree`).
+    """
+    lines: list[str] = []
+
+    def walk(node: dict[str, Any], depth: int) -> None:
+        for name, child in node.items():
+            _validate_tree_name(name)
+            if child is None:
+                lines.append(f"{'  ' * depth}- {name}")
+            elif isinstance(child, dict):
+                lines.append(f"{'  ' * depth}- {name}/")
+                walk(child, depth + 1)
+            else:
+                raise ValueError(f"directory tree values must be dict or None, got {type(child).__name__}")
+
+    if not isinstance(tree, dict):
+        raise ValueError("directory tree must be a dict")
+    walk(tree, 0)
+    return "\n".join(lines) + ("\n" if lines else "")
+
+
+def directory_to_markdown(
+    path: str | Path,
+    *,
+    include_hidden: bool = False,
+    max_depth: int | None = None,
+) -> str:
+    """Describe an existing directory as a canonical nested Markdown list.
+
+    Read-only: entries are listed by name (sorted), symlinks are listed but
+    never followed, and hidden (dot) entries are skipped unless
+    ``include_hidden``. ``max_depth=1`` lists only the top level.
+    """
+    base = Path(path)
+    if not base.is_dir():
+        raise ValueError(f"not a directory: {base}")
+
+    def walk(directory: Path, depth: int) -> dict[str, Any]:
+        node: dict[str, Any] = {}
+        for entry in sorted(directory.iterdir(), key=lambda p: p.name):
+            if not include_hidden and entry.name.startswith("."):
+                continue
+            if entry.is_dir() and not entry.is_symlink():
+                if max_depth is not None and depth + 1 >= max_depth:
+                    node[entry.name] = {}
+                else:
+                    node[entry.name] = walk(entry, depth + 1)
+            else:
+                node[entry.name] = None
+        return node
+
+    return directory_tree_to_markdown(walk(base, 0))
+
+
+def tree_text_to_markdown(text: str) -> str:
+    """Convert ``tree``-command style text into a canonical Markdown list.
+
+    Accepts Unicode (``├──`` / ``└──`` / ``│``) and ASCII (``|--`` /
+    ``\\`--``) connectors with 4-column levels. A leading root line without
+    a connector (e.g. ``.`` or ``project/``) is skipped. Summary lines such
+    as ``3 directories, 5 files`` and blank lines are ignored.
+    """
+    entries: list[tuple[int, str, bool]] = []
+    for raw in text.splitlines():
+        line = raw.rstrip()
+        match = _TREE_TEXT_BRANCH_RE.search(line)
+        if not match:
+            continue
+        depth, remainder = divmod(match.start(), _TREE_TEXT_LEVEL_WIDTH)
+        if remainder:
+            raise ValueError(f"tree line is not aligned to {_TREE_TEXT_LEVEL_WIDTH}-column levels: {raw!r}")
+        name, is_dir = _tree_entry_name(line[match.end():])
+        entries.append((depth, name, is_dir))
+    for index, (depth, name, is_dir) in enumerate(entries):
+        if not is_dir and index + 1 < len(entries) and entries[index + 1][0] > depth:
+            entries[index] = (depth, name, True)
+    root: dict[str, Any] = {}
+    stack: list[tuple[int, dict[str, Any]]] = [(-1, root)]
+    for depth, name, is_dir in entries:
+        _tree_insert(stack, depth, name, is_dir)
+    return directory_tree_to_markdown(root)
+
+
+def markdown_to_tree_text(content: str, *, root: str = ".") -> str:
+    """Render a Markdown directory list as ``tree``-command style text.
+
+    ``tree_text_to_markdown(markdown_to_tree_text(md)) == md`` for canonical
+    Markdown produced by :func:`directory_tree_to_markdown`.
+    """
+    tree = markdown_to_directory_tree(content)
+    lines = [root]
+
+    def walk(node: dict[str, Any], prefix: str) -> None:
+        items = list(node.items())
+        for index, (name, child) in enumerate(items):
+            last = index == len(items) - 1
+            label = f"{name}/" if isinstance(child, dict) else name
+            lines.append(f"{prefix}{'└── ' if last else '├── '}{label}")
+            if isinstance(child, dict):
+                walk(child, prefix + ("    " if last else "│   "))
+
+    walk(tree, "")
+    return "\n".join(lines) + "\n"
+
+
+def scaffold_from_markdown(content: str, root: str | Path) -> list[str]:
+    """Create the directories and empty files described by a Markdown list.
+
+    Existing files are never overwritten or truncated and existing
+    directories are reused. Every path is validated to stay inside
+    ``root`` (``..``, separators, and absolute names are rejected before
+    anything is created). Returns the POSIX-style relative paths that were
+    newly created, in creation order.
+    """
+    tree = markdown_to_directory_tree(content)
+    base = Path(root)
+    base.mkdir(parents=True, exist_ok=True)
+    resolved_base = base.resolve()
+    created: list[str] = []
+
+    def plan(node: dict[str, Any], parts: tuple[str, ...]) -> None:
+        for name, child in node.items():
+            _validate_tree_name(name)
+            target = resolved_base.joinpath(*parts, name).resolve()
+            if resolved_base not in target.parents:
+                raise ValueError(f"scaffold path escapes root: {'/'.join(parts + (name,))}")
+            if isinstance(child, dict):
+                plan(child, parts + (name,))
+
+    def build(node: dict[str, Any], parts: tuple[str, ...]) -> None:
+        for name, child in node.items():
+            target = base.joinpath(*parts, name)
+            rel = "/".join(parts + (name,))
+            if isinstance(child, dict):
+                if target.exists() and not target.is_dir():
+                    raise FileExistsError(f"scaffold directory collides with a file: {rel}")
+                if not target.exists():
+                    target.mkdir()
+                    created.append(rel + "/")
+                build(child, parts + (name,))
+            else:
+                if target.is_dir():
+                    raise FileExistsError(f"scaffold file collides with a directory: {rel}")
+                if not target.exists():
+                    target.touch()
+                    created.append(rel)
+
+    plan(tree, ())
+    build(tree, ())
+    return created

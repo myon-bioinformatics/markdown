@@ -11,6 +11,7 @@ reformat unrelated code or reorder existing exports.
 | conversion | HTML, Kramdown, dialect helpers, structured data core/adapters | Declare the source/target subset and lossiness; INI/TOML/dotenv reuse structured_to_markdown / markdown_to_structured and keep canonical round-trip contracts explicit. |
 | generation | Markdown builders | Keep output deterministic and testable without a renderer. |
 | tables | GFM table generators/conversion | Add width/CSV/statistics work here. |
+| `directory tree` | directory listing / `tree` text <-> nested Markdown list, scaffold creation | Names are validated before any filesystem write; never overwrite existing files. |
 
 `__all__` is maintained one entry per line. Add a public name adjacent to its
 functional peers; do not perform a repository-wide reordering in a feature PR.
