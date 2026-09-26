@@ -81,6 +81,16 @@ __all__ = [
     "email_to_markdown",
     "markdown_to_email",
     "markdown_to_man",
+    "markdown_to_slack_mrkdwn",
+    "slack_mrkdwn_to_markdown",
+    "chat_messages_to_markdown",
+    "markdown_to_chat_messages",
+    "markdown_to_org",
+    "org_to_markdown",
+    "markdown_to_mediawiki",
+    "mediawiki_to_markdown",
+    "markdown_to_jira",
+    "jira_to_markdown",
     "table",
     "aligned_table",
     "markdown_table_to_rows",
@@ -123,6 +133,7 @@ __all__ = [
     "GITHUB_ALERT_KINDS",
     "QIITA_NOTE_KINDS",
     "ZENN_MESSAGE_KINDS",
+    "CHAT_ROLES",
     "SUPPORTED",
     "UNSUPPORTED",
 ]
@@ -230,6 +241,9 @@ SUPPORTED = {
         "system formats: calendar month -> table, platform/interpreter facts -> table "
         "(no host/user identity), RFC 5322 email <-> Markdown (multipart/alternative; "
         "never sent, attachments listed not decoded), Markdown -> man(7) troff (request-injection safe)",
+        "dialects: Markdown <-> Slack mrkdwn / Org-mode / MediaWiki / Jira wiki on the markdown lite "
+        "subset (headings, lines, fences, nested lists, quotes, rules, bold/italic/strike/code/links); "
+        "LLM chat messages <-> ## Role sections (string content, known roles, ambiguity rejected)",
         "table / key_value_table",
         "md_table / md_kv (*args-friendly wrappers, no list/dict pre-building needed)",
         "status_line",
@@ -271,6 +285,10 @@ UNSUPPORTED = {
         "Liquid {% %} / {{ }}, YAML front matter, Jekyll tags / includes / baseurl",
     ],
     "conversion": [
+        "dialect conversions escape nothing inside plain text: literal markup characters "
+        "(e.g. a bare * in Jira/Slack text) may be read as markup; tables, raw HTML, "
+        "footnotes, Slack headings/ordered-list semantics/fence languages, internal "
+        "[[wiki]] links, templates, and Org drawers/keywords are not converted",
         "lossy round-trips for complex nested HTML",
         "browser DOM / HTML5 tree-construction fidelity (HtmlNode is a small normalized tree)",
         "JavaScript / SVG behavior preservation",
@@ -5494,3 +5512,730 @@ def markdown_to_man(
     if in_quote:
         out.append(".RE")
     return "\n".join(out) + "\n"
+
+
+# === SECTION: dialects ===
+# #24 P7 dialect conversions. Each text dialect declares a canonical
+# Markdown subset (the markdown lite model: ATX headings, one-line
+# paragraphs, fenced code, "-" bullets / "1." ordered items nested two
+# spaces per level, ">" quote lines, "---", and inline **bold** / *italic*
+# / ~~strike~~ / `code` / [label](url)). On that subset
+# ``dialect_to_markdown(markdown_to_dialect(md)) == md`` except where a
+# dialect has no equivalent construct (documented per function). Literal
+# markup characters inside plain text are not escaped for the target.
+
+_DIALECT_MARK = {"bold": "\x01B", "italic": "\x01I", "strike": "\x01S"}
+_DIALECT_MD_MARK = {"\x01B": "**", "\x01I": "*", "\x01S": "~~"}
+_DIALECT_PLACEHOLDER_RE = re.compile("\x00(\\d+)\x00")
+
+
+def _dialect_inline_to_markdown(
+    text: str,
+    *,
+    code: re.Pattern[str],
+    links: tuple[tuple[re.Pattern[str], Any], ...],
+    emphasis: tuple[tuple[re.Pattern[str], str], ...],
+    unescape: Any = None,
+) -> str:
+    """Convert one line of dialect inline markup to canonical Markdown.
+
+    Code spans and links are swapped for placeholders first so emphasis
+    rules never fire inside them; emphasis markers are written as private
+    sentinels and only turned into Markdown markers at the end, so one
+    rule's output can never be re-read by the next rule.
+    """
+    stash: list[str] = []
+
+    def keep(rendered: str) -> str:
+        stash.append(rendered)
+        return f"\x00{len(stash) - 1}\x00"
+
+    text = code.sub(lambda m: keep(inline_code(m.group(1))), text)
+    for pattern, render in links:
+        text = pattern.sub(lambda m, render=render: keep(render(m)), text)
+    for pattern, kind in emphasis:
+        mark = _DIALECT_MARK[kind]
+        text = pattern.sub(lambda m, mark=mark: mark + m.group(1) + mark, text)
+    for sentinel, marker in _DIALECT_MD_MARK.items():
+        text = text.replace(sentinel, marker)
+    if unescape is not None:
+        text = unescape(text)
+    while _DIALECT_PLACEHOLDER_RE.search(text):
+        text = _DIALECT_PLACEHOLDER_RE.sub(lambda m: stash[int(m.group(1))], text)
+    return text
+
+
+class _MarkdownListNumberer:
+    """Emit canonical Markdown list prefixes (2-space nesting, 1..n numbering)."""
+
+    def __init__(self) -> None:
+        self.counters: dict[int, tuple[bool, int]] = {}
+
+    def reset(self) -> None:
+        self.counters = {}
+
+    def count(self, depth: int, ordered: bool) -> int:
+        for level in [level for level in self.counters if level > depth]:
+            del self.counters[level]
+        was_ordered, count = self.counters.get(depth, (ordered, 0))
+        count = count + 1 if was_ordered == ordered else 1
+        self.counters[depth] = (ordered, count)
+        return count
+
+    def prefix(self, depth: int, ordered: bool) -> str:
+        count = self.count(depth, ordered)
+        return "  " * depth + (f"{count}. " if ordered else "- ")
+
+
+def _depth_from_indent(stack: list[int], indent: int) -> int:
+    while stack and stack[-1] > indent:
+        stack.pop()
+    if not stack or stack[-1] < indent:
+        stack.append(indent)
+    return len(stack) - 1
+
+
+def _dialect_code_block_lines(body: list[str], lang: str) -> list[str]:
+    return code_block("\n".join(body), lang).rstrip("\n").split("\n")
+
+
+def _render_with(inline: Any, tokens: list[tuple[Any, ...]]) -> str:
+    return "".join(inline(token) for token in tokens)
+
+
+# --- Slack mrkdwn -----------------------------------------------------------
+
+def _slack_escape(text: str) -> str:
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _slack_token(token: tuple[Any, ...]) -> str:
+    kind = token[0]
+    if kind == "text":
+        return _slack_escape(token[1])
+    if kind == "code":
+        return f"`{_slack_escape(token[1])}`"
+    if kind in {"bold", "italic", "strike"}:
+        mark = {"bold": "*", "italic": "_", "strike": "~"}[kind]
+        return mark + _render_with(_slack_token, token[1]) + mark
+    if kind == "link":
+        label = _lite_plain(token[1]).replace("|", "¦")
+        return f"<{token[2]}>" if label == token[2] else f"<{token[2]}|{_slack_escape(label)}>"
+    if kind == "image":
+        return f"<{token[2]}|{_slack_escape(token[1] or token[2])}>"
+    return ""
+
+
+def markdown_to_slack_mrkdwn(content: str) -> str:
+    """Convert the Markdown lite subset to Slack ``mrkdwn`` text.
+
+    ``**b**`` -> ``*b*``, ``*i*`` -> ``_i_``, ``~~s~~`` -> ``~s~``, links ->
+    ``<url|label>``, bullets -> ``•`` (4 spaces per nesting level), and
+    ``&``/``<``/``>`` are entity-escaped as Slack requires. Slack has no
+    headings, ordered lists, or code-block languages: headings become a
+    bold line, ordered items keep their literal ``N.`` text, and the fence
+    language is dropped (all lossy by design).
+    """
+    out: list[str] = []
+    numberer = _MarkdownListNumberer()
+    for block in _lite_blocks(content):
+        kind = block[0]
+        if kind not in {"list", "blank"}:
+            numberer.reset()
+        if kind == "blank":
+            out.append("")
+        elif kind == "heading":
+            out.append("*" + _slack_escape(_lite_plain(_lite_inline(block[2]))) + "*")
+        elif kind == "code":
+            out.extend(["```", *[_slack_escape(line) for line in block[2].split("\n")], "```"])
+        elif kind == "list":
+            count = numberer.count(block[2], block[1])
+            bullet = f"{count}. " if block[1] else "\u2022 "
+            out.append("    " * block[2] + bullet + _render_with(_slack_token, _lite_inline(block[3])))
+        elif kind == "quote":
+            out.append("> " + _render_with(_slack_token, _lite_inline(block[1])))
+        elif kind == "hr":
+            out.append("---")
+        else:
+            out.append(_render_with(_slack_token, _lite_inline(block[1])))
+    return "\n".join(out) + ("\n" if out else "")
+
+
+_SLACK_CODE_RE = re.compile(r"`([^`\n]+)`")
+_SLACK_LINK_RE = re.compile(r"<((?:https?|mailto):[^|>\s]+)(?:\|([^>]*))?>")
+_SLACK_EMPHASIS = (
+    (re.compile(r"(?<![\w*])\*(?=\S)([^*\n]+?)(?<=\S)\*(?![\w*])"), "bold"),
+    (re.compile(r"(?<![\w_])_(?=\S)([^_\n]+?)(?<=\S)_(?![\w_])"), "italic"),
+    (re.compile(r"(?<![\w~])~(?=\S)([^~\n]+?)(?<=\S)~(?![\w~])"), "strike"),
+)
+_SLACK_BULLET_RE = re.compile("^( *)[\u2022\u25e6\u25aa-] +(.*)$")
+_SLACK_ORDERED_RE = re.compile(r"^( *)\d+[.)] +(.*)$")
+
+
+def _slack_unescape(text: str) -> str:
+    return text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+
+
+def _slack_link_to_markdown(match: re.Match[str]) -> str:
+    url, label = match.group(1), match.group(2)
+    if label is None or _slack_unescape(label) == url:
+        return f"<{url}>"
+    return f"[{_slack_unescape(label)}]({url})"
+
+
+def _slack_inline(text: str) -> str:
+    return _dialect_inline_to_markdown(
+        text,
+        code=_SLACK_CODE_RE,
+        links=((_SLACK_LINK_RE, _slack_link_to_markdown),),
+        emphasis=_SLACK_EMPHASIS,
+        unescape=_slack_unescape,
+    )
+
+
+def slack_mrkdwn_to_markdown(content: str) -> str:
+    """Convert Slack ``mrkdwn`` text to canonical Markdown.
+
+    Reverses :func:`markdown_to_slack_mrkdwn` for paragraphs, bullets,
+    ``1.`` items, ``>`` quotes, triple-backtick blocks, and inline
+    bold/italic/strike/code/links. User/channel mentions such as
+    ``<@U123>`` / ``<#C123>`` / ``<!here>`` are left as literal text.
+    """
+    out: list[str] = []
+    numberer = _MarkdownListNumberer()
+    indents: list[int] = []
+    lines = content.splitlines()
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if line.strip() == "```":
+            body: list[str] = []
+            index += 1
+            while index < len(lines) and lines[index].strip() != "```":
+                body.append(_slack_unescape(lines[index]))
+                index += 1
+            index += 1
+            out.extend(_dialect_code_block_lines(body, ""))
+            numberer.reset()
+            indents = []
+            continue
+        bullet = _SLACK_BULLET_RE.match(line)
+        ordered = _SLACK_ORDERED_RE.match(line)
+        if bullet or ordered:
+            match = bullet or ordered
+            depth = _depth_from_indent(indents, len(match.group(1)))
+            out.append(numberer.prefix(depth, ordered is not None) + _slack_inline(match.group(2)))
+        elif line.startswith(">"):
+            out.append("> " + _slack_inline(line[1:].lstrip()))
+            numberer.reset()
+            indents = []
+        elif not line.strip():
+            out.append("")
+        elif line.strip() == "---":
+            out.append("---")
+        else:
+            out.append(_slack_inline(line))
+            numberer.reset()
+            indents = []
+        index += 1
+    return "\n".join(out) + ("\n" if out else "")
+
+
+# --- LLM chat messages ------------------------------------------------------
+
+CHAT_ROLES = ("system", "developer", "user", "assistant", "tool")
+_CHAT_HEADING_RE = re.compile(r"^## (" + "|".join(CHAT_ROLES) + r")[ \t]*$", re.IGNORECASE)
+
+
+def chat_messages_to_markdown(messages: Any) -> str:
+    """Render ``[{"role": ..., "content": ...}]`` as ``## Role`` sections.
+
+    Only string ``content`` and the roles in :data:`CHAT_ROLES` are
+    supported; extra keys (``name``, ``tool_calls``, ...) or multimodal
+    content raise ``ValueError`` rather than being silently dropped. A
+    message whose content contains a line that would itself parse as a
+    role heading outside fenced code is rejected as ambiguous, so
+    ``markdown_to_chat_messages(chat_messages_to_markdown(m)) == m`` for
+    every accepted list whose contents carry no leading/trailing newlines.
+    """
+    parts: list[str] = []
+    for position, message in enumerate(messages):
+        if not isinstance(message, dict) or set(message) != {"role", "content"}:
+            raise ValueError(f"message {position} must be a dict with exactly 'role' and 'content'")
+        role, text = message["role"], message["content"]
+        if role not in CHAT_ROLES:
+            raise ValueError(f"message {position} has unsupported role {role!r}")
+        if not isinstance(text, str):
+            raise ValueError(f"message {position} content must be a string")
+        for item in _scan_lines(text.splitlines()):
+            if not item.in_fenced_code and _CHAT_HEADING_RE.match(item.text):
+                raise ValueError(f"message {position} content contains a role heading line: {item.text!r}")
+        section_text = f"## {role.capitalize()}\n"
+        if text:
+            section_text += f"\n{text}\n"
+        parts.append(section_text)
+    return "\n".join(parts)
+
+
+def markdown_to_chat_messages(content: str) -> list[dict[str, str]]:
+    """Parse ``## System`` / ``## User`` / ``## Assistant`` ... sections.
+
+    Role headings are exact ``## <role>`` lines (case-insensitive) outside
+    fenced code; any other heading (``## Summary``) is ordinary content.
+    Text before the first role heading raises ``ValueError``. Each
+    message's content has surrounding blank lines stripped.
+    """
+    sections: list[tuple[str, list[str]]] = []
+    for item in _scan_lines(content.splitlines()):
+        match = None if item.in_fenced_code else _CHAT_HEADING_RE.match(item.text)
+        if match:
+            sections.append((match.group(1).lower(), []))
+        elif sections:
+            sections[-1][1].append(item.text)
+        elif item.text.strip():
+            raise ValueError(f"text before the first role heading: {item.text!r}")
+    return [{"role": role, "content": "\n".join(lines).strip("\n")} for role, lines in sections]
+
+
+# --- Org-mode ---------------------------------------------------------------
+
+def _org_token(token: tuple[Any, ...]) -> str:
+    kind = token[0]
+    if kind == "text":
+        return token[1]
+    if kind == "code":
+        return f"~{token[1]}~"
+    if kind in {"bold", "italic", "strike"}:
+        mark = {"bold": "*", "italic": "/", "strike": "+"}[kind]
+        return mark + _render_with(_org_token, token[1]) + mark
+    if kind == "link":
+        label = _render_with(_org_token, token[1])
+        return f"[[{token[2]}]]" if _lite_plain(token[1]) == token[2] else f"[[{token[2]}][{label}]]"
+    if kind == "image":
+        return f"[[{token[2]}]]"
+    return ""
+
+
+def markdown_to_org(content: str) -> str:
+    """Convert the Markdown lite subset to Org-mode.
+
+    Headings -> ``*`` stars, ``**b**`` -> ``*b*``, ``*i*`` -> ``/i/``,
+    ``~~s~~`` -> ``+s+``, code -> ``~c~``, links -> ``[[url][label]]``,
+    fences -> ``#+BEGIN_SRC lang`` (lines starting with ``*`` / ``#+``
+    are comma-escaped per Org), ``>`` runs -> ``#+BEGIN_QUOTE``.
+    """
+    out: list[str] = []
+    in_quote = False
+    numberer = _MarkdownListNumberer()
+    for block in _lite_blocks(content):
+        kind = block[0]
+        if kind not in {"list", "blank"}:
+            numberer.reset()
+        if in_quote and kind != "quote":
+            out.append("#+END_QUOTE")
+            in_quote = False
+        if kind == "blank":
+            out.append("")
+        elif kind == "heading":
+            out.append("*" * block[1] + " " + _render_with(_org_token, _lite_inline(block[2])))
+        elif kind == "code":
+            out.append(("#+BEGIN_SRC " + block[1]).rstrip())
+            for line in block[2].split("\n") if block[2] else []:
+                out.append("," + line if line.startswith(("*", "#+", ",*", ",#+")) else line)
+            out.append("#+END_SRC")
+        elif kind == "list":
+            out.append(numberer.prefix(block[2], block[1]) + _render_with(_org_token, _lite_inline(block[3])))
+        elif kind == "quote":
+            if not in_quote:
+                out.append("#+BEGIN_QUOTE")
+                in_quote = True
+            out.append(_render_with(_org_token, _lite_inline(block[1])))
+        elif kind == "hr":
+            out.append("-----")
+        else:
+            out.append(_render_with(_org_token, _lite_inline(block[1])))
+    if in_quote:
+        out.append("#+END_QUOTE")
+    return "\n".join(out) + ("\n" if out else "")
+
+
+_ORG_CODE_RE = re.compile(r"(?<![\w~=])[~=](?=\S)([^~=\n]+?)(?<=\S)[~=](?![\w~=])")
+_ORG_LINK_RE = re.compile(r"\[\[([^\]\n]+)\](?:\[([^\]\n]+)\])?\]")
+_ORG_EMPHASIS = (
+    (re.compile(r"(?<![\w*])\*(?=[^\s*])([^*\n]+?)(?<=[^\s*])\*(?![\w*])"), "bold"),
+    (re.compile(r"(?<![\w/:])/(?=[^\s/])([^/\n]+?)(?<=[^\s/])/(?![\w/])"), "italic"),
+    (re.compile(r"(?<![\w+])\+(?=[^\s+])([^+\n]+?)(?<=[^\s+])\+(?![\w+])"), "strike"),
+)
+_ORG_HEADING_RE = re.compile(r"^(\*+)[ \t]+(.*?)[ \t]*$")
+_ORG_LIST_RE = re.compile(r"^( *)([-+]|\d+[.)])[ \t]+(.*)$")
+_ORG_BLOCK_RE = re.compile(r"^[ \t]*#\+(BEGIN|END)_(\w+)(?:[ \t]+(\S+))?", re.IGNORECASE)
+
+
+def _org_link_to_markdown(match: re.Match[str]) -> str:
+    target, label = match.group(1), match.group(2)
+    if label is None:
+        return f"<{target}>" if re.match(r"(?:https?|mailto):", target) else f"[{target}]({target})"
+    return f"[{_org_inline(label)}]({target})"
+
+
+def _org_inline(text: str) -> str:
+    return _dialect_inline_to_markdown(
+        text,
+        code=_ORG_CODE_RE,
+        links=((_ORG_LINK_RE, _org_link_to_markdown),),
+        emphasis=_ORG_EMPHASIS,
+    )
+
+
+def org_to_markdown(content: str) -> str:
+    """Convert Org-mode to canonical Markdown (the :func:`markdown_to_org` subset).
+
+    Supports ``*`` headings, ``-``/``+``/``1.`` lists, ``#+BEGIN_SRC`` /
+    ``#+BEGIN_EXAMPLE`` / ``#+BEGIN_QUOTE`` blocks, ``-----`` rules, and
+    ``*b*`` / ``/i/`` / ``+s+`` / ``~c~`` / ``=v=`` / ``[[url][label]]``.
+    Other ``#+KEYWORD:`` lines, drawers, tables, and underline ``_u_`` are
+    kept as literal text.
+    """
+    out: list[str] = []
+    numberer = _MarkdownListNumberer()
+    indents: list[int] = []
+    lines = content.splitlines()
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        block = _ORG_BLOCK_RE.match(line)
+        if block and block.group(1).upper() == "BEGIN":
+            name = block.group(2).upper()
+            body: list[str] = []
+            index += 1
+            while index < len(lines):
+                end = _ORG_BLOCK_RE.match(lines[index])
+                if end and end.group(1).upper() == "END" and end.group(2).upper() == name:
+                    break
+                body.append(lines[index])
+                index += 1
+            index += 1
+            if name == "QUOTE":
+                out.extend(("> " + _org_inline(item)).rstrip() if item.strip() else ">" for item in body)
+            else:
+                unescaped = [item[1:] if item.startswith((",*", ",#+", ",,")) else item for item in body]
+                lang = (block.group(3) or "") if name == "SRC" else ""
+                out.extend(_dialect_code_block_lines(unescaped, lang))
+            numberer.reset()
+            indents = []
+            continue
+        heading_match = _ORG_HEADING_RE.match(line)
+        list_match = _ORG_LIST_RE.match(line)
+        if heading_match:
+            out.append("#" * min(len(heading_match.group(1)), 6) + " " + _org_inline(heading_match.group(2)))
+            numberer.reset()
+            indents = []
+        elif re.match(r"^-{5,}[ \t]*$", line):
+            out.append("---")
+        elif list_match:
+            depth = _depth_from_indent(indents, len(list_match.group(1)))
+            ordered = list_match.group(2)[0].isdigit()
+            out.append(numberer.prefix(depth, ordered) + _org_inline(list_match.group(3)))
+        elif not line.strip():
+            out.append("")
+        else:
+            out.append(_org_inline(line))
+            numberer.reset()
+            indents = []
+        index += 1
+    return "\n".join(out) + ("\n" if out else "")
+
+
+# --- MediaWiki / Jira shared list prefixes -----------------------------------
+
+def _wiki_list_prefix(stack: list[str], depth: int, ordered: bool) -> str:
+    del stack[depth:]
+    while len(stack) < depth:
+        stack.append("*")
+    stack.append("#" if ordered else "*")
+    return "".join(stack)
+
+
+def _wiki_markup(content: str, token_fn: Any, rules: dict[str, Any]) -> str:
+    out: list[str] = []
+    stack: list[str] = []
+    for block in _lite_blocks(content):
+        kind = block[0]
+        if kind != "list":
+            stack = []
+        if kind == "blank":
+            out.append("")
+        elif kind == "heading":
+            out.append(rules["heading"](block[1], _render_with(token_fn, _lite_inline(block[2]))))
+        elif kind == "code":
+            out.extend(rules["code"](block[1], block[2].split("\n") if block[2] else []))
+        elif kind == "list":
+            prefix = _wiki_list_prefix(stack, block[2], block[1])
+            out.append(prefix + " " + _render_with(token_fn, _lite_inline(block[3])))
+        elif kind == "quote":
+            out.append(rules["quote"](_render_with(token_fn, _lite_inline(block[1]))))
+        elif kind == "hr":
+            out.append("----")
+        else:
+            out.append(_render_with(token_fn, _lite_inline(block[1])))
+    return "\n".join(out) + ("\n" if out else "")
+
+
+def _wiki_list_to_markdown(numberer: _MarkdownListNumberer, prefix: str, text: str) -> str:
+    return numberer.prefix(len(prefix) - 1, prefix[-1] == "#") + text
+
+
+# --- MediaWiki --------------------------------------------------------------
+
+def _mediawiki_token(token: tuple[Any, ...]) -> str:
+    kind = token[0]
+    if kind == "text":
+        return token[1]
+    if kind == "code":
+        return f"<code>{token[1]}</code>"
+    if kind == "bold":
+        return "'''" + _render_with(_mediawiki_token, token[1]) + "'''"
+    if kind == "italic":
+        return "''" + _render_with(_mediawiki_token, token[1]) + "''"
+    if kind == "strike":
+        return "<s>" + _render_with(_mediawiki_token, token[1]) + "</s>"
+    if kind == "link":
+        label = _render_with(_mediawiki_token, token[1])
+        return f"[{token[2]}]" if _lite_plain(token[1]) == token[2] else f"[{token[2]} {label}]"
+    if kind == "image":
+        return f"[{token[2]} {token[1]}]" if token[1] else f"[{token[2]}]"
+    return ""
+
+
+def _mediawiki_code(lang: str, body: list[str]) -> list[str]:
+    if lang:
+        return [f'<syntaxhighlight lang="{html_module.escape(lang, quote=True)}">', *body, "</syntaxhighlight>"]
+    return ["<pre>", *body, "</pre>"]
+
+
+def markdown_to_mediawiki(content: str) -> str:
+    """Convert the Markdown lite subset to MediaWiki markup.
+
+    Level-n headings -> ``=`` x n, ``**b**`` -> ``'''b'''``, ``*i*`` ->
+    ``''i''``, ``~~s~~`` -> ``<s>s</s>``, code -> ``<code>``, links ->
+    ``[url label]`` (external links only), lists -> ``*`` / ``#`` prefixes
+    (mixed nesting like ``*#``), fences -> ``<syntaxhighlight lang=...>`` or
+    ``<pre>``, quotes -> ``<blockquote>`` per line.
+    """
+    return _wiki_markup(
+        content,
+        _mediawiki_token,
+        {
+            "heading": lambda level, text: f"{'=' * level} {text} {'=' * level}",
+            "code": _mediawiki_code,
+            "quote": lambda text: f"<blockquote>{text}</blockquote>",
+        },
+    )
+
+
+_MEDIAWIKI_CODE_RE = re.compile(r"<(?:code|tt)>(.*?)</(?:code|tt)>")
+_MEDIAWIKI_EXT_LINK_RE = re.compile(r"(?<!\[)\[((?:https?|mailto):[^\s\]]+)(?:[ \t]+([^\]\n]+))?\](?!\])")
+_MEDIAWIKI_EMPHASIS = (
+    (re.compile(r"'''(?!')(.+?)(?<!')'''"), "bold"),
+    (re.compile(r"''(?!')(.+?)(?<!')''"), "italic"),
+    (re.compile(r"<(?:s|del|strike)>(.+?)</(?:s|del|strike)>"), "strike"),
+)
+_MEDIAWIKI_HEADING_RE = re.compile(r"^(={1,6})[ \t]*(.+?)[ \t]*\1[ \t]*$")
+_MEDIAWIKI_LIST_RE = re.compile(r"^([*#]+)[ \t]*(.*)$")
+_MEDIAWIKI_CODE_OPEN_RE = re.compile(r'^[ \t]*<(syntaxhighlight|source|pre)(?:[^>]*?\blang="?([\w+#.-]+)"?)?[^>]*>[ \t]*$')
+_MEDIAWIKI_QUOTE_RE = re.compile(r"^[ \t]*<blockquote>(.*)</blockquote>[ \t]*$")
+
+
+def _mediawiki_link_to_markdown(match: re.Match[str]) -> str:
+    url, label = match.group(1), match.group(2)
+    return f"<{url}>" if label is None else f"[{_mediawiki_inline(label)}]({url})"
+
+
+def _mediawiki_inline(text: str) -> str:
+    return _dialect_inline_to_markdown(
+        text,
+        code=_MEDIAWIKI_CODE_RE,
+        links=((_MEDIAWIKI_EXT_LINK_RE, _mediawiki_link_to_markdown),),
+        emphasis=_MEDIAWIKI_EMPHASIS,
+    )
+
+
+def mediawiki_to_markdown(content: str) -> str:
+    """Convert MediaWiki markup to canonical Markdown (narrow contract).
+
+    Supports ``=`` headings, ``*``/``#`` lists, ``<syntaxhighlight>`` /
+    ``<source>`` / ``<pre>`` blocks, one-line ``<blockquote>``, ``----``,
+    and ``'''b'''`` / ``''i''`` / ``<s>`` / ``<code>`` / external
+    ``[url label]`` links. Internal ``[[Page]]`` links, templates
+    ``{{...}}``, tables ``{|...|}``, and ``<ref>`` are kept literally.
+    """
+    out: list[str] = []
+    numberer = _MarkdownListNumberer()
+    lines = content.splitlines()
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        code_open = _MEDIAWIKI_CODE_OPEN_RE.match(line)
+        if code_open:
+            tag = code_open.group(1)
+            body: list[str] = []
+            index += 1
+            while index < len(lines) and lines[index].strip() != f"</{tag}>":
+                body.append(lines[index])
+                index += 1
+            index += 1
+            out.extend(_dialect_code_block_lines(body, code_open.group(2) or ""))
+            numberer.reset()
+            continue
+        heading_match = _MEDIAWIKI_HEADING_RE.match(line)
+        list_match = _MEDIAWIKI_LIST_RE.match(line)
+        quote_match = _MEDIAWIKI_QUOTE_RE.match(line)
+        if heading_match:
+            out.append("#" * len(heading_match.group(1)) + " " + _mediawiki_inline(heading_match.group(2)))
+            numberer.reset()
+        elif re.match(r"^-{4,}[ \t]*$", line):
+            out.append("---")
+            numberer.reset()
+        elif list_match:
+            out.append(_wiki_list_to_markdown(numberer, list_match.group(1), _mediawiki_inline(list_match.group(2))))
+        elif quote_match:
+            out.append(("> " + _mediawiki_inline(quote_match.group(1))).rstrip())
+            numberer.reset()
+        elif not line.strip():
+            out.append("")
+        else:
+            out.append(_mediawiki_inline(line))
+            numberer.reset()
+        index += 1
+    return "\n".join(out) + ("\n" if out else "")
+
+
+# --- Jira wiki markup -------------------------------------------------------
+
+def _jira_token(token: tuple[Any, ...]) -> str:
+    kind = token[0]
+    if kind == "text":
+        return token[1]
+    if kind == "code":
+        return "{{" + token[1] + "}}"
+    if kind in {"bold", "italic", "strike"}:
+        mark = {"bold": "*", "italic": "_", "strike": "-"}[kind]
+        return mark + _render_with(_jira_token, token[1]) + mark
+    if kind == "link":
+        label = _render_with(_jira_token, token[1])
+        return f"[{token[2]}]" if _lite_plain(token[1]) == token[2] else f"[{label}|{token[2]}]"
+    if kind == "image":
+        return f"!{token[2]}!"
+    return ""
+
+
+def _jira_code(lang: str, body: list[str]) -> list[str]:
+    return ["{code:" + lang + "}" if lang else "{code}", *body, "{code}"]
+
+
+def markdown_to_jira(content: str) -> str:
+    """Convert the Markdown lite subset to Jira wiki markup.
+
+    Headings -> ``hN.``, ``**b**`` -> ``*b*``, ``*i*`` -> ``_i_``,
+    ``~~s~~`` -> ``-s-``, code -> ``{{c}}``, links -> ``[label|url]``,
+    images -> ``!url!``, lists -> ``*`` / ``#`` prefixes, fences ->
+    ``{code:lang}``, quotes -> ``bq.`` lines.
+    """
+    return _wiki_markup(
+        content,
+        _jira_token,
+        {
+            "heading": lambda level, text: f"h{level}. {text}",
+            "code": _jira_code,
+            "quote": lambda text: f"bq. {text}",
+        },
+    )
+
+
+_JIRA_CODE_RE = re.compile(r"\{\{(.+?)\}\}")
+_JIRA_LINK_RE = re.compile(r"\[(?:([^\]|\n]+)\|)?((?:https?|mailto):[^\]\s|]+)\]")
+_JIRA_IMAGE_RE = re.compile(r"!((?:https?://[^!\s|]+)|(?:[^!\s|]+\.[A-Za-z0-9]{2,5}))(?:\|[^!\n]*)?!")
+_JIRA_EMPHASIS = (
+    (re.compile(r"(?<![\w*])\*(?=[^\s*])([^*\n]+?)(?<=[^\s*])\*(?![\w*])"), "bold"),
+    (re.compile(r"(?<![\w_])_(?=[^\s_])([^_\n]+?)(?<=[^\s_])_(?![\w_])"), "italic"),
+    (re.compile(r"(?<![\w-])-(?=[^\s-])([^\n]+?)(?<=[^\s-])-(?![\w-])"), "strike"),
+)
+_JIRA_HEADING_RE = re.compile(r"^h([1-6])\.[ \t]+(.*?)[ \t]*$")
+_JIRA_LIST_RE = re.compile(r"^([*#]+|-)[ \t]+(.*)$")
+_JIRA_CODE_OPEN_RE = re.compile(r"^[ \t]*\{(code|noformat)(?::([^}]*))?\}[ \t]*$")
+
+
+def _jira_link_to_markdown(match: re.Match[str]) -> str:
+    label, url = match.group(1), match.group(2)
+    return f"<{url}>" if label is None else f"[{_jira_inline(label)}]({url})"
+
+
+def _jira_inline(text: str) -> str:
+    return _dialect_inline_to_markdown(
+        text,
+        code=_JIRA_CODE_RE,
+        links=(
+            (_JIRA_LINK_RE, _jira_link_to_markdown),
+            (_JIRA_IMAGE_RE, lambda m: f"![]({m.group(1)})"),
+        ),
+        emphasis=_JIRA_EMPHASIS,
+    )
+
+
+def jira_to_markdown(content: str) -> str:
+    """Convert Jira wiki markup to canonical Markdown (narrow contract).
+
+    Supports ``hN.`` headings, ``*``/``#``/``-`` lists, ``{code[:lang]}`` /
+    ``{noformat}`` / ``{quote}`` blocks, ``bq.`` lines, ``----``, and
+    ``*b*`` / ``_i_`` / ``-s-`` / ``{{c}}`` / ``[label|url]`` / ``!img!``.
+    Tables, panels, ``{color}``, mentions, and ``+u+`` / ``^sup^`` /
+    ``~sub~`` are kept literally.
+    """
+    out: list[str] = []
+    numberer = _MarkdownListNumberer()
+    lines = content.splitlines()
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        code_open = _JIRA_CODE_OPEN_RE.match(line)
+        if code_open or line.strip() == "{quote}":
+            tag = code_open.group(1) if code_open else "quote"
+            body: list[str] = []
+            index += 1
+            while index < len(lines) and lines[index].strip() != "{" + tag + "}":
+                body.append(lines[index])
+                index += 1
+            index += 1
+            if tag == "quote":
+                out.extend(("> " + _jira_inline(item)).rstrip() if item.strip() else ">" for item in body)
+            else:
+                options = (code_open.group(2) or "") if tag == "code" else ""
+                lang = options.split("|")[0]
+                lang = "" if "=" in lang else lang
+                for option in options.split("|"):
+                    if option.startswith("language="):
+                        lang = option.split("=", 1)[1]
+                out.extend(_dialect_code_block_lines(body, lang))
+            numberer.reset()
+            continue
+        heading_match = _JIRA_HEADING_RE.match(line)
+        list_match = _JIRA_LIST_RE.match(line)
+        if heading_match:
+            out.append("#" * int(heading_match.group(1)) + " " + _jira_inline(heading_match.group(2)))
+            numberer.reset()
+        elif re.match(r"^-{4,}[ \t]*$", line):
+            out.append("---")
+            numberer.reset()
+        elif list_match:
+            prefix = "*" if list_match.group(1) == "-" else list_match.group(1)
+            out.append(_wiki_list_to_markdown(numberer, prefix, _jira_inline(list_match.group(2))))
+        elif line.startswith("bq. "):
+            out.append("> " + _jira_inline(line[4:]))
+            numberer.reset()
+        elif not line.strip():
+            out.append("")
+        else:
+            out.append(_jira_inline(line))
+            numberer.reset()
+        index += 1
+    return "\n".join(out) + ("\n" if out else "")
