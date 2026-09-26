@@ -134,6 +134,10 @@ __all__ = [
     "QIITA_NOTE_KINDS",
     "ZENN_MESSAGE_KINDS",
     "CHAT_ROLES",
+    "split_reasoning",
+    "compact_llm_output",
+    "llm_output_digest",
+    "extract_identifiers",
     "SUPPORTED",
     "UNSUPPORTED",
 ]
@@ -187,6 +191,11 @@ SUPPORTED = {
         "raw HTML tags (best-effort extraction)",
         "horizontal rules (--- *** ___)",
         "context helpers: extract_section / strip_prose_keep_structure / minify_markdown / safe_truncate",
+        "llm io: split_reasoning / compact_llm_output / llm_output_digest / "
+        "extract_identifiers (answer vs. <think>/<thinking>/<reasoning>/Open WebUI "
+        "<details type=reasoning> blocks, log-safe compaction, a JSON-able digest, "
+        "and UUID/URL/GitHub-ref/hex-SHA identifiers worth referencing instead of "
+        "embedding whole content)",
     ],
     "conversion": [
         "link/image builders",
@@ -283,6 +292,12 @@ UNSUPPORTED = {
         "full Kramdown (extensions {::comment}/{::options}/{::nomarkdown}, math, "
         "TOC macros {:toc}, span IAL, IAL on lists/quotes/tables, attribute references)",
         "Liquid {% %} / {{ }}, YAML front matter, Jekyll tags / includes / baseurl",
+        "llm io helpers are a narrow heuristic, not a provider-format parser: only "
+        "<think>/<thinking>/<reasoning> and Open WebUI's <details type=\"reasoning\"> "
+        "are recognized as reasoning (other providers' own reasoning formats stay "
+        "literal answer text); extract_identifiers pattern-matches UUIDs/URLs/GitHub "
+        "refs/hex runs and does not validate them against a real repository, commit, "
+        "or hash algorithm",
     ],
     "conversion": [
         "dialect conversions escape nothing inside plain text: literal markup characters "
@@ -6256,3 +6271,367 @@ def jira_to_markdown(content: str) -> str:
             numberer.reset()
         index += 1
     return "\n".join(out) + ("\n" if out else "")
+
+
+# === SECTION: llm io ===
+# LLM inputs/outputs are hard to read in logs and tests: a reasoning model
+# interleaves private "thinking" with the actual answer, a full response can
+# run thousands of characters, and assertions/log lines rarely need the whole
+# blob verbatim. These helpers separate reasoning from the answer, compress
+# an output for logs, summarize it for assertions, and find IDs (UUIDs,
+# URLs, GitHub refs, hex SHAs) worth referencing instead of embedding whole
+# content. They reuse the shared scanner/masking helpers, code_block's
+# adaptive fence, and the extract_* family rather than re-parsing fences or
+# code spans.
+
+_REASONING_TAG_NAMES = ("think", "thinking", "reasoning")
+_REASONING_OPEN_RE = re.compile(r"<(think|thinking|reasoning)\b[^>]*>", re.IGNORECASE)
+_REASONING_CLOSE_RE = {
+    name: re.compile(r"</" + name + r"\s*>", re.IGNORECASE) for name in _REASONING_TAG_NAMES
+}
+# Open WebUI streams reasoning as a collapsible <details type="reasoning">
+# block with a leading <summary> line (e.g. "Thought for 5 seconds") that is
+# not itself part of the reasoning content.
+_REASONING_DETAILS_OPEN_RE = re.compile(
+    r'<details\b(?=[^>]*\btype=["\']reasoning["\'])[^>]*>', re.IGNORECASE
+)
+_REASONING_DETAILS_CLOSE_RE = re.compile(r"</details\s*>", re.IGNORECASE)
+_REASONING_SUMMARY_RE = re.compile(
+    r"[ \t]*<summary\b[^>]*>.*?</summary>[ \t]*\n?", re.IGNORECASE | re.DOTALL
+)
+_LLM_UUID_RE = re.compile(
+    r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
+)
+_LLM_GITHUB_REPO_REF_RE = re.compile(
+    r"\b[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?/[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?#[0-9]+\b"
+)
+_LLM_GITHUB_BARE_REF_RE = re.compile(r"(?<![\w/])#[0-9]+\b")
+_LLM_HEX_RUN_RE = re.compile(r"[0-9a-fA-F]+")
+
+
+def _mask_code_context(text: str, *, mask_inline: bool) -> str:
+    """Same-length ``text`` with fenced code, and optionally inline code, blanked.
+
+    Positions line up with ``text`` line by line, so offsets found by
+    scanning the result can slice ``text`` itself unchanged. Uses the shared
+    scanner contract (``_scan_lines`` for fence state, ``_mask_inline_code``
+    for balanced backtick spans) instead of a new ad hoc fence tracker.
+    """
+    lines = text.split("\n")
+    scanned = _scan_lines(lines)
+    masked_lines: list[str] = []
+    for line, item in zip(lines, scanned):
+        if item.in_fenced_code:
+            masked_lines.append(" " * len(line))
+        elif mask_inline:
+            masked_lines.append(_mask_inline_code(line))
+        else:
+            masked_lines.append(line)
+    return "\n".join(masked_lines)
+
+
+def _collapse_blank_runs(text: str, max_blank_lines: int) -> str:
+    """Collapse runs of blank lines outside fenced code to ``max_blank_lines``."""
+    lines = text.split("\n")
+    scanned = _scan_lines(lines)
+    out: list[str] = []
+    blank_run = 0
+    for line, item in zip(lines, scanned):
+        is_blank = not item.in_fenced_code and line.strip() == ""
+        if is_blank:
+            blank_run += 1
+            if blank_run > max_blank_lines:
+                continue
+        else:
+            blank_run = 0
+        out.append(line)
+    return "\n".join(out)
+
+
+def _truncate_code_blocks(text: str, max_code_lines: int) -> str:
+    """Shorten fenced code blocks over ``max_code_lines`` lines, fence-safe.
+
+    Walks lines with the shared scanner exactly like ``extract_code_blocks``,
+    but rewrites the block instead of only collecting it: kept lines are
+    followed by one ``... N more lines`` marker line, re-fenced with
+    ``code_block`` so its adaptive fence stays longer than any backtick run
+    left in the (possibly truncated) body.
+    """
+    lines = text.split("\n")
+    scanned = _scan_lines(lines)
+    out: list[str] = []
+    index = 0
+    total = len(lines)
+    while index < total:
+        if not scanned[index].is_fence_open:
+            out.append(lines[index])
+            index += 1
+            continue
+        match = _FENCE_RE.match(lines[index])
+        fence_char = match.group(1)[0] if match else "`"
+        info = match.group(2).strip() if match else ""
+        lang = info.split()[0] if info else ""
+        body: list[str] = []
+        index += 1
+        while index < total and not scanned[index].is_fence_close:
+            body.append(lines[index])
+            index += 1
+        if index < total:
+            index += 1  # consume the closing fence line itself
+        if len(body) > max_code_lines:
+            extra = len(body) - max_code_lines
+            body = body[:max_code_lines] + [f"… {extra} more lines"]
+        rendered = code_block("\n".join(body), lang, fence_char=fence_char).split("\n")
+        if rendered and rendered[-1] == "":
+            rendered.pop()
+        out.extend(rendered)
+    return "\n".join(out)
+
+
+def _dedupe_in_order(matches: list[tuple[int, str]]) -> list[str]:
+    """Sort ``(position, value)`` pairs by position and drop repeat values."""
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for _position, value in sorted(matches, key=lambda pair: pair[0]):
+        if value not in seen:
+            seen.add(value)
+            ordered.append(value)
+    return ordered
+
+
+def _mask_spans(text: str, spans: list[tuple[int, int]]) -> str:
+    """Blank ``text`` over each ``(start, end)`` span, keeping length/positions."""
+    if not spans:
+        return text
+    chars = list(text)
+    for start, end in spans:
+        for index in range(start, end):
+            chars[index] = " "
+    return "".join(chars)
+
+
+def _split_reasoning_raw(text: str) -> tuple[str, list[str], list[str]]:
+    """Remove reasoning blocks from ``text`` with no shaping applied yet.
+
+    Shared core for :func:`split_reasoning` and :func:`compact_llm_output`:
+    returns ``(raw_answer, reasoning, formats)`` where ``raw_answer`` is
+    ``text`` with every reasoning block cut out, but *not yet* blank-line
+    collapsed or whitespace-stripped -- each caller applies its own final
+    shaping (``split_reasoning`` always collapses to one blank line;
+    ``compact_llm_output`` collapses to its caller-chosen ``max_blank_lines``).
+
+    See :func:`split_reasoning` for the recognized tag formats and the
+    unclosed-tag / fenced-code / inline-code rules.
+    """
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    mask = _mask_code_context(normalized, mask_inline=True)
+    length = len(normalized)
+
+    kept: list[str] = []
+    reasoning: list[str] = []
+    formats: list[str] = []
+    pos = 0
+    while True:
+        tag_match = _REASONING_OPEN_RE.search(mask, pos)
+        details_match = _REASONING_DETAILS_OPEN_RE.search(mask, pos)
+        candidates = [m for m in (tag_match, details_match) if m is not None]
+        if not candidates:
+            kept.append(normalized[pos:])
+            break
+        opening = min(candidates, key=lambda m: m.start())
+        kept.append(normalized[pos:opening.start()])
+
+        if opening is details_match:
+            fmt = "details"
+            close_match = _REASONING_DETAILS_CLOSE_RE.search(mask, opening.end())
+        else:
+            fmt = opening.group(1).lower()
+            close_match = _REASONING_CLOSE_RE[fmt].search(mask, opening.end())
+
+        if close_match is None:
+            block = normalized[opening.end():]
+            pos = length
+        else:
+            block = normalized[opening.end():close_match.start()]
+            pos = close_match.end()
+
+        if fmt == "details":
+            block = _REASONING_SUMMARY_RE.sub("", block, count=1)
+
+        reasoning.append(block.strip())
+        formats.append(fmt)
+
+        if close_match is None:
+            break
+
+    return "".join(kept), reasoning, formats
+
+
+def split_reasoning(text: str) -> dict[str, Any]:
+    """Split reasoning-model output into its answer and reasoning blocks.
+
+    Recognizes case-insensitive ``<think>``, ``<thinking>``, and
+    ``<reasoning>`` tags, plus Open WebUI's collapsible
+    ``<details type="reasoning" ...><summary>...</summary>...</details>``
+    (the summary line is dropped; the rest of that block is reasoning). Tags
+    inside fenced code or inline code spans are ignored and stay literal in
+    the answer, using the shared scanner/masking helpers rather than a
+    second fence tracker. An opening tag with no matching close (a stream
+    cut mid-thought) makes the rest of the text one final reasoning block.
+
+    Returns a dict with ``answer`` (the input with every reasoning block
+    removed, blank-line runs left behind collapsed to one, and outer
+    whitespace stripped -- a trailing ``"\\n"`` when non-empty, matching
+    this module's other converters), ``reasoning`` (each block's stripped
+    text, in order of appearance), and ``formats`` (one tag name per block,
+    parallel to ``reasoning``: ``"think"``, ``"thinking"``, ``"reasoning"``,
+    or ``"details"``).
+
+    :raises ValueError: if ``text`` is not a ``str``.
+    """
+    if not isinstance(text, str):
+        raise ValueError("text must be a string")
+    if not text:
+        return {"answer": "", "reasoning": [], "formats": []}
+
+    raw_answer, reasoning, formats = _split_reasoning_raw(text)
+    answer = _collapse_blank_runs(raw_answer, 1).strip()
+    return {
+        "answer": answer + "\n" if answer else "",
+        "reasoning": reasoning,
+        "formats": formats,
+    }
+
+
+def compact_llm_output(
+    text: str,
+    *,
+    keep_reasoning: bool = False,
+    max_code_lines: int = 40,
+    max_blank_lines: int = 1,
+) -> str:
+    """Deterministically compress LLM output for logs and test assertions.
+
+    Drops reasoning blocks (the same recognizer as :func:`split_reasoning`)
+    unless ``keep_reasoning`` is set. Blank-line runs outside fenced code
+    are collapsed to ``max_blank_lines`` -- this is applied directly to the
+    reasoning-stripped text rather than through ``split_reasoning``'s own
+    ``answer`` field, since that field always collapses to exactly one
+    blank line. A fenced code block longer than ``max_code_lines`` lines
+    keeps only its first ``max_code_lines`` lines, then a final
+    ``... N more lines`` marker line, re-fenced with :func:`code_block` so
+    its adaptive fence stays stable even when the kept lines contain their
+    own backtick runs. Code content is never otherwise altered.
+
+    :raises ValueError: if ``text`` is not a ``str``, or ``max_code_lines``
+        / ``max_blank_lines`` is negative.
+    """
+    if not isinstance(text, str):
+        raise ValueError("text must be a string")
+    if max_code_lines < 0:
+        raise ValueError("max_code_lines must be >= 0")
+    if max_blank_lines < 0:
+        raise ValueError("max_blank_lines must be >= 0")
+    if not text:
+        return ""
+
+    if keep_reasoning:
+        working = text
+    else:
+        working, _reasoning, _formats = _split_reasoning_raw(text)
+    normalized = working.replace("\r\n", "\n").replace("\r", "\n")
+    collapsed = _collapse_blank_runs(normalized, max_blank_lines)
+    truncated = _truncate_code_blocks(collapsed, max_code_lines)
+    result = truncated.strip()
+    return result + "\n" if result else ""
+
+
+def llm_output_digest(text: str) -> dict[str, Any]:
+    """Summarize LLM output as a small JSON-able dict for logs and assertions.
+
+    Splits off reasoning with :func:`split_reasoning` first, then reuses the
+    existing ``extract_*`` helpers on the remaining answer: ``headings``
+    (:func:`extract_sections` titles), ``code_blocks``
+    (:func:`extract_code_blocks` as ``{"lang", "lines"}``), and ``links``
+    (:func:`extract_urls`). ``has_table`` reuses :func:`markdown_table_to_rows`
+    rather than a second table sniffer.
+
+    Returns a dict with ``answer_chars``, ``reasoning_chars``,
+    ``reasoning_blocks``, ``headings``, ``code_blocks``, ``links``, and
+    ``has_table``.
+
+    :raises ValueError: if ``text`` is not a ``str``.
+    """
+    if not isinstance(text, str):
+        raise ValueError("text must be a string")
+
+    split = split_reasoning(text)
+    answer = split["answer"]
+    headers, _rows = markdown_table_to_rows(answer)
+    return {
+        "answer_chars": len(answer),
+        "reasoning_chars": sum(len(block) for block in split["reasoning"]),
+        "reasoning_blocks": len(split["reasoning"]),
+        "headings": [item["title"] for item in extract_sections(answer)],
+        "code_blocks": [
+            {"lang": block["language"], "lines": len(block["code"].splitlines())}
+            for block in extract_code_blocks(answer)
+        ],
+        "links": extract_urls(answer),
+        "has_table": bool(headers),
+    }
+
+
+def extract_identifiers(text: str) -> dict[str, Any]:
+    """Find IDs worth referencing instead of embedding whole content.
+
+    Looks for UUIDs, URLs (:func:`extract_urls`), GitHub issue/PR
+    references (``owner/repo#123`` and bare ``#123``), and bare hex "SHA"
+    runs (7-40 hex characters containing at least one letter and one digit,
+    and not part of an already-matched UUID or URL). Each list is
+    deduplicated in order of first appearance. Matches inside fenced code
+    are skipped, using the shared scanner rather than a second fence
+    tracker; inline code is scanned normally.
+
+    Returns a dict with ``uuids``, ``urls``, ``github_refs``, and ``shas``.
+
+    :raises ValueError: if ``text`` is not a ``str``.
+    """
+    if not isinstance(text, str):
+        raise ValueError("text must be a string")
+    if not text:
+        return {"uuids": [], "urls": [], "github_refs": [], "shas": []}
+
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    masked = _mask_code_context(normalized, mask_inline=False)
+
+    uuid_hits = [(m.start(), m.end(), m.group(0)) for m in _LLM_UUID_RE.finditer(masked)]
+    uuids = _dedupe_in_order([(start, value) for start, _end, value in uuid_hits])
+
+    urls = extract_urls(masked)
+
+    repo_hits = [(m.start(), m.group(0)) for m in _LLM_GITHUB_REPO_REF_RE.finditer(masked)]
+    bare_hits = [(m.start(), m.group(0)) for m in _LLM_GITHUB_BARE_REF_RE.finditer(masked)]
+    github_refs = _dedupe_in_order(repo_hits + bare_hits)
+
+    # A SHA must not be carved out of an already-matched UUID or URL, so
+    # blank both before scanning for bare hex runs.
+    exclude_spans = [(start, end) for start, end, _value in uuid_hits]
+    for url in urls:
+        search_from = 0
+        while True:
+            found = masked.find(url, search_from)
+            if found < 0:
+                break
+            exclude_spans.append((found, found + len(url)))
+            search_from = found + len(url)
+    sha_source = _mask_spans(masked, exclude_spans)
+
+    sha_hits: list[tuple[int, str]] = []
+    for m in _LLM_HEX_RUN_RE.finditer(sha_source):
+        run = m.group(0)
+        if 7 <= len(run) <= 40 and any(c.isdigit() for c in run) and any(c.isalpha() for c in run):
+            sha_hits.append((m.start(), run))
+    shas = _dedupe_in_order(sha_hits)
+
+    return {"uuids": uuids, "urls": urls, "github_refs": github_refs, "shas": shas}
