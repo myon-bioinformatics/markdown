@@ -76,6 +76,11 @@ __all__ = [
     "inspect_to_markdown",
     "argparse_to_markdown",
     "distribution_to_markdown",
+    "calendar_to_markdown",
+    "platform_to_markdown",
+    "email_to_markdown",
+    "markdown_to_email",
+    "markdown_to_man",
     "table",
     "aligned_table",
     "markdown_table_to_rows",
@@ -124,9 +129,14 @@ __all__ = [
 
 import argparse
 import ast
+import calendar as calendar_module
 import configparser
 import csv
 import doctest
+import email as email_module
+import email.message as email_message
+import email.policy as email_policy
+import email.utils as email_utils
 import graphlib
 import html as html_module
 import importlib.metadata as importlib_metadata
@@ -134,8 +144,10 @@ import inspect
 import io
 import json
 import math
+import platform
 import re
 import statistics
+import sys
 import tokenize
 import unicodedata
 from dataclasses import dataclass
@@ -215,6 +227,9 @@ SUPPORTED = {
         "Python classes -> Mermaid classDiagram, Markdown links -> Graphviz DOT",
         "reference generators: inspect object -> API reference, argparse parser -> CLI reference, "
         "installed distribution metadata -> package reference",
+        "system formats: calendar month -> table, platform/interpreter facts -> table "
+        "(no host/user identity), RFC 5322 email <-> Markdown (multipart/alternative; "
+        "never sent, attachments listed not decoded), Markdown -> man(7) troff (request-injection safe)",
         "table / key_value_table",
         "md_table / md_kv (*args-friendly wrappers, no list/dict pre-building needed)",
         "status_line",
@@ -5117,3 +5132,365 @@ def scaffold_from_markdown(content: str, root: str | Path) -> list[str]:
     plan(tree, ())
     build(tree, ())
     return created
+
+
+# === SECTION: markdown lite model ===
+# A deliberately small block/inline model of the Markdown subset that
+# one-way and dialect writers share: ATX headings, paragraphs (one physical
+# line at a time, never reflowed), fenced code, bullet/ordered list items,
+# ``>`` quote lines, thematic breaks, and inline code / links / images /
+# autolinks / bold / italic / strikethrough. Anything else (tables, raw
+# HTML, footnotes, ...) passes through as literal paragraph text.
+
+_LITE_LIST_RE = re.compile(r"^( *)([-*+]|\d+[.)])[ \t]+(.*)$")
+_LITE_QUOTE_RE = re.compile(r"^ {0,3}> ?(.*)$")
+_LITE_INLINE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("image", re.compile(r"!\[([^\]]*)\]\(([^)\s]+)\)")),
+    ("link", re.compile(r"\[([^\]]+)\]\(([^)\s]+)\)")),
+    ("autolink", re.compile(r"<((?:https?|mailto):[^>\s]+)>")),
+    ("bold", re.compile(r"\*\*(?=\S)(.+?)(?<=\S)\*\*|__(?=\S)(.+?)(?<=\S)__")),
+    ("strike", re.compile(r"~~(?=\S)(.+?)(?<=\S)~~")),
+    ("italic", re.compile(r"\*(?=[^\s*])(.+?)(?<=[^\s*])\*|(?<![\w])_(?=\S)(.+?)(?<=\S)_(?![\w])")),
+)
+
+
+def _lite_blocks(content: str) -> list[tuple[Any, ...]]:
+    """Split Markdown into ``(kind, ...)`` blocks for the lite writers."""
+    blocks: list[tuple[Any, ...]] = []
+    lines = content.splitlines()
+    scanned = _scan_lines(lines)
+    list_indents: list[int] = []
+    index = 0
+    while index < len(lines):
+        item = scanned[index]
+        line = item.text
+        if item.is_fence_open:
+            match = _FENCE_RE.match(line)
+            info = match.group(2).strip() if match else ""
+            lang = info.split()[0] if info else ""
+            body: list[str] = []
+            index += 1
+            while index < len(lines) and not scanned[index].is_fence_close:
+                body.append(lines[index])
+                index += 1
+            index += 1
+            blocks.append(("code", lang, "\n".join(body)))
+            list_indents = []
+            continue
+        heading_match = _HEADING_RE.match(line)
+        list_match = _LITE_LIST_RE.match(line.expandtabs(4))
+        quote_match = _LITE_QUOTE_RE.match(line)
+        if not line.strip():
+            blocks.append(("blank",))
+        elif heading_match:
+            blocks.append(("heading", len(heading_match.group(1)), heading_match.group(2).strip().rstrip("#").strip()))
+            list_indents = []
+        elif _HR_RE.match(line) and not list_match:
+            blocks.append(("hr",))
+        elif list_match:
+            indent = len(list_match.group(1))
+            while list_indents and list_indents[-1] > indent:
+                list_indents.pop()
+            if not list_indents or list_indents[-1] < indent:
+                list_indents.append(indent)
+            ordered = list_match.group(2)[0].isdigit()
+            blocks.append(("list", ordered, len(list_indents) - 1, list_match.group(3)))
+        elif quote_match:
+            blocks.append(("quote", quote_match.group(1)))
+        else:
+            blocks.append(("para", line))
+            list_indents = []
+        index += 1
+    return blocks
+
+
+def _lite_inline(text: str) -> list[tuple[Any, ...]]:
+    """Tokenize one line of inline Markdown into nested ``(kind, ...)`` tokens."""
+    tokens: list[tuple[Any, ...]] = []
+    buffer: list[str] = []
+
+    def flush() -> None:
+        if buffer:
+            tokens.append(("text", "".join(buffer)))
+            buffer.clear()
+
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if char == "\\" and index + 1 < len(text) and not text[index + 1].isalnum() and not text[index + 1].isspace():
+            buffer.append(text[index + 1])
+            index += 2
+            continue
+        if char == "`":
+            end = index
+            while end < len(text) and text[end] == "`":
+                end += 1
+            marker = text[index:end]
+            close = text.find(marker, end)
+            if close >= 0:
+                flush()
+                inner = text[end:close]
+                if len(inner) >= 2 and inner.startswith(" ") and inner.endswith(" ") and inner.strip():
+                    inner = inner[1:-1]
+                tokens.append(("code", inner))
+                index = close + len(marker)
+                continue
+            buffer.append(marker)
+            index = end
+            continue
+        matched = False
+        for kind, pattern in _LITE_INLINE_PATTERNS:
+            match = pattern.match(text, index)
+            if not match:
+                continue
+            flush()
+            if kind == "image":
+                tokens.append(("image", match.group(1), match.group(2)))
+            elif kind == "link":
+                tokens.append(("link", _lite_inline(match.group(1)), match.group(2)))
+            elif kind == "autolink":
+                tokens.append(("link", [("text", match.group(1))], match.group(1)))
+            else:
+                inner = next(group for group in match.groups() if group is not None)
+                tokens.append((kind, _lite_inline(inner)))
+            index = match.end()
+            matched = True
+            break
+        if matched:
+            continue
+        buffer.append(char)
+        index += 1
+    flush()
+    return tokens
+
+
+def _lite_plain(tokens: list[tuple[Any, ...]]) -> str:
+    """Flatten inline tokens to their visible text."""
+    parts: list[str] = []
+    for token in tokens:
+        kind = token[0]
+        if kind in {"text", "code"}:
+            parts.append(token[1])
+        elif kind == "image":
+            parts.append(token[1])
+        else:
+            parts.append(_lite_plain(token[1]))
+    return "".join(parts)
+
+
+# === SECTION: system formats ===
+# One-way/system-facing adapters from #24 P9: calendar and platform
+# snapshots as tables, RFC 5322 email <-> Markdown, and Markdown -> man(7).
+
+_ENGLISH_MONTHS = (
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+)
+_ENGLISH_WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+
+def calendar_to_markdown(year: int, month: int, *, firstweekday: int = 0, title: str | None = None) -> str:
+    """Render one month as a heading plus a GFM table of day numbers.
+
+    Month/weekday names are fixed English strings (not the process locale)
+    so output is deterministic. ``firstweekday`` follows
+    :mod:`calendar` (0 = Monday, 6 = Sunday).
+    """
+    if not 1 <= month <= 12:
+        raise ValueError(f"month must be 1..12, got {month}")
+    if not 0 <= firstweekday <= 6:
+        raise ValueError(f"firstweekday must be 0..6, got {firstweekday}")
+    cal = calendar_module.Calendar(firstweekday)
+    headers = [_ENGLISH_WEEKDAYS[(firstweekday + offset) % 7] for offset in range(7)]
+    rows = [[str(day) if day else "" for day in week] for week in cal.monthdayscalendar(year, month)]
+    label = title if title is not None else f"{_ENGLISH_MONTHS[month - 1]} {year}"
+    return heading(label, 2) + "\n" + table(headers, rows)
+
+
+def platform_to_markdown(*, title: str = "Environment") -> str:
+    """Summarize the running interpreter/OS as a two-column Markdown table.
+
+    Reads only :mod:`platform` / :mod:`sys` facts useful for bug reports.
+    The host name, user name, and environment variables are deliberately
+    never included.
+    """
+    rows = [
+        ("Python", platform.python_version()),
+        ("Implementation", platform.python_implementation()),
+        ("Compiler", platform.python_compiler()),
+        ("System", platform.system() or "unknown"),
+        ("Release", platform.release() or "unknown"),
+        ("Machine", platform.machine() or "unknown"),
+        ("Platform", platform.platform(terse=True)),
+        ("Byte order", sys.byteorder),
+    ]
+    return heading(title, 2) + "\n" + table(["Key", "Value"], rows)
+
+
+_EMAIL_SUMMARY_HEADERS = ("From", "To", "Cc", "Date", "Subject")
+
+
+def email_to_markdown(message: str | bytes) -> str:
+    """Render an RFC 5322 / MIME message as Markdown without side effects.
+
+    Output: ``# Subject``, a header table (From/To/Cc/Date/Subject that are
+    present), the first ``text/plain`` body verbatim (or the first
+    ``text/html`` body through :func:`html_to_markdown` when there is no
+    plain part), then an attachment table (filename, content type, decoded
+    size). Attachments are never decoded to disk, opened, or executed.
+    """
+    policy = email_policy.default
+    parsed = (
+        email_module.message_from_bytes(message, policy=policy)
+        if isinstance(message, bytes)
+        else email_module.message_from_string(message, policy=policy)
+    )
+    subject = str(parsed.get("Subject", "") or "").strip() or "(no subject)"
+    rows = [(name, str(parsed[name])) for name in _EMAIL_SUMMARY_HEADERS if parsed.get(name) is not None]
+    out = [heading(subject, 1), "\n", table(["Header", "Value"], rows)]
+
+    body_part = parsed.get_body(preferencelist=("plain", "html"))
+    if body_part is not None:
+        body = body_part.get_content()
+        if body_part.get_content_type() == "text/html":
+            body = html_to_markdown(body)
+        body = body.replace("\r\n", "\n").strip("\n")
+        if body:
+            out += ["\n", body, "\n"]
+
+    attachments = []
+    for part in parsed.iter_attachments():
+        payload = part.get_payload(decode=True) or b""
+        attachments.append((part.get_filename() or "", part.get_content_type(), str(len(payload))))
+    if attachments:
+        out += ["\n", heading("Attachments", 2), "\n", table(["Filename", "Content-Type", "Size (bytes)"], attachments)]
+    return "".join(out)
+
+
+def markdown_to_email(
+    content: str,
+    *,
+    subject: str,
+    sender: str,
+    to: str | list[str],
+    date: Any = None,
+) -> str:
+    """Build (never send) a ``multipart/alternative`` email from Markdown.
+
+    The ``text/plain`` part is the Markdown source verbatim; the
+    ``text/html`` part is :func:`markdown_to_html` output. Header values
+    containing CR/LF are rejected by :mod:`email.policy` (no header
+    injection). ``date`` may be a :class:`datetime.datetime`; omitted means
+    no ``Date`` header, keeping output deterministic.
+    ``email_to_markdown()`` recovers the Markdown body unchanged.
+    """
+    msg = email_message.EmailMessage(policy=email_policy.default)
+    msg["Subject"] = subject
+    msg["From"] = sender
+    msg["To"] = ", ".join(to) if isinstance(to, (list, tuple)) else to
+    if date is not None:
+        msg["Date"] = email_utils.format_datetime(date)
+    body = content if content.endswith("\n") else content + "\n"
+    msg.set_content(body, subtype="plain", charset="utf-8")
+    msg.add_alternative(markdown_to_html(content), subtype="html", charset="utf-8")
+    return msg.as_string()
+
+
+def _man_escape(text: str) -> str:
+    return text.replace("\\", "\\e").replace("-", "\\-")
+
+
+def _man_inline(tokens: list[tuple[Any, ...]], font: str = "R") -> str:
+    parts: list[str] = []
+    for token in tokens:
+        kind = token[0]
+        if kind == "text":
+            parts.append(_man_escape(token[1]))
+        elif kind == "code":
+            parts.append(f"\\fB{_man_escape(token[1])}\\f{font}")
+        elif kind == "bold":
+            parts.append(f"\\fB{_man_inline(token[1], 'B')}\\f{font}")
+        elif kind == "italic":
+            parts.append(f"\\fI{_man_inline(token[1], 'I')}\\f{font}")
+        elif kind == "strike":
+            parts.append(_man_inline(token[1], font))
+        elif kind == "link":
+            label = _man_inline(token[1], font)
+            url = _man_escape(token[2])
+            parts.append(label if _lite_plain(token[1]) == token[2] else f"{label} <{url}>")
+        elif kind == "image":
+            parts.append(f"[{_man_escape(token[1])}] <{_man_escape(token[2])}>")
+    return "".join(parts)
+
+
+def _man_line(text: str) -> str:
+    """Guard a rendered text line so troff never reads it as a request."""
+    return "\\&" + text if text.startswith((".", "'")) else text
+
+
+def markdown_to_man(
+    content: str,
+    *,
+    name: str,
+    section: str = "1",
+    date: str = "",
+    source: str = "",
+    manual: str = "",
+) -> str:
+    """Render the Markdown lite subset as a man(7) troff page (one-way).
+
+    ``# H`` -> ``.SH`` (upper-cased), deeper headings -> ``.SS``, lines ->
+    ``.PP`` paragraphs, fenced code -> ``.EX``/``.EE``, lists -> ``.IP``,
+    quotes -> ``.RS``/``.RE``, bold/code -> ``\\fB``, italic -> ``\\fI``.
+    Backslashes and hyphens are escaped and any line that would start with
+    ``.`` or ``'`` is guarded with ``\\&``, so Markdown text can never
+    inject a troff request.
+    """
+    def quoted(value: str) -> str:
+        return '"' + _man_escape(value).replace('"', '\\(dq') + '"'
+
+    out = [f".TH {quoted(name.upper())} {quoted(section)} {quoted(date)} {quoted(source)} {quoted(manual)}"]
+    in_paragraph = False
+    in_quote = False
+    for block in _lite_blocks(content):
+        kind = block[0]
+        if in_quote and kind != "quote":
+            out.append(".RE")
+            in_quote = False
+        if kind == "blank":
+            in_paragraph = False
+        elif kind == "heading":
+            tokens = _lite_inline(block[2])
+            if block[1] == 1:
+                out.append(".SH " + _man_escape(_lite_plain(tokens).upper()))
+            else:
+                out.append(".SS " + _man_inline(tokens))
+            in_paragraph = False
+        elif kind == "code":
+            out.append(".PP")
+            out.append(".EX")
+            out.extend(_man_line(_man_escape(line)) for line in block[2].split("\n"))
+            out.append(".EE")
+            in_paragraph = False
+        elif kind == "list":
+            ordered, depth, text = block[1], block[2], block[3]
+            bullet = "\\(bu" if not ordered else "\\(en"
+            out.append(f".IP {bullet} {4 + depth * 2}")
+            out.append(_man_line(_man_inline(_lite_inline(text))))
+            in_paragraph = True
+        elif kind == "quote":
+            if not in_quote:
+                out.append(".RS 4")
+                in_quote = True
+            out.append(_man_line(_man_inline(_lite_inline(block[1]))))
+        elif kind == "hr":
+            out.append(".PP")
+            in_paragraph = False
+        else:
+            if not in_paragraph:
+                out.append(".PP")
+                in_paragraph = True
+            out.append(_man_line(_man_inline(_lite_inline(block[1]))))
+    if in_quote:
+        out.append(".RE")
+    return "\n".join(out) + "\n"
