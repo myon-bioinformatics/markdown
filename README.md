@@ -221,6 +221,27 @@ utilities, not a CommonMark parser or an LLM summarizer:
 Conversation-history compression and broader HTML conversion remain separate
 future design topics. See docs/context_helpers.md for the exact contracts.
 
+## Dialects, system formats, directory trees, LLM output
+
+All stdlib-only; `SUPPORTED` lists them machine-readably and each docstring
+states its contract.
+
+- Wiki/chat dialects (both directions): `markdown_to_slack_mrkdwn` /
+  `slack_mrkdwn_to_markdown`, `markdown_to_org` / `org_to_markdown`,
+  `markdown_to_mediawiki` / `mediawiki_to_markdown`, `markdown_to_jira` /
+  `jira_to_markdown`, and `markdown_to_chat_messages` /
+  `chat_messages_to_markdown` (roles in `CHAT_ROLES`).
+- System formats: `calendar_to_markdown`, `platform_to_markdown`,
+  `email_to_markdown` / `markdown_to_email` (header injection is rejected), and
+  the one-way `markdown_to_man` (troff requests cannot be injected from text or
+  `.TH` fields).
+- Directory trees: `markdown_to_directory_tree` / `directory_tree_to_markdown`,
+  `tree_text_to_markdown` / `markdown_to_tree_text`, `directory_to_markdown`,
+  and `scaffold_from_markdown`. Names must be valid on POSIX and Windows alike,
+  and nothing is created outside the root or overwritten.
+- LLM output: `split_reasoning`, `compact_llm_output`, `llm_output_digest`,
+  `extract_identifiers` (see the `llm io` section marker in `markdown.py`).
+
 ## Test / demo
 
 ```bash

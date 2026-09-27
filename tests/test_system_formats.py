@@ -195,3 +195,11 @@ def test_markdown_to_man_escapes_backslashes_and_nested_lists() -> None:
     assert "C:\\epath" in out
     assert ".IP 1. 4" in out
     assert ".IP \\(bu 6" in out
+
+
+@pytest.mark.parametrize("field", ["name", "section", "date", "source", "manual"])
+@pytest.mark.parametrize("bad", ["x\n.so /etc/passwd", "x\r.sh", "x\x00"])
+def test_markdown_to_man_rejects_control_characters_in_th_fields(field: str, bad: str) -> None:
+    kwargs = {"name": "tool", field: bad}
+    with pytest.raises(ValueError, match=field):
+        md.markdown_to_man("# NAME\n", **kwargs)

@@ -50,10 +50,29 @@ def test_inline_code_labels_four_space_indent_and_fences_are_handled() -> None:
     assert md.markdown_to_directory_tree(content) == {"pkg": {"__init__.py": None}}
 
 
-@pytest.mark.parametrize("bad", ["- ../evil\n", "- a/b\n", "- .\n", "- a\\b\n"])
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "- ../evil\n", "- a/b\n", "- .\n", "- a\\b\n",
+        # Not portable to Windows: ADS separator, reserved devices, trailing dot/space, control chars.
+        "- a:b\n", "- CON\n", "- con.txt\n", "- Com1\n", "- lpt9.log\n", "- nul .txt\n",
+        "- name.\n", "- a?b\n", "- a|b\n", "- a\x01b\n",
+    ],
+)
 def test_unsafe_names_are_rejected(bad: str) -> None:
     with pytest.raises(ValueError):
         md.markdown_to_directory_tree(bad)
+
+
+@pytest.mark.parametrize("ok", ["console", "COM10", "lpt", "a.b.c", ".env", "CONFIG.md"])
+def test_portable_names_near_reserved_ones_are_accepted(ok: str) -> None:
+    assert md.markdown_to_directory_tree(f"- {ok}\n") == {ok: None}
+
+
+def test_scaffold_rejects_non_portable_names_before_creating_anything(tmp_path: Path) -> None:
+    with pytest.raises(ValueError):
+        md.scaffold_from_markdown("- ok/\n  - a:b\n", tmp_path)
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_duplicate_entries_are_rejected() -> None:

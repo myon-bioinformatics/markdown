@@ -1,5 +1,5 @@
 # markdown.py
-# metadata: __all__=127 | base_sha=99b6a174a883f60a9c3ed01164a81fd7bd26ff76 | updated_at=2026-09-26T17:22:45Z
+# metadata: __all__=127 | base_sha=99b6a174a883f60a9c3ed01164a81fd7bd26ff76 | updated_at=2026-09-27T09:40:00Z
 """Stdlib-only Markdown utility functions.
 
 This module is intentionally a single file with no CLI / ``main`` entry point.
@@ -4963,8 +4963,29 @@ def _tree_entry_name(text: str) -> tuple[str, bool]:
     return name.rstrip("/"), is_dir
 
 
+_WINDOWS_RESERVED_NAMES = frozenset(
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{i}" for i in range(1, 10)}
+    | {f"LPT{i}" for i in range(1, 10)}
+)
+_NON_PORTABLE_NAME_CHARS = frozenset('<>:"|?*')
+
+
 def _validate_tree_name(name: str) -> None:
-    if name in {"", ".", ".."} or "/" in name or "\\" in name or "\x00" in name:
+    """Accept only names that are valid on POSIX *and* Windows.
+
+    A scaffold that silently creates ``a:b`` (an NTFS alternate data
+    stream) or ``CON`` (a reserved device) breaks the repository for
+    Windows users later, so those are rejected up front.
+    """
+    if (
+        name in {"", ".", ".."}
+        or "/" in name
+        or "\\" in name
+        or any(ord(ch) < 32 or ord(ch) == 127 or ch in _NON_PORTABLE_NAME_CHARS for ch in name)
+        or name[-1] in ". "
+        or name.split(".", 1)[0].rstrip(" ").upper() in _WINDOWS_RESERVED_NAMES
+    ):
         raise ValueError(f"invalid directory tree entry name: {name!r}")
 
 
@@ -4989,7 +5010,9 @@ def markdown_to_directory_tree(content: str) -> dict[str, Any]:
     directories; an item with nested children is a directory too. Fenced
     code and non-list lines are ignored. Names containing ``/``, ``\\``,
     or equal to ``.`` / ``..`` raise ``ValueError`` so a tree can never
-    describe a path outside its root.
+    describe a path outside its root. Names that are not portable to
+    Windows (``<>:"|?*``, control characters, a trailing ``.`` or space,
+    reserved device names such as ``CON`` or ``com1.txt``) raise too.
     """
     root: dict[str, Any] = {}
     entries: list[tuple[int, str, bool]] = []
@@ -5125,7 +5148,7 @@ def scaffold_from_markdown(content: str, root: str | Path) -> list[str]:
 
     Existing files are never overwritten or truncated and existing
     directories are reused. Every path is validated to stay inside
-    ``root`` (``..``, separators, and absolute names are rejected before
+    ``root`` (``..``, separators, absolute and non-portable names are rejected before
     anything is created). Returns the POSIX-style relative paths that were
     newly created, in creation order.
     """
@@ -5481,7 +5504,14 @@ def markdown_to_man(
     Backslashes and hyphens are escaped and any line that would start with
     ``.`` or ``'`` is guarded with ``\\&``, so Markdown text can never
     inject a troff request.
+    ``name``/``section``/``date``/``source``/``manual`` go on the ``.TH``
+    line, so control characters (including CR/LF) in them raise
+    ``ValueError`` rather than starting a new troff request line.
     """
+    for label, value in (("name", name), ("section", section), ("date", date), ("source", source), ("manual", manual)):
+        if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+            raise ValueError(f"markdown_to_man {label} must not contain control characters: {value!r}")
+
     def quoted(value: str) -> str:
         return '"' + _man_escape(value).replace('"', '\\(dq') + '"'
 
