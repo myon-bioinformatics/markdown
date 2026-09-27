@@ -14,10 +14,11 @@ name: real-world-pages
 # or changed since the fixture was last refreshed (same bet every other
 # benchmark fixture in this repo already makes).
 #
-# workflow_dispatch only, matching this repo's own "heavy job" convention
-# (frontend-smoke, real-chat-ui-smoke): a Playwright Chromium install
-# plus screenshots is too slow for every push. deploy is main-only so a
-# feature branch's report never overwrites the published Pages site.
+# Runs on pull requests that change the report/diagnostics inputs and on
+# main pushes for deployment. The benchmark fixture path itself stays offline
+# and reproducible, while repository diagnostics may perform anonymous public
+# GitHub URL observations. deploy is main-only, so a feature branch's report
+# never overwrites the published Pages site.
 on:
   workflow_dispatch:
   pull_request:
