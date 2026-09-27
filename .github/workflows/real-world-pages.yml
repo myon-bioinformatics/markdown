@@ -30,6 +30,9 @@ on:
       - "vendor/github_public_resolver.py"
       - "vendor/github_public_resolver.provenance.json"
       - "tests/test_repository_diagnostics.py"
+      - "fixtures/benchmark/**"
+      - "fixtures/provenance.yaml"
+      - "tests/test_repository_diagnostics.py"
       - ".github/workflows/real-world-pages.yml"
   push:
     branches: [main]
@@ -46,11 +49,9 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -58,6 +59,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -66,8 +69,10 @@ jobs:
           pip install pyyaml playwright
           playwright install --with-deps chromium
       - name: Build the report
-        # GITHUB_SHA / GITHUB_REF_NAME / GITHUB_REPOSITORY / GITHUB_SERVER_URL
-        # are inherited automatically and preferred over local git for sha/ref/url.
+        # Use the PR head rather than GitHub's synthetic pull-request merge SHA
+        # for repository diagnostics. Full history above makes git show reliable.
+        env:
+          REPOSITORY_DIAGNOSTICS_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           python scripts/real_world_pages_report.py --out _site
           python scripts/repository_diagnostics.py _site
@@ -79,6 +84,9 @@ jobs:
     if: github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
