@@ -24,6 +24,11 @@ on:
     branches: [main]
     paths:
       - "scripts/real_world_pages_report.py"
+      - "scripts/repository_diagnostics.py"
+      - "vendor/repository_metadata_contract.py"
+      - "vendor/repository_metadata_contract.provenance.json"
+      - "vendor/github_public_resolver.py"
+      - "vendor/github_public_resolver.provenance.json"
       - "fixtures/benchmark/**"
       - "fixtures/provenance.yaml"
       - ".github/workflows/real-world-pages.yml"
@@ -52,7 +57,9 @@ jobs:
       - name: Build the report
         # GITHUB_SHA / GITHUB_REF_NAME / GITHUB_REPOSITORY / GITHUB_SERVER_URL
         # are inherited automatically and preferred over local git for sha/ref/url.
-        run: python scripts/real_world_pages_report.py --out _site
+        run: |
+          python scripts/real_world_pages_report.py --out _site
+          python scripts/repository_diagnostics.py _site
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
