@@ -5626,7 +5626,10 @@ def _dialect_inline_to_markdown(
         return f"{_DIALECT_ESC}P{len(stash) - 1};"
 
     text = text.replace(_DIALECT_ESC, _DIALECT_ESC + "E")
-    text = code.sub(lambda m: keep(inline_code(m.group(1))), text)
+    text = code.sub(
+        lambda m: keep(inline_code(unescape(m.group(1)) if unescape is not None else m.group(1))),
+        text,
+    )
     for pattern, render in links:
         text = pattern.sub(lambda m, render=render: keep(render(m)), text)
     for pattern, kind in emphasis:
@@ -5848,9 +5851,12 @@ def chat_messages_to_markdown(messages: Any) -> str:
             raise ValueError(f"message {position} has unsupported role {role!r}")
         if not isinstance(text, str):
             raise ValueError(f"message {position} content must be a string")
-        for item in _scan_lines(text.splitlines()):
+        scanned = _scan_lines(text.splitlines())
+        for item in scanned:
             if not item.in_fenced_code and _CHAT_HEADING_RE.match(item.text):
                 raise ValueError(f"message {position} content contains a role heading line: {item.text!r}")
+        if sum(item.is_fence_open for item in scanned) != sum(item.is_fence_close for item in scanned):
+            raise ValueError(f"message {position} content contains an unclosed fenced code block")
         section_text = f"## {role.capitalize()}\n"
         if text:
             section_text += f"\n{text}\n"
