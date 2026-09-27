@@ -266,3 +266,23 @@ def test_placeholder_like_input_is_left_alone() -> None:
 
 def test_chat_roles_constant() -> None:
     assert md.CHAT_ROLES == ("system", "developer", "user", "assistant", "tool")
+
+
+@pytest.mark.parametrize(
+    "writer",
+    [md.markdown_to_slack_mrkdwn, md.markdown_to_org, md.markdown_to_mediawiki, md.markdown_to_jira],
+)
+@pytest.mark.parametrize("url", ["javascript:alert%281%29", "shell:rm%20-rf", "data:text/html,x"])
+def test_dialect_writers_drop_unsafe_link_schemes(writer, url: str) -> None:
+    out = writer(f"see [label]({url}) and ![alt]({url})\n")
+    assert url.split(":")[0] + ":" not in out
+    assert "label" in out and "alt" in out
+    assert "https://ok.example" in writer("[ok](https://ok.example)\n")
+
+
+def test_org_and_jira_readers_drop_unsafe_link_schemes() -> None:
+    assert md.org_to_markdown("[[javascript:alert(1)][click]]\n") == "click\n"
+    assert md.org_to_markdown("[[https://ok.example][ok]]\n") == "[ok](https://ok.example)\n"
+    assert "](javascript:" not in md.jira_to_markdown("!javascript:alert(1).png!\n")
+    assert md.jira_to_markdown("!pic.png!\n") == "![](pic.png)\n"
+

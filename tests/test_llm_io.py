@@ -330,3 +330,9 @@ def test_extract_identifiers_empty_input() -> None:
 def test_extract_identifiers_rejects_non_string() -> None:
     with pytest.raises(ValueError):
         md.extract_identifiers(123)  # type: ignore[arg-type]
+
+
+def test_extract_identifiers_hex_runs_need_word_boundaries() -> None:
+    assert md.extract_identifiers("see Name1234567 and x_abc1234")["shas"] == []
+    assert md.extract_identifiers("fixed in abc1234.")["shas"] == ["abc1234"]
+

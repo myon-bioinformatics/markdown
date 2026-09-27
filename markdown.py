@@ -4984,6 +4984,8 @@ def _validate_tree_name(name: str) -> None:
         or "\\" in name
         or any(ord(ch) < 32 or ord(ch) == 127 or ch in _NON_PORTABLE_NAME_CHARS for ch in name)
         or name[-1] in ". "
+        or name[0] == " "
+        or (len(name) >= 2 and name[0] == "`" and name[-1] == "`")
         or name.split(".", 1)[0].rstrip(" ").upper() in _WINDOWS_RESERVED_NAMES
     ):
         raise ValueError(f"invalid directory tree entry name: {name!r}")
@@ -5069,7 +5071,10 @@ def directory_to_markdown(
 
     Read-only: entries are listed by name (sorted), symlinks are listed but
     never followed, and hidden (dot) entries are skipped unless
-    ``include_hidden``. ``max_depth=1`` lists only the top level.
+    ``include_hidden``. ``max_depth=1`` lists only the top level. An entry
+    whose name the tree format cannot represent portably (see
+    :func:`markdown_to_directory_tree`) raises ``ValueError`` instead of
+    producing Markdown that would read back as a different tree.
     """
     base = Path(path)
     if not base.is_dir():
@@ -5154,7 +5159,6 @@ def scaffold_from_markdown(content: str, root: str | Path) -> list[str]:
     """
     tree = markdown_to_directory_tree(content)
     base = Path(root)
-    base.mkdir(parents=True, exist_ok=True)
     resolved_base = base.resolve()
     created: list[str] = []
 
@@ -5162,10 +5166,15 @@ def scaffold_from_markdown(content: str, root: str | Path) -> list[str]:
         for name, child in node.items():
             _validate_tree_name(name)
             target = resolved_base.joinpath(*parts, name).resolve()
+            rel = "/".join(parts + (name,))
             if resolved_base not in target.parents:
-                raise ValueError(f"scaffold path escapes root: {'/'.join(parts + (name,))}")
+                raise ValueError(f"scaffold path escapes root: {rel}")
             if isinstance(child, dict):
+                if target.exists() and not target.is_dir():
+                    raise FileExistsError(f"scaffold directory collides with a file: {rel}")
                 plan(child, parts + (name,))
+            elif target.is_dir():
+                raise FileExistsError(f"scaffold file collides with a directory: {rel}")
 
     def build(node: dict[str, Any], parts: tuple[str, ...]) -> None:
         for name, child in node.items():
@@ -5186,6 +5195,7 @@ def scaffold_from_markdown(content: str, root: str | Path) -> list[str]:
                     created.append(rel)
 
     plan(tree, ())
+    base.mkdir(parents=True, exist_ok=True)
     build(tree, ())
     return created
 
@@ -5301,9 +5311,18 @@ def _lite_inline(text: str) -> list[tuple[Any, ...]]:
                 continue
             flush()
             if kind == "image":
-                tokens.append(("image", match.group(1), match.group(2)))
+                if _sanitize_url_scheme(match.group(2)):
+                    tokens.append(("image", match.group(1), match.group(2)))
+                elif match.group(1):
+                    tokens.append(("text", match.group(1)))
             elif kind == "link":
-                tokens.append(("link", _lite_inline(match.group(1)), match.group(2)))
+                label = _lite_inline(match.group(1))
+                if _sanitize_url_scheme(match.group(2)):
+                    tokens.append(("link", label, match.group(2)))
+                else:
+                    # Same URL policy as the HTML path: a javascript:/data:/
+                    # shell: target is dropped and only its label survives.
+                    tokens.extend(label)
             elif kind == "autolink":
                 tokens.append(("link", [("text", match.group(1))], match.group(1)))
             else:
@@ -5935,6 +5954,8 @@ _ORG_BLOCK_RE = re.compile(r"^[ \t]*#\+(BEGIN|END)_(\w+)(?:[ \t]+(\S+))?", re.IG
 
 def _org_link_to_markdown(match: re.Match[str]) -> str:
     target, label = match.group(1), match.group(2)
+    if not _sanitize_url_scheme(target):
+        return _org_inline(label) if label is not None else target
     if label is None:
         return f"<{target}>" if re.match(r"(?:https?|mailto):", target) else f"[{target}]({target})"
     return f"[{_org_inline(label)}]({target})"
@@ -6238,7 +6259,7 @@ def _jira_inline(text: str) -> str:
         code=_JIRA_CODE_RE,
         links=(
             (_JIRA_LINK_RE, _jira_link_to_markdown),
-            (_JIRA_IMAGE_RE, lambda m: f"![]({m.group(1)})"),
+            (_JIRA_IMAGE_RE, lambda m: f"![]({m.group(1)})" if _sanitize_url_scheme(m.group(1)) else m.group(1)),
         ),
         emphasis=_JIRA_EMPHASIS,
     )
@@ -6336,7 +6357,7 @@ _LLM_GITHUB_REPO_REF_RE = re.compile(
     r"\b[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?/[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?#[0-9]+\b"
 )
 _LLM_GITHUB_BARE_REF_RE = re.compile(r"(?<![\w/])#[0-9]+\b")
-_LLM_HEX_RUN_RE = re.compile(r"[0-9a-fA-F]+")
+_LLM_HEX_RUN_RE = re.compile(r"(?<![0-9A-Za-z_])[0-9a-fA-F]+(?![0-9A-Za-z_])")
 
 
 def _mask_code_context(text: str, *, mask_inline: bool) -> str:

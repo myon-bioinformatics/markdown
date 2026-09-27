@@ -57,11 +57,18 @@ def test_inline_code_labels_four_space_indent_and_fences_are_handled() -> None:
         # Not portable to Windows: ADS separator, reserved devices, trailing dot/space, control chars.
         "- a:b\n", "- CON\n", "- con.txt\n", "- Com1\n", "- lpt9.log\n", "- nul .txt\n",
         "- name.\n", "- a?b\n", "- a|b\n", "- a\x01b\n",
+        "- \\ a\n", "- `` `x` ``\n",
     ],
 )
 def test_unsafe_names_are_rejected(bad: str) -> None:
     with pytest.raises(ValueError):
         md.markdown_to_directory_tree(bad)
+
+
+@pytest.mark.parametrize("bad", [" a", "a ", "`x`", "a\tb", "a\nb"])
+def test_tree_writer_rejects_names_that_would_read_back_differently(bad: str) -> None:
+    with pytest.raises(ValueError):
+        md.directory_tree_to_markdown({bad: None})
 
 
 @pytest.mark.parametrize("ok", ["console", "COM10", "lpt", "a.b.c", ".env", "CONFIG.md"])
@@ -144,3 +151,19 @@ def test_scaffold_rejects_traversal_before_creating_anything(tmp_path: Path) -> 
         md.scaffold_from_markdown("- ok.txt\n- ../escape.txt\n", tmp_path)
     assert not (tmp_path / "ok.txt").exists()
     assert not (tmp_path.parent / "escape.txt").exists()
+
+
+def test_scaffold_collision_is_detected_before_anything_is_created(tmp_path: Path) -> None:
+    (tmp_path / "b").write_text("keep", encoding="utf-8")
+    with pytest.raises(FileExistsError):
+        md.scaffold_from_markdown("- a/\n  - x\n- b/\n  - y\n", tmp_path)
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["b"]
+    assert (tmp_path / "b").read_text(encoding="utf-8") == "keep"
+
+
+def test_scaffold_does_not_create_root_when_validation_fails(tmp_path: Path) -> None:
+    root = tmp_path / "new-root"
+    with pytest.raises(ValueError):
+        md.scaffold_from_markdown("- CON\n", root)
+    assert not root.exists()
+
