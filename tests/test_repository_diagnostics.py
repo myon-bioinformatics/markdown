@@ -72,3 +72,12 @@ def test_build_record_prefers_explicit_diagnostics_sha(monkeypatch):
     assert record["head"]["sha"] == head_sha
     assert record["head"]["branch"] == "feature/example"
     assert record["head"]["subject"] == "PR head subject"
+
+
+def test_page_escapes_template_constants(monkeypatch):
+    monkeypatch.setattr(diagnostics, "REPOSITORY", '<repo & "quoted">')
+    monkeypatch.setattr(diagnostics, "WEB_UI_BASE", 'https://example.test/a?x=1&y="2"')
+    html = diagnostics.page_html()
+    assert '&lt;repo &amp; &quot;quoted&quot;&gt;' in html
+    assert 'https://example.test/a?x=1&amp;y=&quot;2&quot;' in html
+    assert '<repo & "quoted">' not in html
