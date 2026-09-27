@@ -32,7 +32,6 @@ on:
       - "tests/test_repository_diagnostics.py"
       - "fixtures/benchmark/**"
       - "fixtures/provenance.yaml"
-      - "tests/test_repository_diagnostics.py"
       - ".github/workflows/real-world-pages.yml"
   push:
     branches: [main]
