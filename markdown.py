@@ -1,5 +1,5 @@
 # markdown.py
-# metadata: __all__=127 | base_sha=99b6a174a883f60a9c3ed01164a81fd7bd26ff76 | updated_at=2026-09-27T09:40:00Z
+# metadata: __all__=127 | base_sha=99b6a174a883f60a9c3ed01164a81fd7bd26ff76 | updated_at=2026-09-27T09:40:47Z
 """Stdlib-only Markdown utility functions.
 
 This module is intentionally a single file with no CLI / ``main`` entry point.
@@ -4971,24 +4971,33 @@ _WINDOWS_RESERVED_NAMES = frozenset(
 _NON_PORTABLE_NAME_CHARS = frozenset('<>:"|?*')
 
 
-def _validate_tree_name(name: str) -> None:
-    """Accept only names that are valid on POSIX *and* Windows.
+def _validate_tree_name(name: str, *, portable: bool = False) -> None:
+    """Reject names a Markdown tree cannot represent (and, if ``portable``, non-Windows-safe ones).
 
-    A scaffold that silently creates ``a:b`` (an NTFS alternate data
-    stream) or ``CON`` (a reserved device) breaks the repository for
-    Windows users later, so those are rejected up front.
+    Representability applies everywhere: separators, ``.``/``..``, control
+    characters, leading/trailing spaces and code-span-looking names would
+    read back as a different tree. Portability applies only where files
+    are *created* (:func:`scaffold_from_markdown`): a scaffold that silently
+    creates ``a:b`` (an NTFS alternate data stream) or ``CON`` (a reserved
+    device) breaks the repository for Windows users later, while a
+    read-only listing of an existing POSIX directory must keep working.
     """
     if (
         name in {"", ".", ".."}
         or "/" in name
         or "\\" in name
-        or any(ord(ch) < 32 or ord(ch) == 127 or ch in _NON_PORTABLE_NAME_CHARS for ch in name)
-        or name[-1] in ". "
+        or any(ord(ch) < 32 or ord(ch) == 127 for ch in name)
         or name[0] == " "
+        or name[-1] == " "
         or (len(name) >= 2 and name[0] == "`" and name[-1] == "`")
-        or name.split(".", 1)[0].rstrip(" ").upper() in _WINDOWS_RESERVED_NAMES
     ):
         raise ValueError(f"invalid directory tree entry name: {name!r}")
+    if portable and (
+        any(ch in _NON_PORTABLE_NAME_CHARS for ch in name)
+        or name[-1] == "."
+        or name.split(".", 1)[0].rstrip(" ").upper() in _WINDOWS_RESERVED_NAMES
+    ):
+        raise ValueError(f"directory tree entry name is not portable to Windows: {name!r}")
 
 
 def _tree_insert(stack: list[tuple[int, dict[str, Any]]], depth: int, name: str, is_dir: bool) -> None:
@@ -5012,9 +5021,9 @@ def markdown_to_directory_tree(content: str) -> dict[str, Any]:
     directories; an item with nested children is a directory too. Fenced
     code and non-list lines are ignored. Names containing ``/``, ``\\``,
     or equal to ``.`` / ``..`` raise ``ValueError`` so a tree can never
-    describe a path outside its root. Names that are not portable to
-    Windows (``<>:"|?*``, control characters, a trailing ``.`` or space,
-    reserved device names such as ``CON`` or ``com1.txt``) raise too.
+    describe a path outside its root; so do control characters and
+    leading/trailing spaces, which would not read back unchanged.
+    Windows portability is checked only by :func:`scaffold_from_markdown`.
     """
     root: dict[str, Any] = {}
     entries: list[tuple[int, str, bool]] = []
@@ -5103,7 +5112,8 @@ def tree_text_to_markdown(text: str) -> str:
     Accepts Unicode (``├──`` / ``└──`` / ``│``) and ASCII (``|--`` /
     ``\\`--``) connectors with 4-column levels. A leading root line without
     a connector (e.g. ``.`` or ``project/``) is skipped. Summary lines such
-    as ``3 directories, 5 files`` and blank lines are ignored.
+    as ``3 directories, 5 files`` and blank lines are ignored. Symlink
+    lines (``name -> target``) keep only the link name.
     """
     entries: list[tuple[int, str, bool]] = []
     for raw in text.splitlines():
@@ -5114,7 +5124,11 @@ def tree_text_to_markdown(text: str) -> str:
         depth, remainder = divmod(match.start(), _TREE_TEXT_LEVEL_WIDTH)
         if remainder:
             raise ValueError(f"tree line is not aligned to {_TREE_TEXT_LEVEL_WIDTH}-column levels: {raw!r}")
-        name, is_dir = _tree_entry_name(line[match.end():])
+        entry = line[match.end():]
+        if " -> " in entry:
+            # `tree` prints symlinks as "name -> target"; keep only the link name.
+            entry = entry.split(" -> ", 1)[0]
+        name, is_dir = _tree_entry_name(entry)
         entries.append((depth, name, is_dir))
     for index, (depth, name, is_dir) in enumerate(entries):
         if not is_dir and index + 1 < len(entries) and entries[index + 1][0] > depth:
@@ -5153,7 +5167,8 @@ def scaffold_from_markdown(content: str, root: str | Path) -> list[str]:
 
     Existing files are never overwritten or truncated and existing
     directories are reused. Every path is validated to stay inside
-    ``root`` (``..``, separators, absolute and non-portable names are rejected before
+    ``root`` (``..``, separators, absolute names, and names that are not
+    portable to Windows such as ``a:b`` or ``CON`` are rejected before
     anything is created). Returns the POSIX-style relative paths that were
     newly created, in creation order.
     """
@@ -5164,7 +5179,7 @@ def scaffold_from_markdown(content: str, root: str | Path) -> list[str]:
 
     def plan(node: dict[str, Any], parts: tuple[str, ...]) -> None:
         for name, child in node.items():
-            _validate_tree_name(name)
+            _validate_tree_name(name, portable=True)
             target = resolved_base.joinpath(*parts, name).resolve()
             rel = "/".join(parts + (name,))
             if resolved_base not in target.parents:
@@ -6110,6 +6125,8 @@ def markdown_to_mediawiki(content: str) -> str:
     ``[url label]`` (external links only), lists -> ``*`` / ``#`` prefixes
     (mixed nesting like ``*#``), fences -> ``<syntaxhighlight lang=...>`` or
     ``<pre>``, quotes -> ``<blockquote>`` per line.
+    Round-trips hold for absolute (http/https/mailto) link URLs; a relative
+    link is written but reads back as plain text.
     """
     return _wiki_markup(
         content,
@@ -6229,6 +6246,8 @@ def markdown_to_jira(content: str) -> str:
     ``~~s~~`` -> ``-s-``, code -> ``{{c}}``, links -> ``[label|url]``,
     images -> ``!url!``, lists -> ``*`` / ``#`` prefixes, fences ->
     ``{code:lang}``, quotes -> ``bq.`` lines.
+    Round-trips hold for absolute (http/https/mailto) link URLs; a relative
+    link is written but reads back as plain text.
     """
     return _wiki_markup(
         content,

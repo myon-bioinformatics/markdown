@@ -237,8 +237,9 @@ states its contract.
   `.TH` fields).
 - Directory trees: `markdown_to_directory_tree` / `directory_tree_to_markdown`,
   `tree_text_to_markdown` / `markdown_to_tree_text`, `directory_to_markdown`,
-  and `scaffold_from_markdown`. Names must be valid on POSIX and Windows alike,
-  and nothing is created outside the root or overwritten.
+  and `scaffold_from_markdown`. Listings accept any name the tree format can
+  represent; `scaffold_from_markdown` only creates names valid on POSIX and
+  Windows alike, and never outside the root or over an existing file.
 - LLM output: `split_reasoning`, `compact_llm_output`, `llm_output_digest`,
   `extract_identifiers` (see the `llm io` section marker in `markdown.py`).
 

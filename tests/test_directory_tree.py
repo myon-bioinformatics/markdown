@@ -53,10 +53,7 @@ def test_inline_code_labels_four_space_indent_and_fences_are_handled() -> None:
 @pytest.mark.parametrize(
     "bad",
     [
-        "- ../evil\n", "- a/b\n", "- .\n", "- a\\b\n",
-        # Not portable to Windows: ADS separator, reserved devices, trailing dot/space, control chars.
-        "- a:b\n", "- CON\n", "- con.txt\n", "- Com1\n", "- lpt9.log\n", "- nul .txt\n",
-        "- name.\n", "- a?b\n", "- a|b\n", "- a\x01b\n",
+        "- ../evil\n", "- a/b\n", "- .\n", "- a\\b\n", "- a\x01b\n",
         "- \\ a\n", "- `` `x` ``\n",
     ],
 )
@@ -76,10 +73,34 @@ def test_portable_names_near_reserved_ones_are_accepted(ok: str) -> None:
     assert md.markdown_to_directory_tree(f"- {ok}\n") == {ok: None}
 
 
-def test_scaffold_rejects_non_portable_names_before_creating_anything(tmp_path: Path) -> None:
-    with pytest.raises(ValueError):
-        md.scaffold_from_markdown("- ok/\n  - a:b\n", tmp_path)
+NON_PORTABLE_NAMES = ["a:b", "CON", "con.txt", "Com1", "lpt9.log", "nul .txt", "name.", "a?b", "a|b"]
+
+
+@pytest.mark.parametrize("name", NON_PORTABLE_NAMES)
+def test_scaffold_rejects_non_portable_names_before_creating_anything(tmp_path: Path, name: str) -> None:
+    with pytest.raises(ValueError, match="portable"):
+        md.scaffold_from_markdown(f"- ok/\n  - {name}\n", tmp_path)
     assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("name", NON_PORTABLE_NAMES)
+def test_read_only_tree_functions_accept_posix_names(name: str) -> None:
+    # Portability is a scaffold concern; parsing and rendering stay lossless.
+    tree = md.markdown_to_directory_tree(f"- {name}\n")
+    assert tree == {name: None}
+    assert md.markdown_to_directory_tree(md.directory_tree_to_markdown(tree)) == tree
+
+
+def test_directory_to_markdown_lists_posix_only_names(tmp_path: Path) -> None:
+    (tmp_path / "ok.txt").touch()
+    (tmp_path / "log-12:00.txt").touch()
+    (tmp_path / "aux").touch()
+    assert md.directory_to_markdown(tmp_path) == "- aux\n- log-12:00.txt\n- ok.txt\n"
+
+
+def test_tree_text_keeps_only_symlink_names() -> None:
+    text = ".\n├── bin -> /usr/bin\n└── pkg\n    └── link.py -> ../x.py\n"
+    assert md.tree_text_to_markdown(text) == "- bin\n- pkg/\n  - link.py\n"
 
 
 def test_duplicate_entries_are_rejected() -> None:
