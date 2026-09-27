@@ -209,6 +209,13 @@ def test_slack_mentions_stay_literal() -> None:
     assert md.slack_mrkdwn_to_markdown("hi <@U123> in <#C1|general> <!here>\n") == "hi <@U123> in <#C1|general> <!here>\n"
 
 
+def test_slack_inline_code_unescapes_entities_on_round_trip() -> None:
+    source = "Use `a<b && c>d` here\n"
+    encoded = md.markdown_to_slack_mrkdwn(source)
+    assert "`a&lt;b &amp;&amp; c&gt;d`" in encoded
+    assert md.slack_mrkdwn_to_markdown(encoded) == source
+
+
 # --- Chat messages ------------------------------------------------------------
 
 MESSAGES = [
@@ -252,6 +259,16 @@ def test_chat_rejects_unsupported_or_ambiguous_messages(messages: list) -> None:
 def test_chat_rejects_text_before_first_role() -> None:
     with pytest.raises(ValueError, match="before the first role"):
         md.markdown_to_chat_messages("preamble\n## User\nhi\n")
+
+
+@pytest.mark.parametrize("fence", ["```py", "~~~py"])
+def test_chat_rejects_unclosed_fence_before_messages_can_merge(fence: str) -> None:
+    messages = [
+        {"role": "user", "content": f"{fence}\nprint(1)"},
+        {"role": "assistant", "content": "hi"},
+    ]
+    with pytest.raises(ValueError, match="unclosed fenced code"):
+        md.chat_messages_to_markdown(messages)
 
 
 def test_placeholder_like_input_is_left_alone() -> None:
