@@ -14,27 +14,43 @@ name: real-world-pages
 # or changed since the fixture was last refreshed (same bet every other
 # benchmark fixture in this repo already makes).
 #
-# workflow_dispatch only, matching this repo's own "heavy job" convention
-# (frontend-smoke, real-chat-ui-smoke): a Playwright Chromium install
-# plus screenshots is too slow for every push. deploy is main-only so a
-# feature branch's report never overwrites the published Pages site.
+# Runs on pull requests that change the report/diagnostics inputs and on
+# main pushes for deployment. The benchmark fixture path itself stays offline
+# and reproducible, while repository diagnostics may perform anonymous public
+# GitHub URL observations. deploy is main-only, so a feature branch's report
+# never overwrites the published Pages site.
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - "scripts/real_world_pages_report.py"
+      - "scripts/repository_diagnostics.py"
+      - "vendor/repository_metadata_contract.py"
+      - "vendor/repository_metadata_contract.provenance.json"
+      - "vendor/github_public_resolver.py"
+      - "vendor/github_public_resolver.provenance.json"
+      - "tests/test_repository_diagnostics.py"
+      - "fixtures/benchmark/**"
+      - "fixtures/provenance.yaml"
+      - ".github/workflows/real-world-pages.yml"
   push:
     branches: [main]
     paths:
       - "scripts/real_world_pages_report.py"
+      - "scripts/repository_diagnostics.py"
+      - "vendor/repository_metadata_contract.py"
+      - "vendor/repository_metadata_contract.provenance.json"
+      - "vendor/github_public_resolver.py"
+      - "vendor/github_public_resolver.provenance.json"
       - "fixtures/benchmark/**"
       - "fixtures/provenance.yaml"
       - ".github/workflows/real-world-pages.yml"
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -42,6 +58,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -50,9 +68,13 @@ jobs:
           pip install pyyaml playwright
           playwright install --with-deps chromium
       - name: Build the report
-        # GITHUB_SHA / GITHUB_REF_NAME / GITHUB_REPOSITORY / GITHUB_SERVER_URL
-        # are inherited automatically and preferred over local git for sha/ref/url.
-        run: python scripts/real_world_pages_report.py --out _site
+        # Use the PR head rather than GitHub's synthetic pull-request merge SHA
+        # for repository diagnostics. Full history above makes git show reliable.
+        env:
+          REPOSITORY_DIAGNOSTICS_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python scripts/real_world_pages_report.py --out _site
+          python scripts/repository_diagnostics.py _site
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
@@ -61,6 +83,9 @@ jobs:
     if: github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

@@ -38,6 +38,7 @@ behavior only in a PR comment or commit message.
 | `FRAMEWORK_WRAPPER_ASSUMPTION` | Code assumes a low-level SDK result shape survives unchanged through a larger product | Middleware envelopes break parsing unexpectedly | Observe and normalize the actual end-to-end shape |
 | `STANDARD_DOM_ASSUMPTION` | Tests assume rendered Markdown always becomes conventional HTML such as `<pre><code>` | Real products may mount editors/components instead | Inspect the actual product DOM before choosing selectors |
 | `FORGEABLE_INBAND_PLACEHOLDER` | A converter stashes spans behind in-band markers (private-use or control characters) without escaping those same characters in the input | Input that already contains the marker is read as a placeholder, so text silently disappears or is swapped, and pattern-based restore can loop | Escape the marker in the input first (escape-doubling), or use markers that sanitized input can never contain; test with input that forges a placeholder, and inspect such output with `repr()` because private-use glyphs render differently per platform |
+| `HOST_FSTRING_FOREIGN_BRACES` | Python f-string (or another host-language interpolated string) contains embedded JavaScript/CSS/JSON braces as if they were plain text | Foreign-language `{...}` is parsed as host interpolation; generated builders can fail at import/CI collection before any page test runs | Keep embedded foreign code in a plain literal/template with explicit sentinel replacement (or escape every brace deliberately), and compile/import the builder in CI |
 
 ## Contract rules derived from the catalog
 
@@ -49,6 +50,25 @@ behavior only in a PR comment or commit message.
 - Expand real-world fixtures before making architecture-wide compatibility claims.
 - When a CI failure reveals a reusable lesson, add both documentation and a
   regression/contract test where practical.
+
+
+## Observed incident: host f-string parsed embedded JavaScript braces
+
+Repository diagnostics was first implemented with a Python triple-quoted f-string
+containing a full JavaScript block. The JS object/function braces were intended
+as literal browser code, but Python parsed them as f-string expressions. CI then
+failed during test collection/import with a `SyntaxError` before the Pages
+builder could run.
+
+The fix was to keep the HTML/JavaScript body as a normal triple-quoted string and
+replace only explicit `__REPO__` / `__BASE__` sentinels afterward. This keeps
+the host-language interpolation boundary narrow and makes the foreign-language
+source readable without brace-doubling everywhere.
+
+General rule: when one language embeds another brace-heavy language, do not make
+the entire foreign program an interpolated host string just to substitute two or
+three values. Prefer plain literals plus explicit placeholders, and ensure CI
+imports/compiles the generator itself.
 
 ---
 

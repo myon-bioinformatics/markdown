@@ -537,3 +537,14 @@ Future breaking contract support should use a separate versioned emitter such as
 `markdown_to_web_ui_v2()` rather than silently changing v1 output semantics.
 
 This keeps `markdown.py` single-file and standard-library-only.
+
+
+## Repository diagnostics
+
+GitHub Pages publishes the shared repository metadata contract as
+`repository-diagnostics.json`, a one-record `repository-diagnostics.jsonl`,
+and `repository-diagnostics.html`. The metadata contract is pinned from
+Ironmate, anonymous public GitHub observations are pinned from
+mcp-toolcall-lab, and the HTML renderer is pinned to web-ui commit
+`adb23d7`. Network failures remain `unverified`; no GitHub token is used
+by the public resolver.
