@@ -75,7 +75,7 @@ jobs:
         run: |
           python scripts/real_world_pages_report.py --out _site
           python scripts/repository_diagnostics.py _site
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: _site
 
