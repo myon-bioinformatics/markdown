@@ -50,7 +50,7 @@ jobs:
           path = Path("markdown.py")
           text = path.read_text(encoding="utf-8")
           match = re.search(
-              r"^# metadata: __all__=(\d+) \| base_sha=([0-9a-f]{40}) "
+              r"^# metadata: __all__=(\d+) \| base_sha=((?:[0-9a-f]{40}|[0-9a-f]{64})) "
               r"\| updated_at=([^\s]+)$",
               text,
               re.MULTILINE,
