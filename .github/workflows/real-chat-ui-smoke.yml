@@ -53,9 +53,9 @@ jobs:
   openwebui-smoke:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Check out mcp-toolcall-lab's mock MCP server
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: myon-bioinformatics/mcp-toolcall-lab
           # Pinned for reproducibility -- openwebui_mcp_mock.py is designed
@@ -65,7 +65,7 @@ jobs:
           # of truth. Bump when that repo's mock tools/schema change.
           ref: fd25f006d94c6382c2ae174eac75daeea7f82561
           path: mcp-toolcall-lab
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Install test + Playwright deps
@@ -129,7 +129,7 @@ jobs:
 
       - name: Upload failure screenshot
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.artifact-name.outputs.name }}
           path: |
