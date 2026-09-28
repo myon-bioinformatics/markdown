@@ -65,7 +65,7 @@ jobs:
           # of truth. Bump when that repo's mock tools/schema change.
           ref: fd25f006d94c6382c2ae174eac75daeea7f82561
           path: mcp-toolcall-lab
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Install test + Playwright deps
