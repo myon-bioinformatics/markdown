@@ -6,7 +6,13 @@ on:
   workflow_dispatch:
 
 jobs:
+  changes:
+    name: Change detection
+    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-change-detection.yml@main
+
   pytest:
+    needs: changes
+    if: needs.changes.outputs.non_docs_changed == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -23,6 +29,8 @@ jobs:
 
 
   module-metadata:
+    needs: changes
+    if: needs.changes.outputs.non_docs_changed == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -86,6 +94,8 @@ jobs:
           PY
 
   frontend-mock-pytest-latest:
+    needs: changes
+    if: needs.changes.outputs.non_docs_changed == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -107,7 +117,8 @@ jobs:
             tests/frontend/test_streamlit_ui.py
 
   frontend-smoke:
-    if: github.event_name == 'workflow_dispatch'
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' && needs.changes.outputs.non_docs_changed == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
