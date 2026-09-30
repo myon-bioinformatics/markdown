@@ -27,6 +27,9 @@ on:
       - "scripts/repository_diagnostics.py"
       - "vendor/repository_metadata_contract.py"
       - "vendor/repository_metadata_contract.provenance.json"
+      - "vendor/repository_metadata_generator.py"
+      - "vendor/repository_metadata_generator.provenance.json"
+      - "tests/test_repository_metadata_producer.py"
       - "vendor/github_public_resolver.py"
       - "vendor/github_public_resolver.provenance.json"
       - "tests/test_repository_diagnostics.py"
@@ -40,6 +43,9 @@ on:
       - "scripts/repository_diagnostics.py"
       - "vendor/repository_metadata_contract.py"
       - "vendor/repository_metadata_contract.provenance.json"
+      - "vendor/repository_metadata_generator.py"
+      - "vendor/repository_metadata_generator.provenance.json"
+      - "tests/test_repository_metadata_producer.py"
       - "vendor/github_public_resolver.py"
       - "vendor/github_public_resolver.provenance.json"
       - "fixtures/benchmark/**"
@@ -59,6 +65,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          # The canonical producer reads HEAD, so check out the PR head.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
       - uses: actions/setup-python@v7
         with:
@@ -68,10 +76,6 @@ jobs:
           pip install pyyaml playwright
           playwright install --with-deps chromium
       - name: Build the report
-        # Use the PR head rather than GitHub's synthetic pull-request merge SHA
-        # for repository diagnostics. Full history above makes git show reliable.
-        env:
-          REPOSITORY_DIAGNOSTICS_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           python scripts/real_world_pages_report.py --out _site
           python scripts/repository_diagnostics.py _site
