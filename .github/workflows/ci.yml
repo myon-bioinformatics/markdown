@@ -20,6 +20,7 @@ jobs:
     if: needs.changes.outputs.non_docs_changed == 'true'
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
@@ -30,7 +31,15 @@ jobs:
       - name: Install test deps
         run: pip install -r requirements-dev.txt
       - name: Run pytest
-        run: pytest -q
+        run: python -m pytest -q --junitxml=build/junit/pytest-${{ matrix.python-version }}.xml
+      - name: Preserve raw JUnit
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: junit-py${{ matrix.python-version }}
+          path: build/junit/pytest-${{ matrix.python-version }}.xml
+          if-no-files-found: error
+          retention-days: 14
 
 
   module-metadata:
@@ -132,3 +141,14 @@ jobs:
         run: playwright install --with-deps chromium
       - name: Run Gradio/Streamlit/chat UI frontend tests
         run: pytest -q tests/frontend
+
+  failure-identity:
+    needs: [changes, pytest]
+    if: always() && needs.changes.outputs.non_docs_changed == 'true'
+    permissions:
+      contents: read
+      actions: read
+    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-junit-identity.yml@47cca15cd2c70b274c92f4ea036ececa62b796f8
+    with:
+      artifact-pattern: "junit-py*"
+      output-artifact: "failure-identity"
