@@ -77,8 +77,8 @@ jobs:
                   fh.write("## markdown.py metadata\n\n")
                   fh.write("| field | value |\n|---|---|\n")
                   fh.write(f"| declared/actual __all__ | {metadata['all_count']} |\n")
-                  fh.write(f"| base SHA | \`{metadata['base_sha']}\` |\n")
-                  fh.write(f"| updated at (UTC) | \`{metadata['updated_at']}\` |\n")
+                  fh.write(f"| base SHA | `{metadata['base_sha']}` |\n")
+                  fh.write(f"| updated at (UTC) | `{metadata['updated_at']}` |\n")
           PY
 
   frontend-mock-pytest-latest:
