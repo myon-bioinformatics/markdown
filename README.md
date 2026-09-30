@@ -568,3 +568,10 @@ Each capture clears stale success PNGs, logs CLI failures and preserves failure
 images separately. The workflow uploads the available report/evidence even after
 failure (14 days), links it in the summary, and deploys only successful main builds.
 See the [shared guide](https://github.com/myon-bioinformatics/browser-test-kit/blob/3a054c777a98300ee272e4458990b849c32a7ef0/docs/screenshot-evidence.md).
+
+HTML fixture screenshots now also have current-run receipts (one complete
+original/roundtrip set per Chromium fixture identity). CI requires image hashes,
+tested SHA and exact run ID/attempt, and rejects failed receipts. Isolated copies
+of real CI artifacts must fail when an image is missing, its hash is altered,
+its run ID is stale, or its receipt stage is failed. Available receipts upload
+with the report after failure. This does not add screen-content assertions.

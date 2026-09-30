@@ -78,7 +78,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: myon-bioinformatics/browser-test-kit
-          ref: 3a054c777a98300ee272e4458990b849c32a7ef0
+          ref: 6a2e32a4bbe49be5268e6b30040d665a89eecf66
           path: .browser-test-kit
           persist-credentials: false
       - uses: actions/setup-python@v7
@@ -92,12 +92,21 @@ jobs:
         env:
           BROWSER_TEST_KIT: .browser-test-kit
         run: python -m pytest -q tests/test_report_screenshot_evidence.py
+      - name: Clear prior report evidence
+        run: rm -rf _site
       - name: Build the report
+        id: capture
         run: |
           python scripts/real_world_pages_report.py --out _site
           python scripts/repository_diagnostics.py _site
-      - name: Require original and roundtrip PNGs for every HTML fixture
-        run: python scripts/check_report_screenshots.py _site --kit .browser-test-kit
+      - name: Require fixture receipts and prove corruption rejection
+        if: always()
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          CAPTURE_STAGE: ${{ steps.capture.outcome == 'success' && 'complete' || 'failed' }}
+        run: |
+          python scripts/check_report_screenshots.py _site --kit .browser-test-kit \
+            --sha "$EXPECTED_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --stage "$CAPTURE_STAGE"
       - name: Preserve available screenshot evidence after success or failure
         id: evidence
         if: always()
@@ -116,7 +125,7 @@ jobs:
           {
             echo "### Real-world screenshot evidence: $JOB_STATUS"
             echo "Required: each HTML fixture's original/roundtrip PNG, Chromium only."
-            echo "Shared PNG structure validation; no pixel baseline or screen-content assertion."
+            echo "Shared PNG/hash/run receipt validation and four real-bundle rejection probes; no pixel/content assertion."
             echo "Firefox/WebKit/mobile unmeasured. Failed bundles do not prove success."
             echo "Evidence (14 days): $ARTIFACT_URL"
           } >> "$GITHUB_STEP_SUMMARY"
