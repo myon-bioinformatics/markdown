@@ -554,3 +554,17 @@ The metadata contract and generator are vendored together from Ironmate commit
 provenance records from the same pinned commit. The generator reads the
 checked-out Git HEAD for commit identity; Actions refs supply branch context.
 The Pages workflow checks out the PR head before generating diagnostics.
+
+## Shared screenshot evidence
+
+`real-world-pages` checks out browser-test-kit at
+`3a054c777a98300ee272e4458990b849c32a7ef0`. Every HTML entry in
+`fixtures/provenance.yaml` requires both `original.png` and `roundtrip.png`;
+missing or structurally invalid images fail the build. PNG validation uses the
+shared stdlib `check_png.py`, not a local copy. Chromium is the measured engine;
+Firefox/WebKit/mobile, pixel regression and screen-content assertions are not
+measured by this lane. Local report generation remains best-effort; CI is required.
+Each capture clears stale success PNGs, logs CLI failures and preserves failure
+images separately. The workflow uploads the available report/evidence even after
+failure (14 days), links it in the summary, and deploys only successful main builds.
+See the [shared guide](https://github.com/myon-bioinformatics/browser-test-kit/blob/3a054c777a98300ee272e4458990b849c32a7ef0/docs/screenshot-evidence.md).
