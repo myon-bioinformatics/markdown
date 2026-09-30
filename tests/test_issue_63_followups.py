@@ -87,7 +87,7 @@ def test_compact_llm_output_zero_limit_and_tilde_fence_are_idempotent() -> None:
     fence = "~~~"
     text = fence + "python title=example.py\nline1\nline2\n" + fence + "\n"
     compacted = md.compact_llm_output(text, max_code_lines=0)
-    assert compacted.startswith(fence + "python title=example.py\\n")
+    assert compacted.startswith(fence + "python title=example.py\n")
     assert "… 2 more lines" in compacted
     assert md.compact_llm_output(compacted, max_code_lines=0) == compacted
 
@@ -103,9 +103,9 @@ def test_split_reasoning_preserves_nested_summary_when_outer_has_none() -> None:
     )
     result = md.split_reasoning(text)
     assert result["reasoning"] == [
-        "outer start\\n<details><summary>inner summary</summary>inner body</details>\\nouter end"
+        "outer start\n<details><summary>inner summary</summary>inner body</details>\nouter end"
     ]
-    assert result["answer"] == "answer\\n"
+    assert result["answer"] == "answer\n"
 
 
 def test_split_reasoning_unclosed_nested_details_consumes_remainder() -> None:
