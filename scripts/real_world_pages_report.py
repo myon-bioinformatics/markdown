@@ -59,12 +59,23 @@ def _raw_tag_counts(html: str) -> dict[str, int]:
 
 def _screenshot(file_uri: str, png_path: Path) -> bool:
     """Best-effort: True on success, False if Playwright/its browser isn't available."""
-    result = subprocess.run(
-        [sys.executable, "-m", "playwright", "screenshot", "--full-page", file_uri, str(png_path)],
-        capture_output=True,
-        text=True,
-        timeout=60,
+    # An old success image must never satisfy this attempt's required checks.
+    png_path.unlink(missing_ok=True)
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "playwright", "screenshot", "--full-page", file_uri, str(png_path)],
+            capture_output=True, text=True, timeout=60,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        png_path.with_suffix(".log").write_text(str(exc), encoding="utf-8")
+        if png_path.exists():
+            png_path.replace(png_path.with_suffix(".failed.png"))
+        return False
+    png_path.with_suffix(".log").write_text(
+        f"exit={result.returncode}\n{result.stdout}\n{result.stderr}", encoding="utf-8"
     )
+    if result.returncode != 0 and png_path.exists():
+        png_path.replace(png_path.with_suffix(".failed.png"))
     return result.returncode == 0 and png_path.is_file()
 
 
