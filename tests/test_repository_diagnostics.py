@@ -47,33 +47,6 @@ def test_page_uses_pinned_web_ui_renderer():
     assert "__BASE__" not in html
 
 
-def test_build_record_prefers_explicit_diagnostics_sha(monkeypatch):
-    head_sha = "c" * 40
-
-    def fake_git(*args):
-        if args[:3] == ("show", "-s", "--format=%cI"):
-            assert args[3] == head_sha
-            return "2026-09-27T22:00:00+09:00"
-        if args[:3] == ("show", "-s", "--format=%s"):
-            assert args[3] == head_sha
-            return "PR head subject"
-        raise AssertionError(args)
-
-    monkeypatch.setattr(diagnostics, "_git", fake_git)
-    monkeypatch.setattr(diagnostics, "_tracked_bytes", lambda: 1)
-    record = diagnostics.build_record(
-        {
-            "REPOSITORY_DIAGNOSTICS_SHA": head_sha,
-            "GITHUB_SHA": "d" * 40,
-            "GITHUB_HEAD_REF": "feature/example",
-        },
-        generated_at="2026-09-27T13:00:00+00:00",
-    )
-    assert record["head"]["sha"] == head_sha
-    assert record["head"]["branch"] == "feature/example"
-    assert record["head"]["subject"] == "PR head subject"
-
-
 def test_page_escapes_template_constants(monkeypatch):
     monkeypatch.setattr(diagnostics, "REPOSITORY", '<repo & "quoted">')
     monkeypatch.setattr(diagnostics, "WEB_UI_BASE", 'https://example.test/a?x=1&y="2"')

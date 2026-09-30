@@ -6,14 +6,25 @@ on:
   workflow_dispatch:
 
 jobs:
+  changes:
+    name: Change detection
+    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-change-detection.yml@76a9e43fe7469d0e3a5728e0521bc5738afad725
+    with:
+      # README round-trip and fixture benchmarks consume these as test inputs.
+      force_heavy_paths: |-
+        README.md
+        fixtures
+
   pytest:
+    needs: changes
+    if: needs.changes.outputs.non_docs_changed == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install test deps
@@ -23,73 +34,65 @@ jobs:
 
 
   module-metadata:
+    needs: changes
+    if: needs.changes.outputs.non_docs_changed == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - name: Summarize markdown.py metadata
+      - name: Validate and summarize markdown.py provenance
         shell: bash
         run: |
           python - <<'PY'
-          import ast
+          import hashlib
+          import importlib.util
+          import json
           import os
-          import re
           from pathlib import Path
 
-          path = Path("markdown.py")
-          text = path.read_text(encoding="utf-8")
-          match = re.search(
-              r"^# metadata: __all__=(\d+) \| base_sha=([0-9a-f]{40}) "
-              r"\| updated_at=([^\s]+)$",
-              text,
-              re.MULTILINE,
+          artifact = Path("markdown.py")
+          validator_path = Path("vendor/python_artifact_provenance.py")
+          provenance_path = Path("vendor/python_artifact_provenance.provenance.json")
+
+          provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+          data = validator_path.read_bytes()
+          if hashlib.sha256(data).hexdigest() != provenance["sha256"]:
+              raise SystemExit("vendored provenance validator sha256 mismatch")
+          git_blob = b"blob " + str(len(data)).encode("ascii") + bytes([0]) + data
+          if hashlib.sha1(git_blob).hexdigest() != provenance["blob_sha"]:
+              raise SystemExit("vendored provenance validator git blob mismatch")
+
+          spec = importlib.util.spec_from_file_location(
+              "vendored_python_artifact_provenance",
+              validator_path,
           )
-          if not match:
-              print("::warning::markdown.py metadata header is missing or malformed")
-              raise SystemExit(0)
+          if spec is None or spec.loader is None:
+              raise SystemExit("unable to load vendored provenance validator")
+          validator = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(validator)
 
-          declared_count = int(match.group(1))
-          base_sha = match.group(2)
-          updated_at = match.group(3)
-
-          tree = ast.parse(text)
-          actual_count = None
-          for node in tree.body:
-              if isinstance(node, ast.Assign):
-                  if any(isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets):
-                      if isinstance(node.value, (ast.List, ast.Tuple)):
-                          actual_count = len(node.value.elts)
-                      break
-
-          if actual_count is None:
-              print("::warning::Could not determine __all__ count")
-              actual_display = "unknown"
-          else:
-              actual_display = str(actual_count)
-              if actual_count != declared_count:
-                  print(
-                      f"::warning::metadata __all__={declared_count} "
-                      f"but actual __all__ has {actual_count} entries"
-                  )
-
+          metadata = validator.validate_source_header(
+              artifact.read_text(encoding="utf-8")
+          )
           summary = os.environ.get("GITHUB_STEP_SUMMARY")
           if summary:
               with open(summary, "a", encoding="utf-8") as fh:
                   fh.write("## markdown.py metadata\n\n")
                   fh.write("| field | value |\n|---|---|\n")
-                  fh.write(f"| declared __all__ | {declared_count} |\n")
-                  fh.write(f"| actual __all__ | {actual_display} |\n")
-                  fh.write(f"| base SHA | `{base_sha}` |\n")
-                  fh.write(f"| updated at (UTC) | `{updated_at}` |\n")
+                  fh.write(f"| declared/actual __all__ | {metadata['all_count']} |\n")
+                  fh.write(f"| base SHA | `{metadata['base_sha']}` |\n")
+                  fh.write(f"| updated at (UTC) | `{metadata['updated_at']}` |\n")
           PY
 
   frontend-mock-pytest-latest:
+    needs: changes
+    if: needs.changes.outputs.non_docs_changed == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
       - name: Install latest-pytest frontend deps
@@ -107,11 +110,12 @@ jobs:
             tests/frontend/test_streamlit_ui.py
 
   frontend-smoke:
-    if: github.event_name == 'workflow_dispatch'
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' && needs.changes.outputs.non_docs_changed == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
       - name: Install frontend deps

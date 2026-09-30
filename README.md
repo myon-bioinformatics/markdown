@@ -548,3 +548,9 @@ Ironmate, anonymous public GitHub observations are pinned from
 mcp-toolcall-lab, and the HTML renderer is pinned to web-ui commit
 `adb23d7`. Network failures remain `unverified`; no GitHub token is used
 by the public resolver.
+
+The metadata contract and generator are vendored together from Ironmate commit
+`0aee64da2f8d0119a3ef9b955e5c3818f28aaf92`. Refresh both files and their
+provenance records from the same pinned commit. The generator reads the
+checked-out Git HEAD for commit identity; Actions refs supply branch context.
+The Pages workflow checks out the PR head before generating diagnostics.
