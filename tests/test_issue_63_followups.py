@@ -85,7 +85,7 @@ def test_tree_text_treats_literal_arrow_name_as_ambiguous_symlink() -> None:
 
 def test_compact_llm_output_zero_limit_and_tilde_fence_are_idempotent() -> None:
     fence = "~~~"
-    text = fence + "python title=example.py\\nline1\\nline2\\n" + fence + "\\n"
+    text = fence + "python title=example.py\nline1\nline2\n" + fence + "\n"
     compacted = md.compact_llm_output(text, max_code_lines=0)
     assert compacted.startswith(fence + "python title=example.py\\n")
     assert "… 2 more lines" in compacted
@@ -94,12 +94,12 @@ def test_compact_llm_output_zero_limit_and_tilde_fence_are_idempotent() -> None:
 
 def test_split_reasoning_preserves_nested_summary_when_outer_has_none() -> None:
     text = (
-        '<details type="reasoning">\\n'
-        "outer start\\n"
-        "<details><summary>inner summary</summary>inner body</details>\\n"
-        "outer end\\n"
-        "</details>\\n"
-        "answer\\n"
+        '<details type="reasoning">\n'
+        "outer start\n"
+        "<details><summary>inner summary</summary>inner body</details>\n"
+        "outer end\n"
+        "</details>\n"
+        "answer\n"
     )
     result = md.split_reasoning(text)
     assert result["reasoning"] == [
