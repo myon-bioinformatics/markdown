@@ -21,6 +21,7 @@ def test_vendor_provenance_matches_bytes():
     assert _git_blob_sha(ROOT / "vendor/git_inspector.py") == inspector_p["blob_sha"]
     assert inspector_p["source_repository"] == "myon-bioinformatics/myon-bioinformatics"
     assert inspector_p["source_commit"] == "cffa7017c95634bfb6ed6b269d255d56680a894c"
+    assert hashlib.sha256((ROOT / "vendor/git_inspector.py").read_bytes()).hexdigest() == inspector_p["sha256"]
 
 
 def test_payload_not_checked_roundtrip(tmp_path, monkeypatch):
