@@ -15,8 +15,13 @@ def _git_blob_sha(path: Path) -> str:
 def test_vendor_provenance_matches_bytes():
     contract_p = json.loads((ROOT / "vendor/repository_metadata_contract.provenance.json").read_text())
     resolver_p = json.loads((ROOT / "vendor/github_public_resolver.provenance.json").read_text())
+    inspector_p = json.loads((ROOT / "vendor/git_inspector.provenance.json").read_text())
     assert _git_blob_sha(ROOT / "vendor/repository_metadata_contract.py") == contract_p["blob_sha"]
     assert _git_blob_sha(ROOT / "vendor/github_public_resolver.py") == resolver_p["blob_sha"]
+    assert _git_blob_sha(ROOT / "vendor/git_inspector.py") == inspector_p["blob_sha"]
+    assert inspector_p["source_repository"] == "myon-bioinformatics/myon-bioinformatics"
+    assert inspector_p["source_commit"] == "cffa7017c95634bfb6ed6b269d255d56680a894c"
+    assert hashlib.sha256((ROOT / "vendor/git_inspector.py").read_bytes()).hexdigest() == inspector_p["sha256"]
 
 
 def test_payload_not_checked_roundtrip(tmp_path, monkeypatch):
@@ -54,3 +59,29 @@ def test_page_escapes_template_constants(monkeypatch):
     assert '&lt;repo &amp; &quot;quoted&quot;&gt;' in html
     assert 'https://example.test/a?x=1&amp;y=&quot;2&quot;' in html
     assert '<repo & "quoted">' not in html
+
+
+def test_tracked_bytes_uses_canonical_inspector_paths(tmp_path, monkeypatch):
+    (tmp_path / "space 日本語.txt").write_bytes(b"abc")
+    (tmp_path / "missing.txt").write_bytes(b"ignored")
+    (tmp_path / "missing.txt").unlink()
+    monkeypatch.setattr(diagnostics, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        diagnostics.GIT_INSPECTOR,
+        "ls_files",
+        lambda root: {
+            "paths": ["space 日本語.txt", "missing.txt"],
+            "truncated": False,
+        },
+    )
+    assert diagnostics._tracked_bytes() == 3
+
+
+def test_tracked_bytes_rejects_incomplete_inventory(monkeypatch):
+    monkeypatch.setattr(
+        diagnostics.GIT_INSPECTOR,
+        "ls_files",
+        lambda root: {"paths": ["partial"], "truncated": True},
+    )
+    with __import__("pytest").raises(RuntimeError, match="truncated"):
+        diagnostics._tracked_bytes()
