@@ -14,13 +14,15 @@ if str(ROOT) not in sys.path:
 import markdown as md
 
 
-def test_markdown_to_man_replaces_nul_in_body() -> None:
+def test_markdown_to_man_replaces_nul_in_body_and_rejects_header_controls() -> None:
     fence = "\x60\x60\x60"
     content = "paragraph before\x00after\n\n" + fence + "\ncode before\x00after\n" + fence
     out = md.markdown_to_man(content, name="demo")
     assert "\x00" not in out
     assert "paragraph before\uFFFDafter" in out
     assert "code before\uFFFDafter" in out
+    with pytest.raises(ValueError, match="control characters"):
+        md.markdown_to_man("", name="demo\x00name")
 
 
 def test_compact_llm_output_preserves_info_string_and_is_idempotent() -> None:
@@ -79,3 +81,35 @@ def test_scanner_preserves_legacy_fence_close_with_trailing_text() -> None:
 
 def test_tree_text_treats_literal_arrow_name_as_ambiguous_symlink() -> None:
     assert md.tree_text_to_markdown("root\n└── report -> backup\n") == "- report\n"
+
+
+def test_compact_llm_output_zero_limit_and_tilde_fence_are_idempotent() -> None:
+    fence = "~~~"
+    text = fence + "python title=example.py\\nline1\\nline2\\n" + fence + "\\n"
+    compacted = md.compact_llm_output(text, max_code_lines=0)
+    assert compacted.startswith(fence + "python title=example.py\\n")
+    assert "… 2 more lines" in compacted
+    assert md.compact_llm_output(compacted, max_code_lines=0) == compacted
+
+
+def test_split_reasoning_preserves_nested_summary_when_outer_has_none() -> None:
+    text = (
+        '<details type="reasoning">\\n'
+        "outer start\\n"
+        "<details><summary>inner summary</summary>inner body</details>\\n"
+        "outer end\\n"
+        "</details>\\n"
+        "answer\\n"
+    )
+    result = md.split_reasoning(text)
+    assert result["reasoning"] == [
+        "outer start\\n<details><summary>inner summary</summary>inner body</details>\\nouter end"
+    ]
+    assert result["answer"] == "answer\\n"
+
+
+def test_split_reasoning_unclosed_nested_details_consumes_remainder() -> None:
+    text = '<details type="reasoning">outer<details>inner</details>tail'
+    result = md.split_reasoning(text)
+    assert result["reasoning"] == ["outer<details>inner</details>tail"]
+    assert result["answer"] == ""
