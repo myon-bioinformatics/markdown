@@ -40,6 +40,8 @@ behavior only in a PR comment or commit message.
 | `FORGEABLE_INBAND_PLACEHOLDER` | A converter stashes spans behind in-band markers (private-use or control characters) without escaping those same characters in the input | Input that already contains the marker is read as a placeholder, so text silently disappears or is swapped, and pattern-based restore can loop | Escape the marker in the input first (escape-doubling), or use markers that sanitized input can never contain; test with input that forges a placeholder, and inspect such output with `repr()` because private-use glyphs render differently per platform |
 | `HOST_FSTRING_FOREIGN_BRACES` | Python f-string (or another host-language interpolated string) contains embedded JavaScript/CSS/JSON braces as if they were plain text | Foreign-language `{...}` is parsed as host interpolation; generated builders can fail at import/CI collection before any page test runs | Keep embedded foreign code in a plain literal/template with explicit sentinel replacement (or escape every brace deliberately), and compile/import the builder in CI |
 
+`html.escape` does not sanitize NUL. Replace input NUL with U+FFFD at the `markdown_to_html` entry point, before inline placeholders or fenced-code rendering.
+
 ## Contract rules derived from the catalog
 
 - Keep `markdown.py` as the only implementation source of truth.
