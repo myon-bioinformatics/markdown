@@ -6387,10 +6387,10 @@ _REASONING_CLOSE_RE = {
 _REASONING_DETAILS_OPEN_RE = re.compile(
     r'<details\b(?=[^>]*\btype=["\']reasoning["\'])[^>]*>', re.IGNORECASE
 )
-_REASONING_DETAILS_CLOSE_RE = re.compile(r"</details\s*>", re.IGNORECASE)
 _DETAILS_TAG_RE = re.compile(r"</?details\b[^>]*>", re.IGNORECASE)
 _REASONING_SUMMARY_RE = re.compile(
-    r"[ \t]*<summary\b[^>]*>.*?</summary>[ \t]*\n?", re.IGNORECASE | re.DOTALL
+    r"\A[ \t\n]*<summary\b[^>]*>.*?</summary>[ \t]*\n?",
+    re.IGNORECASE | re.DOTALL,
 )
 _LLM_UUID_RE = re.compile(
     r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
