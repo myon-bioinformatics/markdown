@@ -18,9 +18,12 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 from urllib.parse import unquote, urlparse
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -113,12 +116,6 @@ def test_build_report_omits_version_label_when_absent(tmp_path, monkeypatch) -> 
     assert "abcdef12" in index
     assert "Version " not in index
     assert "Commit abcdef12" in index
-
-
-
-
-import subprocess
-import pytest
 
 
 @pytest.mark.parametrize('case', json.loads(
