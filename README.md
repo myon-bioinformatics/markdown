@@ -575,3 +575,5 @@ tested SHA and exact run ID/attempt, and rejects failed receipts. Isolated copie
 of real CI artifacts must fail when an image is missing, its hash is altered,
 its run ID is stale, or its receipt stage is failed. Available receipts upload
 with the report after failure. This does not add screen-content assertions.
+
+Public source placement and automatic Python CI updates: [vendor automation](docs/vendor-automation.md).
