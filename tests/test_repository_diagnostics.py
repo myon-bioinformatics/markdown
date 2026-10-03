@@ -4,6 +4,12 @@ from pathlib import Path
 
 from scripts import repository_diagnostics as diagnostics
 
+
+def _locked(destination):
+    root = Path(__file__).resolve().parents[1]
+    lock = json.loads((root / "vendor.lock.json").read_text(encoding="utf-8"))
+    return next(e for e in lock["files"] if e["destination"] == destination)
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -20,7 +26,7 @@ def test_vendor_provenance_matches_bytes():
     assert _git_blob_sha(ROOT / "vendor/github_public_resolver.py") == resolver_p["blob_sha"]
     assert _git_blob_sha(ROOT / "vendor/git_inspector.py") == inspector_p["blob_sha"]
     assert inspector_p["source_repository"] == "myon-bioinformatics/myon-bioinformatics"
-    assert inspector_p["source_commit"] == "cffa7017c95634bfb6ed6b269d255d56680a894c"
+    assert inspector_p["source_commit"] == _locked('vendor/git_inspector.py')['commit']
     assert hashlib.sha256((ROOT / "vendor/git_inspector.py").read_bytes()).hexdigest() == inspector_p["sha256"]
 
 

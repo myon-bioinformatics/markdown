@@ -13,3 +13,5 @@ venv/
 
 # Local output from scripts/converter_contract_audit.py
 /converter_contract_audit.json
+.vendor-sync-tools/
+build/shared/
