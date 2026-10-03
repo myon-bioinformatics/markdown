@@ -1,0 +1,128 @@
+[
+  {
+    "name": "clean",
+    "env": {},
+    "before": {
+      "version": null,
+      "sha": "deadbeefcafebabe000000000000000000000000",
+      "shortSha": "deadbeef",
+      "ref": "main",
+      "committedAt": "2026-09-19T12:00:00+00:00",
+      "subject": "Add Pages revision identity",
+      "commitUrl": null,
+      "dirty": false
+    },
+    "after": {
+      "version": null,
+      "sha": "deadbeefcafebabe000000000000000000000000",
+      "shortSha": "deadbeef",
+      "ref": "main",
+      "committedAt": "2026-09-19T12:00:00+00:00",
+      "subject": "Add Pages revision identity",
+      "commitUrl": null,
+      "dirty": false
+    }
+  },
+  {
+    "name": "dirty",
+    "env": {},
+    "before": {
+      "version": null,
+      "sha": "deadbeefcafebabe000000000000000000000000",
+      "shortSha": "deadbeef",
+      "ref": "main",
+      "committedAt": "2026-09-19T12:00:00+00:00",
+      "subject": "Add Pages revision identity",
+      "commitUrl": null,
+      "dirty": true
+    },
+    "after": {
+      "version": null,
+      "sha": "deadbeefcafebabe000000000000000000000000",
+      "shortSha": "deadbeef",
+      "ref": "main",
+      "committedAt": "2026-09-19T12:00:00+00:00",
+      "subject": "Add Pages revision identity",
+      "commitUrl": null,
+      "dirty": true
+    }
+  },
+  {
+    "name": "detached",
+    "env": {},
+    "before": {
+      "version": null,
+      "sha": "deadbeefcafebabe000000000000000000000000",
+      "shortSha": "deadbeef",
+      "ref": null,
+      "committedAt": "2026-09-19T12:00:00+00:00",
+      "subject": "Add Pages revision identity",
+      "commitUrl": null,
+      "dirty": false
+    },
+    "after": {
+      "version": null,
+      "sha": "deadbeefcafebabe000000000000000000000000",
+      "shortSha": "deadbeef",
+      "ref": "detached",
+      "committedAt": "2026-09-19T12:00:00+00:00",
+      "subject": "Add Pages revision identity",
+      "commitUrl": null,
+      "dirty": false
+    }
+  },
+  {
+    "name": "actions",
+    "env": {
+      "GITHUB_SHA": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "GITHUB_REF_NAME": "42/merge",
+      "GITHUB_HEAD_REF": "feature/pages",
+      "GITHUB_REPOSITORY": "myon-bioinformatics/markdown",
+      "GITHUB_SERVER_URL": "https://github.com/"
+    },
+    "before": {
+      "version": null,
+      "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "shortSha": "aaaaaaaa",
+      "ref": "42/merge",
+      "committedAt": "2026-09-19T12:00:00+00:00",
+      "subject": "Add Pages revision identity",
+      "commitUrl": "https://github.com/myon-bioinformatics/markdown/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "dirty": false
+    },
+    "after": {
+      "version": null,
+      "sha": "deadbeefcafebabe000000000000000000000000",
+      "shortSha": "deadbeef",
+      "ref": "feature/pages",
+      "committedAt": "2026-09-19T12:00:00+00:00",
+      "subject": "Add Pages revision identity",
+      "commitUrl": "https://github.com/myon-bioinformatics/markdown/commit/deadbeefcafebabe000000000000000000000000",
+      "dirty": false
+    }
+  },
+  {
+    "name": "unavailable",
+    "env": {},
+    "before": {
+      "version": null,
+      "sha": null,
+      "shortSha": null,
+      "ref": null,
+      "committedAt": null,
+      "subject": null,
+      "commitUrl": null,
+      "dirty": false
+    },
+    "after": {
+      "version": null,
+      "sha": null,
+      "shortSha": null,
+      "ref": null,
+      "committedAt": null,
+      "subject": null,
+      "commitUrl": null,
+      "dirty": null
+    }
+  }
+]
