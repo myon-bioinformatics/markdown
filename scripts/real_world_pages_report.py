@@ -39,6 +39,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import markdown as md
+from scripts.repository_diagnostics import GENERATOR, GIT_INSPECTOR, REPOSITORY
 
 _TAG_COUNT_RES = {
     "h1": re.compile(r"<h1\b"),
@@ -79,37 +80,12 @@ def _screenshot(file_uri: str, png_path: Path) -> bool:
     return result.returncode == 0 and png_path.is_file()
 
 
-def _git_output(args: list[str]) -> str | None:
-    """Run a git command in the repo root. None if git is missing or the command fails."""
-    try:
-        result = subprocess.run(
-            ["git", *args],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            cwd=ROOT,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    if result.returncode != 0:
-        return None
-    value = result.stdout.strip()
-    return value or None
-
-
 def collect_revision(env: Mapping[str, str] | None = None) -> dict[str, Any]:
-    """Collect a small revision/version block for the Pages report.
+    """Adapt canonical checkout identity and separate status to flat Pages metadata.
 
-    Schema written to ``_site/build_meta.json`` (flutter_navigation_basic-inspired,
-    but flat — this report has no pubspec / artifact-size / screen-weight fields):
-
-    - ``version``: ``markdown.__version__`` if that attribute exists, else null.
-      This repo has no package version today; do not invent one.
-    - ``sha`` / ``shortSha`` (8): ``GITHUB_SHA`` when set, else ``git rev-parse``.
-    - ``ref``: ``GITHUB_REF_NAME`` when set, else ``git branch --show-current``.
-    - ``committedAt`` / ``subject`` / ``dirty``: git (``%cI``, ``%s``, porcelain).
-    - ``commitUrl``: ``{server}/{repo}/commit/{sha}`` when sha and
-      ``GITHUB_REPOSITORY`` are known (``GITHUB_SERVER_URL`` or https://github.com).
+    Identity is all-or-unknown if the canonical producer cannot measure it.
+    ``dirty`` is null on failed/truncated observation, never falsely clean.
+    See docs/pages-build-metadata.md for deliberate legacy differences.
     """
     environ = os.environ if env is None else env
 
@@ -117,18 +93,28 @@ def collect_revision(env: Mapping[str, str] | None = None) -> dict[str, Any]:
         value = (environ.get(name) or "").strip()
         return value or None
 
-    github_sha = _env("GITHUB_SHA")
-    sha = github_sha or _git_output(["rev-parse", "HEAD"])
-    if sha:
-        short_sha = sha[:8]
+    try:
+        record = GENERATOR.record_from_checkout(ROOT, REPOSITORY, env=environ)
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        print(f"Pages canonical identity unavailable: {exc}", file=sys.stderr)
+        head = {}
     else:
-        short_sha = _git_output(["rev-parse", "--short=8", "HEAD"])
+        head = record["head"]
+    sha = head.get("sha")
+    # Preserve this report's eight-character display rather than the canonical
+    # record's own short_sha presentation width.
+    short_sha = sha[:8] if sha else None
+    ref = head.get("branch")
+    committed_at = head.get("timestamp")
+    subject = head.get("subject")
 
-    ref = _env("GITHUB_REF_NAME") or _git_output(["branch", "--show-current"])
-    committed_at = _git_output(["show", "-s", "--format=%cI", "HEAD"])
-    subject = _git_output(["show", "-s", "--format=%s", "HEAD"])
-    status = _git_output(["status", "--porcelain"])
-    dirty = bool(status)
+    try:
+        observation = GIT_INSPECTOR.status(ROOT)
+    except (GIT_INSPECTOR.GitInspectionError, ValueError) as exc:
+        print(f"Pages dirty observation unavailable: {exc}", file=sys.stderr)
+        dirty = None
+    else:
+        dirty = None if observation["truncated"] else not observation["clean"]
 
     repo = _env("GITHUB_REPOSITORY")
     server = (_env("GITHUB_SERVER_URL") or "https://github.com").rstrip("/")
@@ -172,8 +158,10 @@ def _revision_html(revision: Mapping[str, Any]) -> str:
         parts.append(html_module.escape(str(revision["committedAt"])))
     if revision.get("subject"):
         parts.append(html_module.escape(str(revision["subject"])))
-    if revision.get("dirty"):
+    if revision.get("dirty") is True:
         parts.append("(dirty)")
+    elif revision.get("dirty") is None:
+        parts.append("(dirty unknown)")
 
     return f'<p id="build-meta">{" · ".join(parts)}</p>'
 

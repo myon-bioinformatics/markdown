@@ -18,9 +18,12 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 from urllib.parse import unquote, urlparse
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -115,83 +118,135 @@ def test_build_report_omits_version_label_when_absent(tmp_path, monkeypatch) -> 
     assert "Commit abcdef12" in index
 
 
-def test_collect_revision_prefers_github_actions_env(monkeypatch) -> None:
+@pytest.mark.parametrize('case', json.loads(
+    (ROOT / 'tests/fixtures/pages_revision_migration.json').read_text()
+), ids=lambda case: case['name'])
+def test_revision_before_after_fixture(case, monkeypatch):
     report = _load_report_module()
+    expected = case['after']
 
-    def fake_git(args: list[str]) -> str | None:
-        table = {
-            ("rev-parse", "HEAD"): "gitsha0000000000000000000000000000000000",
-            ("rev-parse", "--short=8", "HEAD"): "gitsha00",
-            ("branch", "--show-current"): "local-branch",
-            ("show", "-s", "--format=%cI", "HEAD"): "2026-01-01T00:00:00+00:00",
-            ("show", "-s", "--format=%s", "HEAD"): "local subject",
-            ("status", "--porcelain"): " M markdown.py",
-        }
-        return table.get(tuple(args))
+    def canonical(root, full_name, *, env):
+        assert root == report.ROOT
+        assert full_name == 'myon-bioinformatics/markdown'
+        assert env == case['env']
+        if case['name'] == 'unavailable':
+            raise FileNotFoundError('git')
+        return {'head': {'sha': expected['sha'], 'branch': expected['ref'],
+                         'timestamp': expected['committedAt'], 'subject': expected['subject']}}
 
-    monkeypatch.setattr(report, "_git_output", fake_git)
-    meta = report.collect_revision(
-        {
-            "GITHUB_SHA": "actions1234567890abcdef1234567890abcdef12",
-            "GITHUB_REF_NAME": "main",
-            "GITHUB_REPOSITORY": "myon-bioinformatics/markdown",
-            "GITHUB_SERVER_URL": "https://github.com",
-        }
-    )
-    assert meta["sha"] == "actions1234567890abcdef1234567890abcdef12"
-    assert meta["shortSha"] == "actions1"
-    assert meta["ref"] == "main"
-    assert meta["commitUrl"] == (
-        "https://github.com/myon-bioinformatics/markdown/commit/"
-        "actions1234567890abcdef1234567890abcdef12"
-    )
-    assert meta["committedAt"] == "2026-01-01T00:00:00+00:00"
-    assert meta["subject"] == "local subject"
-    assert meta["dirty"] is True
-    assert meta["version"] is None
+    def status(root):
+        assert root == report.ROOT
+        if case['name'] == 'unavailable':
+            raise report.GIT_INSPECTOR.GitInspectionError('git unavailable')
+        return {'clean': not expected['dirty'], 'truncated': False}
+
+    monkeypatch.setattr(report.GENERATOR, 'record_from_checkout', canonical)
+    monkeypatch.setattr(report.GIT_INSPECTOR, 'status', status)
+    assert report.collect_revision(case['env']) == expected
+    assert set(case['before']) == set(expected)
+    if case['name'] in ('clean', 'dirty'):
+        assert case['before'] == expected
+    rendered = report._revision_html(expected)
+    if expected['dirty'] is None:
+        assert '(dirty unknown)' in rendered
+    elif expected['dirty']:
+        assert '(dirty)' in rendered
+    else:
+        assert '(dirty' not in rendered
 
 
-def test_collect_revision_falls_back_to_git_when_actions_env_absent(monkeypatch) -> None:
+def _checkout(tmp_path):
+    def git(*args):
+        return subprocess.check_output(['git', '-C', str(tmp_path), *args], text=True).strip()
+    git('init', '-b', 'main')
+    git('config', 'user.name', 'Pages fixture')
+    git('config', 'user.email', 'pages@example.invalid')
+    (tmp_path / 'tracked.txt').write_text('initial\n')
+    git('add', 'tracked.txt')
+    git('commit', '-m', 'Pages fixture commit')
+    return git
+
+
+def test_real_checkout_clean_dirty_detached_and_actions(tmp_path, monkeypatch):
     report = _load_report_module()
+    git = _checkout(tmp_path)
+    monkeypatch.setattr(report, 'ROOT', tmp_path)
+    sha = git('rev-parse', 'HEAD')
+    clean = report.collect_revision({})
+    assert clean['sha'] == sha
+    assert clean['shortSha'] == sha[:8]
+    assert clean['ref'] == 'main'
+    assert clean['subject'] == 'Pages fixture commit'
+    assert clean['committedAt'] == git('show', '-s', '--format=%cI', 'HEAD')
+    assert clean['dirty'] is False
+    # Existing inspector handles filenames, including Unicode and newlines.
+    untracked = tmp_path / '未追跡\nfile.txt'
+    untracked.write_text('untracked')
+    assert report.collect_revision({})['dirty'] is True
+    untracked.unlink()
+    (tmp_path / 'tracked.txt').write_text('modified\n')
+    assert report.collect_revision({})['dirty'] is True
+    git('add', 'tracked.txt')
+    assert report.collect_revision({})['dirty'] is True
+    git('commit', '-m', 'Updated fixture')
+    git('checkout', '--detach')
+    detached = report.collect_revision({})
+    assert detached['ref'] == 'detached'
+    assert detached['dirty'] is False
+    actions = report.collect_revision({'GITHUB_SHA': 'f'*40,
+                                      'GITHUB_REF_NAME': '42/merge',
+                                      'GITHUB_HEAD_REF': 'feature/pages'})
+    assert actions['sha'] == detached['sha']
+    assert actions['ref'] == 'feature/pages'
+    assert report.collect_revision({'GITHUB_REF_NAME': '42/merge'})['ref'] == '42/merge'
 
-    def fake_git(args: list[str]) -> str | None:
-        table = {
-            ("rev-parse", "HEAD"): "deadbeefcafebabe000000000000000000000000",
-            ("rev-parse", "--short=8", "HEAD"): "deadbeef",
-            ("branch", "--show-current"): "cursor/pages-build-meta",
-            ("show", "-s", "--format=%cI", "HEAD"): "2026-09-19T12:00:00+00:00",
-            ("show", "-s", "--format=%s", "HEAD"): "Add Pages revision identity",
-            ("status", "--porcelain"): "",
-        }
-        return table.get(tuple(args))
 
-    monkeypatch.setattr(report, "_git_output", fake_git)
+@pytest.mark.parametrize('failure', ['missing_git', 'not_worktree', 'unborn'])
+def test_unmeasurable_checkout(tmp_path, monkeypatch, failure):
+    report = _load_report_module()
+    monkeypatch.setattr(report, 'ROOT', tmp_path)
+    if failure == 'missing_git':
+        monkeypatch.setenv('PATH', str(tmp_path))
+    elif failure == 'unborn':
+        subprocess.run(['git', 'init', str(tmp_path)], check=True, capture_output=True)
+    meta = report.collect_revision({'GITHUB_SHA': 'a'*40, 'GITHUB_REF_NAME': 'main'})
+    assert all(meta[key] is None for key in
+               ('sha', 'shortSha', 'ref', 'committedAt', 'subject', 'commitUrl'))
+    # An unborn worktree can have a successfully measured clean status despite
+    # its identity being unknown; the two measurements remain independent.
+    assert meta['dirty'] is (False if failure == 'unborn' else None)
+
+
+@pytest.mark.parametrize('failure', ['error', 'truncated'])
+def test_status_failure_does_not_erase_identity(tmp_path, monkeypatch, failure):
+    report = _load_report_module()
+    git = _checkout(tmp_path)
+    monkeypatch.setattr(report, 'ROOT', tmp_path)
+
+    def status(root):
+        if failure == 'error':
+            raise report.GIT_INSPECTOR.GitInspectionError('failed observation')
+        return {'clean': False, 'truncated': True, 'records': []}
+
+    monkeypatch.setattr(report.GIT_INSPECTOR, 'status', status)
     meta = report.collect_revision({})
-    assert meta["sha"] == "deadbeefcafebabe000000000000000000000000"
-    assert meta["shortSha"] == "deadbeef"
-    assert meta["ref"] == "cursor/pages-build-meta"
-    assert meta["commitUrl"] is None
-    assert meta["dirty"] is False
-    assert meta["subject"] == "Add Pages revision identity"
+    assert meta['sha'] == git('rev-parse', 'HEAD')
+    assert meta['dirty'] is None
+    assert '(dirty unknown)' in report._revision_html(meta)
 
 
-def test_collect_revision_git_unavailable(monkeypatch) -> None:
+def test_canonical_validation_failure_keeps_dirty_observation(tmp_path, monkeypatch):
     report = _load_report_module()
-    monkeypatch.setattr(report, "_git_output", lambda args: None)
-    meta = report.collect_revision({})
-    assert meta["sha"] is None
-    assert meta["shortSha"] is None
-    assert meta["ref"] is None
-    assert meta["committedAt"] is None
-    assert meta["subject"] is None
-    assert meta["commitUrl"] is None
-    assert meta["dirty"] is False
-    assert meta["version"] is None
+    _checkout(tmp_path)
+    monkeypatch.setattr(report, 'ROOT', tmp_path)
+    (tmp_path / 'tracked.txt').write_text('modified')
 
+    def fail(*args, **kwargs):
+        raise ValueError('canonical metadata is not valid')
 
-def test_collect_revision_reads_markdown_version_when_present(monkeypatch) -> None:
-    report = _load_report_module()
-    monkeypatch.setattr(report, "_git_output", lambda args: None)
-    monkeypatch.setattr(report.md, "__version__", "9.9.9", raising=False)
-    meta = report.collect_revision({})
-    assert meta["version"] == "9.9.9"
+    monkeypatch.setattr(report.GENERATOR, 'record_from_checkout', fail)
+    monkeypatch.setattr(report.md, '__version__', '9.9.9', raising=False)
+    meta = report.collect_revision({'GITHUB_SHA': 'a'*40})
+    assert meta['sha'] is None
+    assert meta['dirty'] is True
+    assert meta['version'] == '9.9.9'
