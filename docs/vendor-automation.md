@@ -1,7 +1,9 @@
 # Public vendor placement in CI
 
-Ordinary push/PR CI restores locked files and updates the explicit public source
-allowlist once in `resolve-vendor`. The primary Python test job, including its
+Ordinary push/PR CI restores locked files and promotes the explicit public source
+allowlist once in `resolve-vendor` using the pinned canonical `vendor_sync.py`.
+The promotion verifies the selected bytes and resulting baseline, then emits a
+`vendor-promotion/1` JSON receipt. The primary Python test job, including its
 matrix variants, downloads the same verified snapshot. Existing documentation-only change detection is retained.
 Dispatch defaults to `update`; `vendor-mode: locked` reproduces the baseline.
 No dedicated token, enable variable, scheduled update PR or main writeback is
@@ -21,19 +23,25 @@ Source repositories that have LICENSE files carry their exact LICENSE bytes.
 The shared profile MIT LICENSE is explicitly enrolled from its merged license commit.
 
 The source/license/lock and compatibility records are retained in Actions both
-before and after testing with `if: always()` and missing-file errors. Failures
-remain nonzero. Public Actions artifacts can be downloaded by signed-in users;
+before and after testing with `if: always()` and missing-file errors. Update
+runs also preserve `vendor-promotion.json`, for 17 files in each successful
+resolved or primary-matrix snapshot. A successful promotion with no upstream
+byte changes still emits a receipt with empty `changed_paths` and `promoted`
+lists. Failures remain nonzero. Public Actions artifacts can be downloaded by
+signed-in users;
 raw reports are not added to Pages. Existing runtime dependencies, unrelated
 browser/Docker workflows and deployment settings are preserved.
 
 ALM agents can use the same mechanism in a disposable checkout:
 
 ```bash
+set -euo pipefail
 git clone https://github.com/myon-bioinformatics/myon-bioinformatics.git .vendor-sync-tools
 git -C .vendor-sync-tools checkout --detach 08dc3757deeb930c950bdcc6bd55ec3112ba49fc
 python -S .vendor-sync-tools/vendor_sync.py check --manifest vendor.lock.json
 python -S .vendor-sync-tools/vendor_sync.py materialize --manifest vendor.lock.json
-python -S .vendor-sync-tools/vendor_sync.py update --manifest vendor.lock.json
+python -S .vendor-sync-tools/vendor_sync.py promote --manifest vendor.lock.json | tee vendor-promotion.json
+python -S -m json.tool vendor-promotion.json > /dev/null
 python -S .vendor-sync-tools/vendor_sync.py check --manifest vendor.lock.json
 python -S scripts/sync_vendor_provenance.py
 ```
@@ -50,13 +58,24 @@ now tests the checked-in baseline on one representative Python version on every
 selected push/PR run. It verifies local bytes, removes the allowlisted files,
 materializes their exact upstream commits, verifies again and projects provenance
 before running the existing Python suite. It never downloads the candidate
-snapshot or runs update. Locked evidence uses a `locked-` artifact prefix and is
+snapshot or runs update/promotion. It generates no promotion receipt and retains
+the 16 baseline files. Locked evidence uses a `locked-` artifact prefix and is
 retained on failure; it is separate from candidate JUnit collection.
 
 Pages/Docker continue shipping checked-in bytes; no source is written back to
 main. Green `test-locked` covers that baseline on its one Python version, not the
 whole candidate matrix. `vendor-mode: locked` remains available for a full primary
 matrix baseline run, but no dispatch is required for routine baseline coverage.
+That dispatch also skips promotion and omits the receipt path from both resolved
+and primary-matrix artifact uploads, preserving 16 files without a fabricated
+receipt.
+
+The checked-in GHI source and LICENSE identities are pinned together at
+`fc2c527257b12eb99c00637bbae74f8988fd6bf4`. Both the primary matrix and the
+independent locked lane load their verified `vendor/gh_identity.py` directly
+under `python -S` before testing. This checks loadability without site packages;
+it does not adopt GHI in the `markdown.py` runtime, exercise its GitHub operations,
+or enforce absence of import-time I/O in future upstream versions.
 
 The resolve job's summary lists changed source/LICENSE paths and old/new commits.
 It describes the candidate only; baseline test results belong to `test-locked`.
@@ -66,8 +85,9 @@ Updates happen only when the existing workflow/change filters select the run.
 There is no upstream-only scheduler. Separate push and pull-request events are
 separate runs and can each resolve upstream once.
 
-The pinned shared tool uses anonymous public Git fallback for both `update`
-and locked `materialize` on HTTP 403/429. Locked placement preserves each entry's
+The pinned shared tool uses anonymous public Git fallback on HTTP 403/429 for
+`promote` through its canonical update resolver and for locked `materialize`.
+Locked placement preserves each entry's
 exact commit and verifies Git blob/SHA-256 before writing; other errors remain nonzero.
 
 The small projection adapter is consumer-owned because existing provenance
@@ -79,4 +99,5 @@ checked-in validator. It is a baseline artifact check, separate from candidate
 pytest. Frontend mock tests do not consume this vendor snapshot.
 
 The shared profile MIT LICENSE is now explicitly locked at `443b8a94bbc6801332e0abd9f2e56da68173b38d`
-and included in resolved and locked evidence. Existing source pins and bytes are unchanged.
+and included in resolved and locked evidence. Each source pin and its exact
+bytes are recorded in `vendor.lock.json`.

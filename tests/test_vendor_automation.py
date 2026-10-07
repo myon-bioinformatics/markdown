@@ -13,6 +13,13 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = '.github/workflows/ci.yml'
 TEST_JOB = 'pytest'
 HELPER = 'scripts/sync_vendor_provenance.py'
+RECEIPT_PATH = "${{ inputs.vendor-mode != 'locked' && 'vendor-promotion.json' || '' }}"
+GHI_LOAD_COMMAND = (
+    'python -S -c "import importlib.util; '
+    "s=importlib.util.spec_from_file_location('vendored_ghi','vendor/gh_identity.py'); "
+    'm=importlib.util.module_from_spec(s); s.loader.exec_module(m); '
+    "assert hasattr(m,'capabilities')\""
+)
 SNAPSHOT = ['vendor/gh_identity.py', 'vendor/gh_identity-LICENSE', 'vendor/myon-bioinformatics-LICENSE', 'vendor.lock.json',
  'vendor/git_inspector.py',
  'vendor/github_public_resolver.py',
@@ -87,7 +94,8 @@ def test_public_vendor_ci_updates_without_repository_writes():
     assert update["shell"] == "bash"
     assert 'continue-on-error' not in update
     assert update['run'].splitlines() == [
-        'python -S .vendor-sync-tools/vendor_sync.py update --manifest vendor.lock.json',
+        'python -S .vendor-sync-tools/vendor_sync.py promote --manifest vendor.lock.json | tee vendor-promotion.json',
+        'python -S -m json.tool vendor-promotion.json > /dev/null',
         'python -S .vendor-sync-tools/vendor_sync.py check --manifest vendor.lock.json']
     recreate = next(s for s in resolve if s.get("name") == "Recreate locked vendor files from GitHub")
     assert recreate["shell"] == "bash"
@@ -111,11 +119,14 @@ def test_public_vendor_ci_updates_without_repository_writes():
     assert ci['on']['workflow_dispatch']['inputs']['vendor-mode']['default'] == 'update'
     needs = jobs[TEST_JOB]['needs']
     assert 'resolve-vendor' in ([needs] if isinstance(needs, str) else needs)
-    assert sum('vendor_sync.py update' in s.get('run', '') for steps in (resolve,test) for s in steps) == 1
+    assert sum('vendor_sync.py promote' in s.get('run', '') for steps in (resolve,test) for s in steps) == 1
+    assert not any('vendor_sync.py update' in s.get('run', '') for steps in (resolve,test) for s in steps)
     download = next(i for i,s in enumerate(test) if s.get('name') == 'Download resolved vendor snapshot')
     verify = next(i for i,s in enumerate(test) if s.get('name') == 'Verify resolved vendor snapshot')
+    load = next(i for i,s in enumerate(test) if s.get('name') == 'Verify enrolled GHI is stdlib-loadable')
     tests = [i for i,s in enumerate(test) if 'pytest ' in s.get('run','')]
-    assert tests and download < verify < min(tests)
+    assert tests and download < verify < load < min(tests)
+    assert test[load]['run'] == GHI_LOAD_COMMAND
     assert test[download]['with']['name'] == 'vendor-snapshot'
     assert test[verify]['shell'] == 'bash'
     assert test[verify]['run'].splitlines() == [
@@ -127,7 +138,7 @@ def test_public_vendor_ci_updates_without_repository_writes():
         upload = next(s for s in steps if s.get('name') == name)
         assert upload['if'] == 'always()'
         assert upload['with']['if-no-files-found'] == 'error'
-        assert set(upload['with']['path'].splitlines()) == set(SNAPSHOT)
+        assert set(upload['with']['path'].splitlines()) == set(SNAPSHOT) | {RECEIPT_PATH}
     pins = [s['with']['ref'] for steps in (resolve,test) for s in steps
             if s.get('with',{}).get('repository') == 'myon-bioinformatics/myon-bioinformatics']
     assert pins == ['08dc3757deeb930c950bdcc6bd55ec3112ba49fc'] * 2
@@ -146,7 +157,7 @@ def test_failed_update_does_not_reach_successful_check(tmp_path):
                   if s.get('name') == 'Update public vendor files for this run')
     tool = tmp_path / '.vendor-sync-tools/vendor_sync.py'
     tool.parent.mkdir()
-    tool.write_text("import pathlib, sys\nif sys.argv[1] == 'update': sys.exit(2)\npathlib.Path('check-reached').touch()\n", encoding='utf-8')
+    tool.write_text("import pathlib, sys\nif sys.argv[1] == 'promote': sys.exit(2)\npathlib.Path('check-reached').touch()\n", encoding='utf-8')
     script = tmp_path / 'update.sh'
     script.write_text(update['run'].replace('python -S ', shlex.quote(sys.executable)+' -S '), encoding='utf-8')
     result = subprocess.run([shutil.which('bash'),'--noprofile','--norc','-e','-o','pipefail',str(script)],
@@ -267,13 +278,16 @@ def test_locked_baseline_runs_automatically_without_candidate_snapshot():
     matrix = job.get('strategy', {}).get('matrix', {})
     assert all(len(values) == 1 for values in matrix.values())
     steps = job['steps']
-    assert not any('vendor_sync.py update' in s.get('run', '') for s in steps)
+    assert not any(command in s.get('run', '') for s in steps
+                   for command in ('vendor_sync.py update', 'vendor_sync.py promote'))
     assert not any(s.get('uses', '').startswith('actions/download-artifact@') for s in steps)
     verify = next(i for i,s in enumerate(steps) if s.get('name') == 'Verify checked-in vendor copies')
     recreate = next(i for i,s in enumerate(steps) if s.get('name') == 'Recreate locked vendor files from GitHub')
     project = next(i for i,s in enumerate(steps) if s.get('name') == 'Refresh legacy provenance from the verified lock')
+    load = next(i for i,s in enumerate(steps) if s.get('name') == 'Verify enrolled GHI is stdlib-loadable')
     tests = [i for i,s in enumerate(steps) if 'pytest ' in s.get('run', '')]
-    assert tests and verify < recreate < project < min(tests)
+    assert tests and verify < recreate < project < load < min(tests)
+    assert steps[load]['run'] == GHI_LOAD_COMMAND
     original = next(s for s in ci['jobs']['resolve-vendor']['steps']
                     if s.get('name') == 'Recreate locked vendor files from GitHub')
     assert steps[recreate] == original
