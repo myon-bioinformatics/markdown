@@ -24,8 +24,8 @@ The shared profile MIT LICENSE is explicitly enrolled from its merged license co
 
 The source/license/lock and compatibility records are retained in Actions both
 before and after testing with `if: always()` and missing-file errors. Update
-runs also preserve `vendor-promotion.json`, for 17 files in each successful
-resolved or primary-matrix snapshot. A successful promotion with no upstream
+runs also preserve an available `vendor-promotion.json`. Each snapshot includes
+lock-derived members, explicit legacy projections and `vendor-evidence.json`. A successful promotion with no upstream
 byte changes still emits a receipt with empty `changed_paths` and `promoted`
 lists. Failures remain nonzero. Public Actions artifacts can be downloaded by
 signed-in users;
@@ -112,7 +112,6 @@ directory; adding a locked source or LICENSE needs no upload path-list edit.
 Artifact names and repository-relative paths inside each artifact are preserved.
 `vendor-evidence.json` is additional metadata with byte hashes and separate
 locked/candidate, runtime receipt, and legacy projection classifications.
-Earlier file counts in this document describe the pre-staging payload.
 
 Staging runs even after a failed test, verifies every locked byte, and fails
 nonzero on missing or modified members. It does not certify tests or promotion.
