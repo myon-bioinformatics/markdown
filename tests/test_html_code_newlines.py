@@ -55,3 +55,19 @@ def test_source_without_terminal_lf_retains_existing_fenced_code_normalization()
     # This is a limitation, not evidence of a lossless round trip.
     source = '<pre><code>no newline</code></pre>'
     assert code_text(md.markdown_to_html(md.html_to_markdown(source))) == 'no newline\n'
+
+
+@pytest.mark.parametrize('code', [
+    'a\n\n\n\n', '\n\nfirst\n', '日本語\t= 1  \n\treturn 日本語  \n',
+    ':::details not a container\n:::\n<script>literal</script>\n',
+])
+def test_code_inside_details_roundtrips_without_losing_structure(code):
+    source = '<details><summary>Code</summary><p>before</p><pre><code>' + html.escape(code) + '</code></pre><p>after</p></details>'
+    converted = md.html_to_markdown(source)
+    restored = md.markdown_to_html(converted)
+    assert '<details>\n<summary>Code</summary>' in restored
+    assert '<p>before</p>\n<pre><code>' in restored
+    assert '</code></pre>\n<p>after</p>\n</details>' in restored
+    assert code_text(restored) == code
+    assert '<script>' not in restored
+    assert md.html_to_markdown(restored) == converted

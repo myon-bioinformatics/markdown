@@ -120,12 +120,16 @@ Markdown alone does not establish a lossless round trip.
 Fenced Markdown remains line-oriented: HTML code with **no terminal LF** is
 rendered with one terminal LF by the existing Markdown renderer. This known
 normalization is explicitly tested, and is not counted as exact preservation.
-This change does not promise arbitrary HTML/CSS reversibility. Code nested in
-`<details>` is also outside this fix: for example,
+This change does not promise arbitrary HTML/CSS reversibility.
+
+Code inside `<details>` now preserves its pre/code structure and literal blank
+lines through the repository's `:::details` form. For example,
 `<details><summary>Code</summary><pre><code>a\n\n\n\n</code></pre></details>`
-(where `\n` denotes LF) still loses blank lines in details normalization and
-renders the fence as paragraphs in the details renderer. That existing gap
-needs its own fix; these tests cover ordinary standalone/sibling code blocks.
+(where `\n` denotes LF) retains all four linefeeds. The details reader uses the
+shared fence scanner and code renderer; a literal `:::` inside code does not
+close the container. Unclosed code fences consume through EOF like standalone
+code. Other nested block types retain the existing paragraph-only contract.
+No metadata for restoring absent terminal linefeeds is added.
 
 ## Converter integration scaffold
 

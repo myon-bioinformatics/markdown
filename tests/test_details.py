@@ -86,3 +86,23 @@ def test_details_is_not_an_alert() -> None:
     html = md.markdown_to_html(":::details title\nhidden\n:::\n")
     assert "markdown-alert" not in html
     assert "<details>" in html
+
+
+def test_details_code_preserves_language_and_container_marker():
+    source = ':::details Code\nbefore\n```python\n:::\n<script>\n\n\n```\nafter\n:::\noutside\n'
+    result = md.markdown_to_html(source)
+    assert '<pre><code class="language-python">:::\n&lt;script&gt;\n\n\n</code></pre>' in result
+    assert '<p>after</p>\n</details>\n<p>outside</p>' in result
+
+
+def test_details_multiple_tilde_and_backtick_code_blocks():
+    result = md.markdown_to_html(':::details Code\n~~~text\na\n~~~\nmiddle\n```\nb\n```\n:::\n')
+    assert result.count('<pre><code') == 2
+    assert '<p>middle</p>' in result
+    assert 'a\n</code></pre>' in result
+    assert 'b\n</code></pre>' in result
+
+
+def test_unclosed_code_fence_keeps_colon_closer_as_code_until_eof():
+    result = md.markdown_to_html(':::details Code\n```\na\n:::\n')
+    assert '<pre><code>a\n:::\n</code></pre>\n</details>' in result
