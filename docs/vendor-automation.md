@@ -24,8 +24,8 @@ The shared profile MIT LICENSE is explicitly enrolled from its merged license co
 
 The source/license/lock and compatibility records are retained in Actions both
 before and after testing with `if: always()` and missing-file errors. Update
-runs also preserve `vendor-promotion.json`, for 17 files in each successful
-resolved or primary-matrix snapshot. A successful promotion with no upstream
+runs also preserve an available `vendor-promotion.json`. Each snapshot includes
+lock-derived members, explicit legacy projections and `vendor-evidence.json`. A successful promotion with no upstream
 byte changes still emits a receipt with empty `changed_paths` and `promoted`
 lists. Failures remain nonzero. Public Actions artifacts can be downloaded by
 signed-in users;
@@ -37,7 +37,7 @@ ALM agents can use the same mechanism in a disposable checkout:
 ```bash
 set -euo pipefail
 git clone https://github.com/myon-bioinformatics/myon-bioinformatics.git .vendor-sync-tools
-git -C .vendor-sync-tools checkout --detach 08dc3757deeb930c950bdcc6bd55ec3112ba49fc
+git -C .vendor-sync-tools checkout --detach 380d877cd85837f36cf6030d626ee8bb7dfa28cb
 python -S .vendor-sync-tools/vendor_sync.py check --manifest vendor.lock.json
 python -S .vendor-sync-tools/vendor_sync.py materialize --manifest vendor.lock.json
 python -S .vendor-sync-tools/vendor_sync.py promote --manifest vendor.lock.json | tee vendor-promotion.json
@@ -101,3 +101,23 @@ pytest. Frontend mock tests do not consume this vendor snapshot.
 The shared profile MIT LICENSE is now explicitly locked at `443b8a94bbc6801332e0abd9f2e56da68173b38d`
 and included in resolved and locked evidence. Each source pin and its exact
 bytes are recorded in `vendor.lock.json`.
+
+
+## Lock-derived evidence staging
+
+Vendor artifact membership is now derived exclusively by the parent
+`vendor_stage.py`, checked out with `vendor_sync.py` at full commit
+`380d877cd85837f36cf6030d626ee8bb7dfa28cb`. Workflow uploads point to its generated
+directory; adding a locked source or LICENSE needs no upload path-list edit.
+Artifact names and repository-relative paths inside each artifact are preserved.
+`vendor-evidence.json` is additional metadata with byte hashes and separate
+locked/candidate, runtime receipt, and legacy projection classifications.
+
+Staging runs even after a failed test, verifies every locked byte, and fails
+nonzero on missing or modified members. It does not certify tests or promotion.
+Locked runs exclude promotion receipts; candidate runs include one when present.
+Legacy projection formats, when present, remain consumer-owned outputs of the
+lock. Exact source pins, LICENSEs, test-only dependencies and Pages/MCP/runtime
+behavior are unchanged. Central topology intent is owned by the parent's
+`vendor-consumers.json`; recommended baselines belong to `vendor-catalog.json`;
+this consumer's lock remains the authority for adopted bytes.
