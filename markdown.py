@@ -3894,7 +3894,11 @@ class _HTMLToMarkdownParser(HTMLParser):
             self._emit("`")
             self._in_code = False
         elif tag == "pre":
-            self._emit("\n```\n\n")
+            # A source terminal LF already separates the closing fence. Adding
+            # another makes it a literal extra blank line when rendered again.
+            target = self._table_cell if self._table_cell is not None else self.parts
+            separator = "" if target and target[-1].endswith("\n") else "\n"
+            self._emit(separator + "```\n\n")
             self._in_pre = False
         elif tag == "a" and self._link_open:
             if self._link_title:
@@ -3973,7 +3977,9 @@ class _HTMLToMarkdownParser(HTMLParser):
 
     def output(self) -> str:
         text = "".join(self.parts)
-        text = re.sub(r"\n{3,}", "\n\n", text)
+        # Structural spacing may collapse; literal blank lines inside a code
+        # fence must survive HTML -> Markdown -> HTML unchanged.
+        text = _collapse_blank_runs(text, 1)
         normalized = text.strip()
         return normalized + "\n" if normalized else ""
 

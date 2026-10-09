@@ -109,6 +109,24 @@ containers so safe text and supported descendants remain available. Existing
 layer in this first contract-focused step.
 
 
+### Code-block newline round trips
+
+HTML-to-Markdown conversion reuses a code block's terminal LF as the fence
+separator. It preserves multiple terminal/internal blank lines instead of
+collapsing them as paragraph spacing. Regression checks compare restored code
+text to the original, including indentation and trailing spaces; stable
+Markdown alone does not establish a lossless round trip.
+
+Fenced Markdown remains line-oriented: HTML code with **no terminal LF** is
+rendered with one terminal LF by the existing Markdown renderer. This known
+normalization is explicitly tested, and is not counted as exact preservation.
+This change does not promise arbitrary HTML/CSS reversibility. Code nested in
+`<details>` is also outside this fix: for example,
+`<details><summary>Code</summary><pre><code>a\n\n\n\n</code></pre></details>`
+(where `\n` denotes LF) still loses blank lines in details normalization and
+renders the fence as paragraphs in the details renderer. That existing gap
+needs its own fix; these tests cover ordinary standalone/sibling code blocks.
+
 ## Converter integration scaffold
 
 The HTML→Markdown compatibility engine is intentionally split from its public
