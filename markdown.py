@@ -3894,7 +3894,11 @@ class _HTMLToMarkdownParser(HTMLParser):
             self._emit("`")
             self._in_code = False
         elif tag == "pre":
-            self._emit("\n```\n\n")
+            # A source terminal LF already separates the closing fence. Adding
+            # another makes it a literal extra blank line when rendered again.
+            target = self._table_cell if self._table_cell is not None else self.parts
+            separator = "" if target and target[-1].endswith("\n") else "\n"
+            self._emit(separator + "```\n\n")
             self._in_pre = False
         elif tag == "a" and self._link_open:
             if self._link_title:
@@ -3917,7 +3921,7 @@ class _HTMLToMarkdownParser(HTMLParser):
                 if isinstance(start, int):
                     body = "".join(self.parts[start:])
                     del self.parts[start:]
-                    body = re.sub(r"\n{3,}", "\n\n", body).strip()
+                    body = _collapse_blank_runs(body, 1).strip()
                     summary = str(current.get("summary") or "Details")
                     if body:
                         self._emit(f"\n\n:::details {summary}\n{body}\n:::\n\n")
@@ -3973,7 +3977,9 @@ class _HTMLToMarkdownParser(HTMLParser):
 
     def output(self) -> str:
         text = "".join(self.parts)
-        text = re.sub(r"\n{3,}", "\n\n", text)
+        # Structural spacing may collapse; literal blank lines inside a code
+        # fence must survive HTML -> Markdown -> HTML unchanged.
+        text = _collapse_blank_runs(text, 1)
         normalized = text.strip()
         return normalized + "\n" if normalized else ""
 
@@ -4246,34 +4252,47 @@ def _consume_details(
     summary: str,
     render_inline,
 ) -> tuple[str, int]:
-    """Collect a ``:::details`` block into ``<details><summary>``.
+    """Render paragraphs and fenced code; only an unfenced ::: closes details.
 
-    Body lines become paragraphs (blank lines split them). Inner ATX /
-    lists / nested ``:::details`` stay paragraph text — the first ``:::``
-    closer ends the block.
+    Inner headings/lists/nested details retain the existing paragraph contract.
+    Code rendering and fence recognition reuse the main renderer and scanner.
     """
     i = start + 1
-    body_lines: list[str] = []
-    while i < len(lines) and not _COLON_CONTAINER_CLOSE_RE.match(lines[i]):
-        body_lines.append(lines[i])
-        i += 1
-    if i < len(lines) and _COLON_CONTAINER_CLOSE_RE.match(lines[i]):
-        i += 1
-
-    paragraphs: list[list[str]] = [[]]
-    for raw in body_lines:
-        if not raw.strip():
-            if paragraphs[-1]:
-                paragraphs.append([])
-            continue
-        paragraphs[-1].append(raw)
-
     parts = ["<details>", f"<summary>{render_inline(summary)}</summary>"]
-    for para in paragraphs:
-        if not para:
+    paragraph: list[str] = []
+
+    def flush_paragraph() -> None:
+        if paragraph:
+            text = " ".join(line.strip() for line in paragraph)
+            parts.append(f"<p>{render_inline(text)}</p>")
+            paragraph.clear()
+
+    while i < len(lines):
+        line = lines[i]
+        if _COLON_CONTAINER_CLOSE_RE.match(line):
+            i += 1
+            break
+        active, opened, _ = _advance_fence(None, line)
+        if opened:
+            flush_paragraph()
+            code_lines = [line]
+            i += 1
+            while i < len(lines):
+                code_lines.append(lines[i])
+                active, _, closed = _advance_fence(active, lines[i])
+                i += 1
+                if closed:
+                    break
+            # Only a fenced segment is delegated, never the prose/container.
+            parts.append(markdown_to_html("\n".join(code_lines)).rstrip("\n"))
             continue
-        text = " ".join(s.strip() for s in para)
-        parts.append(f"<p>{render_inline(text)}</p>")
+        if not line.strip():
+            flush_paragraph()
+        else:
+            paragraph.append(line)
+        i += 1
+
+    flush_paragraph()
     parts.append("</details>")
     return "\n".join(parts), i
 
@@ -4552,8 +4571,9 @@ def markdown_to_html(content: str) -> str:
     - ``:::note`` / ``:::note info|warn|alert`` … ``:::`` is ``qiita``.
     - ``:::message`` / ``:::message alert`` … ``:::`` is ``zenn``.
     - ``:::details Summary`` … ``:::`` becomes ``<details><summary>``.
-      Nested inlines in the summary and body are parsed; nested blocks
-      stay paragraph text. Raw HTML ``<details>`` stays escaped.
+      Nested inlines and fenced code are parsed. Other nested blocks stay
+      paragraph text. Only an unfenced ``:::`` closes the container. Raw
+      HTML ``<details>`` stays escaped.
     - Ordinary ``>`` lines that are not an alert opener become
       ``<blockquote>`` (multi-line; blank ``>`` lines split paragraphs).
       Nested block constructs inside the quote are not parsed.
