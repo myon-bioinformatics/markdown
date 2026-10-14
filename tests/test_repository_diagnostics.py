@@ -19,9 +19,9 @@ def _git_blob_sha(path: Path) -> str:
 
 
 def test_vendor_provenance_matches_bytes():
-    resolver_p = json.loads((ROOT / "vendor/github_public_resolver.provenance.json").read_text())
+    resolver = _locked("vendor/github_public_resolver.py")
     ghi = _locked("vendor/gh_identity.py")
-    assert _git_blob_sha(ROOT / "vendor/github_public_resolver.py") == resolver_p["blob_sha"]
+    assert _git_blob_sha(ROOT / "vendor/github_public_resolver.py") == resolver["blob_sha"]
     assert _git_blob_sha(ROOT / "vendor/gh_identity.py") == ghi["blob_sha"]
     assert ghi["repository"] == "myon-bioinformatics/gh_identity"
     assert hashlib.sha256((ROOT / "vendor/gh_identity.py").read_bytes()).hexdigest() == ghi["sha256"]
