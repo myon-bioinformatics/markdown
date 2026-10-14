@@ -39,7 +39,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import markdown as md
-from scripts.repository_diagnostics import GENERATOR, GH_IDENTITY, REPOSITORY
+from scripts.repository_diagnostics import GH_IDENTITY, REPOSITORY
 
 _TAG_COUNT_RES = {
     "h1": re.compile(r"<h1\b"),
@@ -94,8 +94,8 @@ def collect_revision(env: Mapping[str, str] | None = None) -> dict[str, Any]:
         return value or None
 
     try:
-        record = GENERATOR.record_from_checkout(ROOT, REPOSITORY, env=environ)
-    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        record = GH_IDENTITY.repository_metadata_v1(ROOT, repository=REPOSITORY, env=environ)
+    except (GH_IDENTITY.GitInspectionError, OSError, subprocess.SubprocessError, ValueError) as exc:
         print(f"Pages canonical identity unavailable: {exc}", file=sys.stderr)
         head = {}
     else:

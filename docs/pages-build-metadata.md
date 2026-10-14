@@ -1,9 +1,9 @@
 # Pages build metadata
 
-`real_world_pages_report.py` adapts the existing vendored canonical
-`repository_metadata_generator.record_from_checkout()` head to the flat
+`real_world_pages_report.py` adapts the vendored canonical
+`gh_identity.repository_metadata_v1()` head to the flat
 `build_meta.json` fields. It reuses the loader/modules in
-`repository_diagnostics.py`; vendor files and their provenance pins are unchanged.
+`repository_diagnostics.py`; the adopted GHI source pin is recorded in vendor.lock.json.
 No tracked-byte scan or public URL probe is needed for this adaptation.
 
 The keys remain `version`, `sha`, `shortSha`, `ref`, `committedAt`, `subject`,

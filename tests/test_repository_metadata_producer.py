@@ -45,11 +45,9 @@ def _v1_record(**kwargs):
 
 class RepositoryMetadataProducerTests(unittest.TestCase):
     def test_generator_delegates_to_vendored_gh_identity_without_sys_path_mutation(self):
-        path = Path(diagnostics.GENERATOR.record_from_checkout.__globals__["__file__"])
-        self.assertEqual(path.resolve(), (ROOT / "scripts/repository_metadata_generator.py").resolve())
+        self.assertEqual(Path(diagnostics.GH_IDENTITY.__file__).resolve(),
+                         (ROOT / "vendor/gh_identity.py").resolve())
         self.assertNotIn(str(ROOT / "vendor"), sys.path)
-        ghi_path = Path(diagnostics.GENERATOR.record_from_checkout.__globals__["_GH_IDENTITY"].__file__)
-        self.assertEqual(ghi_path.resolve(), (ROOT / "vendor/gh_identity.py").resolve())
 
     def test_gh_identity_matches_finalized_lock(self):
         entry = _locked("vendor/gh_identity.py")
@@ -116,22 +114,13 @@ class RepositoryMetadataProducerTests(unittest.TestCase):
 
             standalone = Path(tmp) / "standalone"
             standalone.mkdir()
-            vendor = standalone / "vendor"
-            vendor.mkdir()
-            shutil.copyfile(ROOT / "vendor/gh_identity.py", vendor / "gh_identity.py")
-            shutil.copyfile(ROOT / "scripts/repository_metadata_generator.py", standalone / "repository_metadata_generator.py")
-            patched = standalone / "repository_metadata_generator.py"
-            text = patched.read_text(encoding="utf-8").replace(
-                '_ROOT = Path(__file__).resolve().parents[1]',
-                '_ROOT = Path(__file__).resolve().parent',
-            )
-            patched.write_text(text, encoding="utf-8")
+            shutil.copyfile(ROOT / "vendor/gh_identity.py", standalone / "gh_identity.py")
             output = Path(tmp) / "output"
             env = os.environ.copy()
             for name in ("PYTHONPATH", "GITHUB_HEAD_REF", "GITHUB_REF_NAME"):
                 env.pop(name, None)
             subprocess.run(
-                [sys.executable, "-S", str(patched),
+                [sys.executable, "-S", str(standalone / "gh_identity.py"), "repo-metadata", "--format", "v1",
                  "--root", str(root), "--repository", diagnostics.REPOSITORY,
                  "--output-dir", str(output)],
                 cwd=standalone, env=env, check=True,

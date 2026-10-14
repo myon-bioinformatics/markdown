@@ -32,19 +32,6 @@ def _load_vendor(name: str, *, canonical_name: bool = False) -> ModuleType:
     return module
 
 
-def _load_script(name: str, *, canonical_name: bool = False) -> ModuleType:
-    path = ROOT / "scripts" / f"{name}.py"
-    module_name = name if canonical_name else f"markdown_script_{name}"
-    spec = importlib.util.spec_from_file_location(module_name, path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"cannot load script module: {path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-GENERATOR = _load_script("repository_metadata_generator", canonical_name=True)
 RESOLVER = _load_vendor("github_public_resolver")
 GH_IDENTITY = _load_vendor("gh_identity")
 
@@ -72,11 +59,11 @@ def build_record(
     generated_at: str | None = None,
 ) -> dict[str, Any]:
     env = os.environ if env is None else env
-    record = GENERATOR.record_from_checkout(
+    record = GH_IDENTITY.repository_metadata_v1(
         ROOT,
-        REPOSITORY,
+        repository=REPOSITORY,
         env=env,
-        working_tree_bytes=_tracked_bytes(),
+        measurements={"working_tree_bytes": _tracked_bytes()},
         tooling={"python": platform.python_version()},
     )
     if generated_at is not None:
