@@ -11,15 +11,6 @@
       "sha256": "49c5e75603b987e57f61f99295f80565017a83bc5a57dbb516c81d30f585140f"
     },
     {
-      "repository": "myon-bioinformatics/Ironmate",
-      "ref": "0aee64da2f8d0119a3ef9b955e5c3818f28aaf92",
-      "commit": "0aee64da2f8d0119a3ef9b955e5c3818f28aaf92",
-      "source": "repository_metadata_generator.py",
-      "destination": "vendor/repository_metadata_generator.py",
-      "blob_sha": "b26f001ea889db844ab848d87dd7adab850d8c84",
-      "sha256": "39598cbd35e5c42f181efdc0ff636bedf8b8c78ebc12093bc37c62d6d8e547af"
-    },
-    {
       "repository": "myon-bioinformatics/mcp-toolcall-lab",
       "ref": "refs/heads/main",
       "commit": "30121e7f713fb689a9a3d0f0b7a4d3444831864e",

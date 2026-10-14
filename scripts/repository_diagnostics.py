@@ -32,7 +32,7 @@ def _load_vendor(name: str, *, canonical_name: bool = False) -> ModuleType:
     return module
 
 
-GENERATOR = _load_vendor("repository_metadata_generator")
+from scripts import repository_metadata_generator as GENERATOR
 RESOLVER = _load_vendor("github_public_resolver")
 GH_IDENTITY = _load_vendor("gh_identity")
 

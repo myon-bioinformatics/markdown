@@ -11,9 +11,11 @@ from collections.abc import Mapping
 from pathlib import Path
 from types import ModuleType
 
+_ROOT = Path(__file__).resolve().parents[1]
+
 
 def _load_gh_identity() -> ModuleType:
-    path = Path(__file__).resolve().parent / "gh_identity.py"
+    path = _ROOT / "vendor" / "gh_identity.py"
     spec = importlib.util.spec_from_file_location("_vendor_gh_identity_for_generator", path)
     if spec is None or spec.loader is None:
         raise ImportError(f"cannot load vendored module: {path}")

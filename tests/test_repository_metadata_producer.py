@@ -21,11 +21,6 @@ def _locked(destination):
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def git_blob_sha(path: Path) -> str:
-    data = path.read_bytes()
-    return hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
-
-
 def _v1_record(**kwargs):
     sha = kwargs["sha"]
     return diagnostics.GH_IDENTITY.validate_repository_metadata_v1({
@@ -51,41 +46,18 @@ def _v1_record(**kwargs):
 class RepositoryMetadataProducerTests(unittest.TestCase):
     def test_generator_delegates_to_vendored_gh_identity_without_sys_path_mutation(self):
         path = Path(diagnostics.GENERATOR.record_from_checkout.__globals__["__file__"])
-        self.assertEqual(path.resolve(), (ROOT / "vendor/repository_metadata_generator.py").resolve())
+        self.assertEqual(path.resolve(), (ROOT / "scripts/repository_metadata_generator.py").resolve())
         self.assertNotIn(str(ROOT / "vendor"), sys.path)
         ghi_path = Path(diagnostics.GENERATOR.record_from_checkout.__globals__["_GH_IDENTITY"].__file__)
         self.assertEqual(ghi_path.resolve(), (ROOT / "vendor/gh_identity.py").resolve())
 
-    def test_generator_matches_finalized_source(self):
-        name = "repository_metadata_generator"
-        blob, digest = (
-            _locked("vendor/repository_metadata_generator.py")["blob_sha"],
-            _locked("vendor/repository_metadata_generator.py")["sha256"],
-        )
-        path = ROOT / "vendor" / (name + ".py")
-        provenance = json.loads(path.with_suffix(".provenance.json").read_text())
-        self.assertEqual(provenance["source_repository"], "myon-bioinformatics/Ironmate")
-        self.assertEqual(provenance["source_path"], name + ".py")
-        self.assertEqual(provenance["source_commit"], _locked("vendor/" + name + ".py")["commit"])
-        self.assertEqual(provenance["schema_version"], "1.0")
-        self.assertEqual(provenance["blob_sha"], blob)
-        self.assertEqual(git_blob_sha(path), blob)
-        self.assertEqual(provenance["sha256"], digest)
-        self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), digest)
-
-    def test_generator_validates_distinct_source_commits(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            destination = "vendor/repository_metadata_generator.py"
-            entry = dict(_locked(destination), commit=str(1) * 40)
-            path = root / destination
-            path.parent.mkdir(exist_ok=True)
-            shutil.copyfile(ROOT / destination, path)
-            record = json.loads((ROOT / destination).with_suffix(".provenance.json").read_text(encoding="utf-8"))
-            record["source_commit"] = entry["commit"]
-            path.with_suffix(".provenance.json").write_text(json.dumps(record), encoding="utf-8")
-            with mock.patch.dict(globals(), {"ROOT": root, "_locked": lambda dest: entry}):
-                self.test_generator_matches_finalized_source()
+    def test_gh_identity_matches_finalized_lock(self):
+        entry = _locked("vendor/gh_identity.py")
+        path = ROOT / "vendor/gh_identity.py"
+        data = path.read_bytes()
+        blob = hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
+        self.assertEqual(blob, entry["blob_sha"])
+        self.assertEqual(hashlib.sha256(data).hexdigest(), entry["sha256"])
 
     def test_checkout_identity_equivalence_refs_and_detached_head(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -144,17 +116,25 @@ class RepositoryMetadataProducerTests(unittest.TestCase):
 
             standalone = Path(tmp) / "standalone"
             standalone.mkdir()
-            for name in ("gh_identity.py", "repository_metadata_generator.py"):
-                shutil.copyfile(ROOT / "vendor" / name, standalone / name)
+            vendor = standalone / "vendor"
+            vendor.mkdir()
+            shutil.copyfile(ROOT / "vendor/gh_identity.py", vendor / "gh_identity.py")
+            shutil.copyfile(ROOT / "scripts/repository_metadata_generator.py", standalone / "repository_metadata_generator.py")
+            patched = standalone / "repository_metadata_generator.py"
+            text = patched.read_text(encoding="utf-8").replace(
+                '_ROOT = Path(__file__).resolve().parents[1]',
+                '_ROOT = Path(__file__).resolve().parent',
+            )
+            patched.write_text(text, encoding="utf-8")
             output = Path(tmp) / "output"
             env = os.environ.copy()
             for name in ("PYTHONPATH", "GITHUB_HEAD_REF", "GITHUB_REF_NAME"):
                 env.pop(name, None)
             subprocess.run(
-                [sys.executable, "-S", str(standalone / "repository_metadata_generator.py"),
+                [sys.executable, "-S", str(patched),
                  "--root", str(root), "--repository", diagnostics.REPOSITORY,
                  "--output-dir", str(output)],
-                cwd=tmp, env=env, check=True,
+                cwd=standalone, env=env, check=True,
             )
             direct = json.loads((output / "repository-metadata.json").read_text())
             self.assertEqual(direct["head"], detached["head"])

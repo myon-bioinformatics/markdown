@@ -22,18 +22,13 @@ GHI_LOAD_COMMAND = (
 )
 SNAPSHOT = ['vendor/gh_identity.py', 'vendor/gh_identity-LICENSE', 'vendor/myon-bioinformatics-LICENSE', 'vendor.lock.json',
  'vendor/github_public_resolver.py',
- 'vendor/repository_metadata_generator.py',
  'vendor/mcp-toolcall-lab-LICENSE',
  'vendor/Ironmate-LICENSE',
- 'vendor/github_public_resolver.provenance.json',
- 'vendor/repository_metadata_generator.provenance.json']
+ 'vendor/github_public_resolver.provenance.json']
 EXPECTED = {('myon-bioinformatics/gh_identity', 'gh_identity.py', 'vendor/gh_identity.py'),
  ('myon-bioinformatics/gh_identity', 'LICENSE', 'vendor/gh_identity-LICENSE'),
  ('myon-bioinformatics/myon-bioinformatics', 'LICENSE', 'vendor/myon-bioinformatics-LICENSE'),
  ('myon-bioinformatics/Ironmate', 'LICENSE', 'vendor/Ironmate-LICENSE'),
- ('myon-bioinformatics/Ironmate',
-  'repository_metadata_generator.py',
-  'vendor/repository_metadata_generator.py'),
  ('myon-bioinformatics/mcp-toolcall-lab', 'LICENSE', 'vendor/mcp-toolcall-lab-LICENSE'),
  ('myon-bioinformatics/mcp-toolcall-lab',
   'src/mcp_toolcall_lab/github_public_resolver.py',
