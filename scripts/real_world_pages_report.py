@@ -39,7 +39,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import markdown as md
-from scripts.repository_diagnostics import GENERATOR, GIT_INSPECTOR, REPOSITORY
+from scripts.repository_diagnostics import GENERATOR, GH_IDENTITY, REPOSITORY
 
 _TAG_COUNT_RES = {
     "h1": re.compile(r"<h1\b"),
@@ -109,8 +109,8 @@ def collect_revision(env: Mapping[str, str] | None = None) -> dict[str, Any]:
     subject = head.get("subject")
 
     try:
-        observation = GIT_INSPECTOR.status(ROOT)
-    except (GIT_INSPECTOR.GitInspectionError, ValueError) as exc:
+        observation = GH_IDENTITY.git_status(ROOT)
+    except (GH_IDENTITY.GitInspectionError, ValueError) as exc:
         print(f"Pages dirty observation unavailable: {exc}", file=sys.stderr)
         dirty = None
     else:

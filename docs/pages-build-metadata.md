@@ -25,7 +25,7 @@ Normal clean/dirty JSON and Pages labels remain compatible.
 - If canonical identity acquisition/validation fails, all identity fields are
   null together, with a stderr diagnostic. No environment fallback identity
   or partial mixed revision is published.
-- Dirty is a separate read-only `git_inspector.status()` observation. Successful
+- Dirty is a separate read-only `gh_identity.git_status()` observation. Successful
   complete status gives true/false; failed or truncated status gives null.
   Pages shows `(dirty unknown)` for null instead of appearing clean. A valid
   status can still be measured when identity fails (for example unborn HEAD),

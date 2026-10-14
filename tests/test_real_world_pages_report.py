@@ -137,11 +137,11 @@ def test_revision_before_after_fixture(case, monkeypatch):
     def status(root):
         assert root == report.ROOT
         if case['name'] == 'unavailable':
-            raise report.GIT_INSPECTOR.GitInspectionError('git unavailable')
+            raise report.GH_IDENTITY.GitInspectionError('git unavailable')
         return {'clean': not expected['dirty'], 'truncated': False}
 
     monkeypatch.setattr(report.GENERATOR, 'record_from_checkout', canonical)
-    monkeypatch.setattr(report.GIT_INSPECTOR, 'status', status)
+    monkeypatch.setattr(report.GH_IDENTITY, 'git_status', status)
     assert report.collect_revision(case['env']) == expected
     assert set(case['before']) == set(expected)
     if case['name'] in ('clean', 'dirty'):
@@ -225,10 +225,10 @@ def test_status_failure_does_not_erase_identity(tmp_path, monkeypatch, failure):
 
     def status(root):
         if failure == 'error':
-            raise report.GIT_INSPECTOR.GitInspectionError('failed observation')
+            raise report.GH_IDENTITY.GitInspectionError('failed observation')
         return {'clean': False, 'truncated': True, 'records': []}
 
-    monkeypatch.setattr(report.GIT_INSPECTOR, 'status', status)
+    monkeypatch.setattr(report.GH_IDENTITY, 'git_status', status)
     meta = report.collect_revision({})
     assert meta['sha'] == git('rev-parse', 'HEAD')
     assert meta['dirty'] is None
