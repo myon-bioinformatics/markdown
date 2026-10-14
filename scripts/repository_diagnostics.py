@@ -32,7 +32,19 @@ def _load_vendor(name: str, *, canonical_name: bool = False) -> ModuleType:
     return module
 
 
-from scripts import repository_metadata_generator as GENERATOR
+def _load_script(name: str, *, canonical_name: bool = False) -> ModuleType:
+    path = ROOT / "scripts" / f"{name}.py"
+    module_name = name if canonical_name else f"markdown_script_{name}"
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load script module: {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+GENERATOR = _load_script("repository_metadata_generator", canonical_name=True)
 RESOLVER = _load_vendor("github_public_resolver")
 GH_IDENTITY = _load_vendor("gh_identity")
 
