@@ -4,12 +4,6 @@ on:
   push:
   pull_request:
   workflow_dispatch:
-    inputs:
-      vendor-mode:
-        description: Public vendor placement mode for this CI run
-        type: choice
-        options: [update, locked]
-        default: update
 
 jobs:
   resolve-vendor:
@@ -30,13 +24,11 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: myon-bioinformatics/myon-bioinformatics
-          ref: 380d877cd85837f36cf6030d626ee8bb7dfa28cb
+          ref: f907560c2b9b3f7a0f78f4434f547f91cb2ef954
           path: .vendor-sync-tools
           persist-credentials: false
       - name: Verify checked-in vendor copies
         run: python -S .vendor-sync-tools/vendor_sync.py check --manifest vendor.lock.json
-      - name: Save checked-in vendor identities
-        run: cp vendor.lock.json .vendor-baseline.lock.json
       - name: Recreate locked vendor files from GitHub
         shell: bash
         run: |
@@ -48,48 +40,6 @@ jobs:
           PY
           python -S .vendor-sync-tools/vendor_sync.py materialize --manifest vendor.lock.json
           python -S .vendor-sync-tools/vendor_sync.py check --manifest vendor.lock.json
-      - name: Update public vendor files for this run
-        id: vendor-update
-        shell: bash
-        if: inputs.vendor-mode != 'locked'
-        run: |
-          python -S .vendor-sync-tools/vendor_sync.py promote --manifest vendor.lock.json | tee vendor-promotion.json
-          python -S -m json.tool vendor-promotion.json > /dev/null
-          python -S .vendor-sync-tools/vendor_sync.py check --manifest vendor.lock.json
-      - name: Refresh legacy provenance from the verified lock
-        run: python -S scripts/sync_vendor_provenance.py
-      - name: Summarize snapshot and checked-in baseline
-        if: always()
-        shell: bash
-        env:
-          VENDOR_UPDATE_OUTCOME: ${{ steps.vendor-update.outcome }}
-        run: >-
-          python -S scripts/sync_vendor_provenance.py
-          --summary-baseline .vendor-baseline.lock.json
-          --summary-output "$GITHUB_STEP_SUMMARY"
-          --update-outcome "$VENDOR_UPDATE_OUTCOME"
-      - name: Stage canonical vendor evidence
-        if: always()
-        shell: bash
-        env:
-          VENDOR_EVIDENCE_KIND: ${{ inputs.vendor-mode == 'locked' && 'locked' || 'candidate' }}
-        run: >-
-          python -S .vendor-sync-tools/vendor_stage.py
-          --manifest vendor.lock.json --kind "$VENDOR_EVIDENCE_KIND" --output build/vendor-evidence-candidate
-          --legacy-evidence vendor/git_inspector.provenance.json
-          --legacy-evidence vendor/github_public_resolver.provenance.json
-          --legacy-evidence vendor/python_artifact_provenance.provenance.json
-          --legacy-evidence vendor/repository_metadata_contract.provenance.json
-          --legacy-evidence vendor/repository_metadata_generator.provenance.json
-          --promotion-receipt vendor-promotion.json
-      - name: Preserve resolved vendor snapshot
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: vendor-snapshot
-          path: build/vendor-evidence-candidate
-          if-no-files-found: error
-          retention-days: 14
 
   changes:
     name: Change detection
@@ -122,19 +72,11 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: myon-bioinformatics/myon-bioinformatics
-          ref: 380d877cd85837f36cf6030d626ee8bb7dfa28cb
+          ref: f907560c2b9b3f7a0f78f4434f547f91cb2ef954
           path: .vendor-sync-tools
           persist-credentials: false
-      - name: Download resolved vendor snapshot
-        uses: actions/download-artifact@v8
-        with:
-          name: vendor-snapshot
-          path: .
-      - name: Verify resolved vendor snapshot
-        shell: bash
-        run: |
-          python -S .vendor-sync-tools/vendor_sync.py check --manifest vendor.lock.json
-          python -S scripts/sync_vendor_provenance.py
+      - name: Verify checked-in vendor copies
+        run: python -S .vendor-sync-tools/vendor_sync.py check --manifest vendor.lock.json
       - name: Verify enrolled GHI is stdlib-loadable
         run: python -S -c "import importlib.util; s=importlib.util.spec_from_file_location('vendored_ghi','vendor/gh_identity.py'); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); assert hasattr(m,'capabilities')"
       - name: Install test deps
@@ -180,83 +122,6 @@ jobs:
           path: build/controlled-failure/
           if-no-files-found: error
           retention-days: 14
-
-
-      - name: Stage canonical vendor evidence
-        if: always()
-        shell: bash
-        env:
-          VENDOR_EVIDENCE_KIND: ${{ inputs.vendor-mode == 'locked' && 'locked' || 'candidate' }}
-        run: >-
-          python -S .vendor-sync-tools/vendor_stage.py
-          --manifest vendor.lock.json --kind "$VENDOR_EVIDENCE_KIND" --output build/vendor-evidence-test
-          --legacy-evidence vendor/git_inspector.provenance.json
-          --legacy-evidence vendor/github_public_resolver.provenance.json
-          --legacy-evidence vendor/python_artifact_provenance.provenance.json
-          --legacy-evidence vendor/repository_metadata_contract.provenance.json
-          --legacy-evidence vendor/repository_metadata_generator.provenance.json
-          --promotion-receipt vendor-promotion.json
-      - name: Preserve vendor lock used by this run
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: vendor-lock-py${{ matrix.python-version }}
-          path: build/vendor-evidence-test
-          if-no-files-found: error
-          retention-days: 14
-
-  module-metadata:
-    needs: changes
-    if: needs.changes.outputs.non_docs_changed == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-      - name: Validate and summarize markdown.py provenance
-        shell: bash
-        run: |
-          python - <<'PY'
-          import hashlib
-          import importlib.util
-          import json
-          import os
-          from pathlib import Path
-
-          artifact = Path("markdown.py")
-          validator_path = Path("vendor/python_artifact_provenance.py")
-          provenance_path = Path("vendor/python_artifact_provenance.provenance.json")
-
-          provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
-          data = validator_path.read_bytes()
-          if hashlib.sha256(data).hexdigest() != provenance["sha256"]:
-              raise SystemExit("vendored provenance validator sha256 mismatch")
-          git_blob = b"blob " + str(len(data)).encode("ascii") + bytes([0]) + data
-          if hashlib.sha1(git_blob).hexdigest() != provenance["blob_sha"]:
-              raise SystemExit("vendored provenance validator git blob mismatch")
-
-          spec = importlib.util.spec_from_file_location(
-              "vendored_python_artifact_provenance",
-              validator_path,
-          )
-          if spec is None or spec.loader is None:
-              raise SystemExit("unable to load vendored provenance validator")
-          validator = importlib.util.module_from_spec(spec)
-          spec.loader.exec_module(validator)
-
-          metadata = validator.validate_source_header(
-              artifact.read_text(encoding="utf-8")
-          )
-          summary = os.environ.get("GITHUB_STEP_SUMMARY")
-          if summary:
-              with open(summary, "a", encoding="utf-8") as fh:
-                  fh.write("## markdown.py metadata\n\n")
-                  fh.write("| field | value |\n|---|---|\n")
-                  fh.write(f"| declared/actual __all__ | {metadata['all_count']} |\n")
-                  fh.write(f"| base SHA | `{metadata['base_sha']}` |\n")
-                  fh.write(f"| updated at (UTC) | `{metadata['updated_at']}` |\n")
-          PY
 
   frontend-mock-pytest-latest:
     needs: changes
@@ -311,8 +176,9 @@ jobs:
     permissions:
       contents: read
       actions: read
-    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-junit-identity.yml@4dfda95d6573250477f991a0421fa6acb9bc0258
+    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-junit-identity.yml@652608b16c73ecd1e39db848abba3d08a00a8a3a
     with:
+      commit-sha: ${{ github.event.pull_request.head.sha || github.sha }}
       expected-reports: '["junit-py3.9/pytest-3.9.xml","junit-py3.10/pytest-3.10.xml","junit-py3.11/pytest-3.11.xml","junit-py3.12/pytest-3.12.xml","junit-py3.13/pytest-3.13.xml","junit-py3.14/pytest-3.14.xml"]'
       artifact-pattern: "junit-py*"
       output-artifact: "failure-identity"
@@ -339,8 +205,8 @@ jobs:
       uses: actions/checkout@v7
       with:
         repository: myon-bioinformatics/myon-bioinformatics
-        ref: 380d877cd85837f36cf6030d626ee8bb7dfa28cb
         path: .vendor-sync-tools
+        ref: f907560c2b9b3f7a0f78f4434f547f91cb2ef954
         persist-credentials: false
     - name: Verify checked-in vendor copies
       run: python -S .vendor-sync-tools/vendor_sync.py check --manifest vendor.lock.json
@@ -355,8 +221,6 @@ jobs:
         PY
         python -S .vendor-sync-tools/vendor_sync.py materialize --manifest vendor.lock.json
         python -S .vendor-sync-tools/vendor_sync.py check --manifest vendor.lock.json
-    - name: Refresh legacy provenance from the verified lock
-      run: python -S scripts/sync_vendor_provenance.py
     - name: Verify enrolled GHI is stdlib-loadable
       run: python -S -c "import importlib.util; s=importlib.util.spec_from_file_location('vendored_ghi','vendor/gh_identity.py'); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); assert hasattr(m,'capabilities')"
     - name: Install test deps
@@ -399,25 +263,6 @@ jobs:
       with:
         name: locked-controlled-failure-py${{ matrix.python-version }}
         path: build/controlled-failure/
-        if-no-files-found: error
-        retention-days: 14
-    - name: Stage canonical vendor evidence
-      if: always()
-      shell: bash
-      run: >-
-        python -S .vendor-sync-tools/vendor_stage.py
-        --manifest vendor.lock.json --kind locked --output build/vendor-evidence-locked
-        --legacy-evidence vendor/git_inspector.provenance.json
-        --legacy-evidence vendor/github_public_resolver.provenance.json
-        --legacy-evidence vendor/python_artifact_provenance.provenance.json
-        --legacy-evidence vendor/repository_metadata_contract.provenance.json
-        --legacy-evidence vendor/repository_metadata_generator.provenance.json
-    - name: Preserve vendor lock used by this run
-      if: always()
-      uses: actions/upload-artifact@v7
-      with:
-        name: locked-vendor-lock-py${{ matrix.python-version }}
-        path: build/vendor-evidence-locked
         if-no-files-found: error
         retention-days: 14
     name: Locked baseline

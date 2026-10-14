@@ -125,9 +125,9 @@ def test_revision_before_after_fixture(case, monkeypatch):
     report = _load_report_module()
     expected = case['after']
 
-    def canonical(root, full_name, *, env):
+    def canonical(root, *, repository, env):
         assert root == report.ROOT
-        assert full_name == 'myon-bioinformatics/markdown'
+        assert repository == 'myon-bioinformatics/markdown'
         assert env == case['env']
         if case['name'] == 'unavailable':
             raise FileNotFoundError('git')
@@ -137,11 +137,11 @@ def test_revision_before_after_fixture(case, monkeypatch):
     def status(root):
         assert root == report.ROOT
         if case['name'] == 'unavailable':
-            raise report.GIT_INSPECTOR.GitInspectionError('git unavailable')
+            raise report.GH_IDENTITY.GitInspectionError('git unavailable')
         return {'clean': not expected['dirty'], 'truncated': False}
 
-    monkeypatch.setattr(report.GENERATOR, 'record_from_checkout', canonical)
-    monkeypatch.setattr(report.GIT_INSPECTOR, 'status', status)
+    monkeypatch.setattr(report.GH_IDENTITY, 'repository_metadata_v1', canonical)
+    monkeypatch.setattr(report.GH_IDENTITY, 'git_status', status)
     assert report.collect_revision(case['env']) == expected
     assert set(case['before']) == set(expected)
     if case['name'] in ('clean', 'dirty'):
@@ -225,26 +225,29 @@ def test_status_failure_does_not_erase_identity(tmp_path, monkeypatch, failure):
 
     def status(root):
         if failure == 'error':
-            raise report.GIT_INSPECTOR.GitInspectionError('failed observation')
+            raise report.GH_IDENTITY.GitInspectionError('failed observation')
         return {'clean': False, 'truncated': True, 'records': []}
 
-    monkeypatch.setattr(report.GIT_INSPECTOR, 'status', status)
+    monkeypatch.setattr(report.GH_IDENTITY, 'git_status', status)
     meta = report.collect_revision({})
     assert meta['sha'] == git('rev-parse', 'HEAD')
     assert meta['dirty'] is None
     assert '(dirty unknown)' in report._revision_html(meta)
 
 
-def test_canonical_validation_failure_keeps_dirty_observation(tmp_path, monkeypatch):
+@pytest.mark.parametrize("failure", ["validation", "git"] )
+def test_canonical_validation_failure_keeps_dirty_observation(tmp_path, monkeypatch, failure):
     report = _load_report_module()
     _checkout(tmp_path)
     monkeypatch.setattr(report, 'ROOT', tmp_path)
     (tmp_path / 'tracked.txt').write_text('modified')
 
     def fail(*args, **kwargs):
+        if failure == 'git':
+            raise report.GH_IDENTITY.GitInspectionError('git unavailable')
         raise ValueError('canonical metadata is not valid')
 
-    monkeypatch.setattr(report.GENERATOR, 'record_from_checkout', fail)
+    monkeypatch.setattr(report.GH_IDENTITY, 'repository_metadata_v1', fail)
     monkeypatch.setattr(report.md, '__version__', '9.9.9', raising=False)
     meta = report.collect_revision({'GITHUB_SHA': 'a'*40})
     assert meta['sha'] is None

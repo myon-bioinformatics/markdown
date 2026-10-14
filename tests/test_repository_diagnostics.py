@@ -19,28 +19,33 @@ def _git_blob_sha(path: Path) -> str:
 
 
 def test_vendor_provenance_matches_bytes():
-    contract_p = json.loads((ROOT / "vendor/repository_metadata_contract.provenance.json").read_text())
-    resolver_p = json.loads((ROOT / "vendor/github_public_resolver.provenance.json").read_text())
-    inspector_p = json.loads((ROOT / "vendor/git_inspector.provenance.json").read_text())
-    assert _git_blob_sha(ROOT / "vendor/repository_metadata_contract.py") == contract_p["blob_sha"]
-    assert _git_blob_sha(ROOT / "vendor/github_public_resolver.py") == resolver_p["blob_sha"]
-    assert _git_blob_sha(ROOT / "vendor/git_inspector.py") == inspector_p["blob_sha"]
-    assert inspector_p["source_repository"] == "myon-bioinformatics/myon-bioinformatics"
-    assert inspector_p["source_commit"] == _locked('vendor/git_inspector.py')['commit']
-    assert hashlib.sha256((ROOT / "vendor/git_inspector.py").read_bytes()).hexdigest() == inspector_p["sha256"]
+    resolver = _locked("vendor/github_public_resolver.py")
+    ghi = _locked("vendor/gh_identity.py")
+    assert _git_blob_sha(ROOT / "vendor/github_public_resolver.py") == resolver["blob_sha"]
+    assert _git_blob_sha(ROOT / "vendor/gh_identity.py") == ghi["blob_sha"]
+    assert ghi["repository"] == "myon-bioinformatics/gh_identity"
+    assert hashlib.sha256((ROOT / "vendor/gh_identity.py").read_bytes()).hexdigest() == ghi["sha256"]
 
 
 def test_payload_not_checked_roundtrip(tmp_path, monkeypatch):
-    record = diagnostics.CONTRACT.build_repository_record(
-        full_name="myon-bioinformatics/markdown",
-        sha="a" * 40,
-        branch="main",
-        timestamp="2026-09-27T20:00:00+09:00",
-        subject="test",
-        generated_at="2026-09-27T21:00:00+09:00",
-        working_tree_bytes=1,
-        tooling={"python": "3.12"},
-    )
+    record = diagnostics.GH_IDENTITY.validate_repository_metadata_v1({
+        "schema_version": "1.0",
+        "repository": {"full_name": "myon-bioinformatics/markdown"},
+        "head": {
+            "sha": "a" * 40,
+            "short_sha": "a" * 8,
+            "branch": "main",
+            "timestamp": "2026-09-27T20:00:00+09:00",
+            "subject": "test",
+        },
+        "measurements": {
+            "github_reported_size_bytes": None,
+            "working_tree_bytes": 1,
+            "release_artifact_bytes": None,
+        },
+        "tooling": {"python": "3.12"},
+        "generated_at": "2026-09-27T21:00:00+09:00",
+    })
     monkeypatch.setattr(diagnostics, "build_record", lambda: record)
     payload = diagnostics.write_outputs(tmp_path, probe=False)
     assert payload["resolver"]["status"] == "not_checked"
@@ -73,8 +78,8 @@ def test_tracked_bytes_uses_canonical_inspector_paths(tmp_path, monkeypatch):
     (tmp_path / "missing.txt").unlink()
     monkeypatch.setattr(diagnostics, "ROOT", tmp_path)
     monkeypatch.setattr(
-        diagnostics.GIT_INSPECTOR,
-        "ls_files",
+        diagnostics.GH_IDENTITY,
+        "git_ls_files",
         lambda root: {
             "paths": ["space 日本語.txt", "missing.txt"],
             "truncated": False,
@@ -85,8 +90,8 @@ def test_tracked_bytes_uses_canonical_inspector_paths(tmp_path, monkeypatch):
 
 def test_tracked_bytes_rejects_incomplete_inventory(monkeypatch):
     monkeypatch.setattr(
-        diagnostics.GIT_INSPECTOR,
-        "ls_files",
+        diagnostics.GH_IDENTITY,
+        "git_ls_files",
         lambda root: {"paths": ["partial"], "truncated": True},
     )
     with __import__("pytest").raises(RuntimeError, match="truncated"):
