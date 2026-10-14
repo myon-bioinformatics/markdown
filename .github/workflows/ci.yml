@@ -77,8 +77,6 @@ jobs:
           python -S .vendor-sync-tools/vendor_stage.py
           --manifest vendor.lock.json --kind "$VENDOR_EVIDENCE_KIND" --output build/vendor-evidence-candidate
           --legacy-evidence vendor/github_public_resolver.provenance.json
-          --legacy-evidence vendor/python_artifact_provenance.provenance.json
-          --legacy-evidence vendor/repository_metadata_contract.provenance.json
           --legacy-evidence vendor/repository_metadata_generator.provenance.json
           --promotion-receipt vendor-promotion.json
       - name: Preserve resolved vendor snapshot
@@ -190,8 +188,6 @@ jobs:
           python -S .vendor-sync-tools/vendor_stage.py
           --manifest vendor.lock.json --kind "$VENDOR_EVIDENCE_KIND" --output build/vendor-evidence-test
           --legacy-evidence vendor/github_public_resolver.provenance.json
-          --legacy-evidence vendor/python_artifact_provenance.provenance.json
-          --legacy-evidence vendor/repository_metadata_contract.provenance.json
           --legacy-evidence vendor/repository_metadata_generator.provenance.json
           --promotion-receipt vendor-promotion.json
       - name: Preserve vendor lock used by this run
@@ -202,59 +198,6 @@ jobs:
           path: build/vendor-evidence-test
           if-no-files-found: error
           retention-days: 14
-
-  module-metadata:
-    needs: changes
-    if: needs.changes.outputs.non_docs_changed == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-      - name: Validate and summarize markdown.py provenance
-        shell: bash
-        run: |
-          python - <<'PY'
-          import hashlib
-          import importlib.util
-          import json
-          import os
-          from pathlib import Path
-
-          artifact = Path("markdown.py")
-          validator_path = Path("vendor/python_artifact_provenance.py")
-          provenance_path = Path("vendor/python_artifact_provenance.provenance.json")
-
-          provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
-          data = validator_path.read_bytes()
-          if hashlib.sha256(data).hexdigest() != provenance["sha256"]:
-              raise SystemExit("vendored provenance validator sha256 mismatch")
-          git_blob = b"blob " + str(len(data)).encode("ascii") + bytes([0]) + data
-          if hashlib.sha1(git_blob).hexdigest() != provenance["blob_sha"]:
-              raise SystemExit("vendored provenance validator git blob mismatch")
-
-          spec = importlib.util.spec_from_file_location(
-              "vendored_python_artifact_provenance",
-              validator_path,
-          )
-          if spec is None or spec.loader is None:
-              raise SystemExit("unable to load vendored provenance validator")
-          validator = importlib.util.module_from_spec(spec)
-          spec.loader.exec_module(validator)
-
-          metadata = validator.validate_source_header(
-              artifact.read_text(encoding="utf-8")
-          )
-          summary = os.environ.get("GITHUB_STEP_SUMMARY")
-          if summary:
-              with open(summary, "a", encoding="utf-8") as fh:
-                  fh.write("## markdown.py metadata\n\n")
-                  fh.write("| field | value |\n|---|---|\n")
-                  fh.write(f"| declared/actual __all__ | {metadata['all_count']} |\n")
-                  fh.write(f"| base SHA | `{metadata['base_sha']}` |\n")
-                  fh.write(f"| updated at (UTC) | `{metadata['updated_at']}` |\n")
-          PY
 
   frontend-mock-pytest-latest:
     needs: changes
@@ -406,8 +349,6 @@ jobs:
         python -S .vendor-sync-tools/vendor_stage.py
         --manifest vendor.lock.json --kind locked --output build/vendor-evidence-locked
         --legacy-evidence vendor/github_public_resolver.provenance.json
-        --legacy-evidence vendor/python_artifact_provenance.provenance.json
-        --legacy-evidence vendor/repository_metadata_contract.provenance.json
         --legacy-evidence vendor/repository_metadata_generator.provenance.json
     - name: Preserve vendor lock used by this run
       if: always()

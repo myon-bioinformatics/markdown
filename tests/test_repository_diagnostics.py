@@ -19,10 +19,8 @@ def _git_blob_sha(path: Path) -> str:
 
 
 def test_vendor_provenance_matches_bytes():
-    contract_p = json.loads((ROOT / "vendor/repository_metadata_contract.provenance.json").read_text())
     resolver_p = json.loads((ROOT / "vendor/github_public_resolver.provenance.json").read_text())
     ghi = _locked("vendor/gh_identity.py")
-    assert _git_blob_sha(ROOT / "vendor/repository_metadata_contract.py") == contract_p["blob_sha"]
     assert _git_blob_sha(ROOT / "vendor/github_public_resolver.py") == resolver_p["blob_sha"]
     assert _git_blob_sha(ROOT / "vendor/gh_identity.py") == ghi["blob_sha"]
     assert ghi["repository"] == "myon-bioinformatics/gh_identity"
@@ -30,16 +28,24 @@ def test_vendor_provenance_matches_bytes():
 
 
 def test_payload_not_checked_roundtrip(tmp_path, monkeypatch):
-    record = diagnostics.CONTRACT.build_repository_record(
-        full_name="myon-bioinformatics/markdown",
-        sha="a" * 40,
-        branch="main",
-        timestamp="2026-09-27T20:00:00+09:00",
-        subject="test",
-        generated_at="2026-09-27T21:00:00+09:00",
-        working_tree_bytes=1,
-        tooling={"python": "3.12"},
-    )
+    record = diagnostics.GH_IDENTITY.validate_repository_metadata_v1({
+        "schema_version": "1.0",
+        "repository": {"full_name": "myon-bioinformatics/markdown"},
+        "head": {
+            "sha": "a" * 40,
+            "short_sha": "a" * 8,
+            "branch": "main",
+            "timestamp": "2026-09-27T20:00:00+09:00",
+            "subject": "test",
+        },
+        "measurements": {
+            "github_reported_size_bytes": None,
+            "working_tree_bytes": 1,
+            "release_artifact_bytes": None,
+        },
+        "tooling": {"python": "3.12"},
+        "generated_at": "2026-09-27T21:00:00+09:00",
+    })
     monkeypatch.setattr(diagnostics, "build_record", lambda: record)
     payload = diagnostics.write_outputs(tmp_path, probe=False)
     assert payload["resolver"]["status"] == "not_checked"

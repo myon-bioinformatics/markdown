@@ -9,7 +9,6 @@ def test_ironmate_legacy_sources_keep_exact_refs_and_bytes():
     entries = [entry for entry in json.loads((root / 'vendor.lock.json').read_text())['files']
                if entry['repository'] == 'myon-bioinformatics/Ironmate']
     assert {e['source'] for e in entries} == {
-        'python_artifact_provenance.py', 'repository_metadata_contract.py',
         'repository_metadata_generator.py', 'LICENSE'}
     for entry in entries:
         assert entry['ref'] == entry['commit']

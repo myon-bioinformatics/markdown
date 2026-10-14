@@ -32,10 +32,14 @@ def _load_vendor(name: str, *, canonical_name: bool = False) -> ModuleType:
     return module
 
 
-CONTRACT = _load_vendor("repository_metadata_contract", canonical_name=True)
 GENERATOR = _load_vendor("repository_metadata_generator")
 RESOLVER = _load_vendor("github_public_resolver")
 GH_IDENTITY = _load_vendor("gh_identity")
+
+
+def _metadata_jsonl(record: dict[str, Any]) -> str:
+    GH_IDENTITY.validate_repository_metadata_v1(record)
+    return json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
 
 
 def _tracked_bytes() -> int:
@@ -65,7 +69,7 @@ def build_record(
     )
     if generated_at is not None:
         record["generated_at"] = generated_at
-        CONTRACT.validate_repository_record(record)
+        GH_IDENTITY.validate_repository_metadata_v1(record)
     return record
 
 
@@ -155,7 +159,7 @@ def write_outputs(out_dir: Path, *, probe: bool = True) -> dict[str, Any]:
         json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
         encoding="utf-8",
     )
-    (out_dir / JSONL_NAME).write_text(CONTRACT.to_jsonl(record), encoding="utf-8")
+    (out_dir / JSONL_NAME).write_text(_metadata_jsonl(record), encoding="utf-8")
     (out_dir / HTML_NAME).write_text(page_html(), encoding="utf-8")
     return payload
 

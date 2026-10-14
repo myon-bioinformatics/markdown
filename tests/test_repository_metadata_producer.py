@@ -26,51 +26,66 @@ def git_blob_sha(path: Path) -> str:
     return hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
 
 
+def _v1_record(**kwargs):
+    sha = kwargs["sha"]
+    return diagnostics.GH_IDENTITY.validate_repository_metadata_v1({
+        "schema_version": "1.0",
+        "repository": {"full_name": kwargs["full_name"]},
+        "head": {
+            "sha": sha,
+            "short_sha": sha[:8],
+            "branch": kwargs["branch"],
+            "timestamp": kwargs["timestamp"],
+            "subject": kwargs["subject"],
+        },
+        "measurements": {
+            "github_reported_size_bytes": kwargs.get("github_reported_size_bytes"),
+            "working_tree_bytes": kwargs.get("working_tree_bytes"),
+            "release_artifact_bytes": kwargs.get("release_artifact_bytes"),
+        },
+        "tooling": dict(kwargs.get("tooling") or {}),
+        "generated_at": kwargs["generated_at"],
+    })
+
+
 class RepositoryMetadataProducerTests(unittest.TestCase):
-    def test_generator_uses_pinned_contract_without_sys_path_mutation(self):
-        path = Path(diagnostics.GENERATOR.build_repository_record.__globals__["__file__"])
-        self.assertEqual(path.resolve(), (ROOT / "vendor/repository_metadata_contract.py").resolve())
+    def test_generator_delegates_to_vendored_gh_identity_without_sys_path_mutation(self):
+        path = Path(diagnostics.GENERATOR.record_from_checkout.__globals__["__file__"])
+        self.assertEqual(path.resolve(), (ROOT / "vendor/repository_metadata_generator.py").resolve())
         self.assertNotIn(str(ROOT / "vendor"), sys.path)
+        ghi_path = Path(diagnostics.GENERATOR.record_from_checkout.__globals__["_GH_IDENTITY"].__file__)
+        self.assertEqual(ghi_path.resolve(), (ROOT / "vendor/gh_identity.py").resolve())
 
-    def test_producer_pair_matches_finalized_source(self):
-        expected = {
-            "repository_metadata_contract": (
-                _locked('vendor/repository_metadata_contract.py')['blob_sha'],
-                _locked('vendor/repository_metadata_contract.py')['sha256'],
-            ),
-            "repository_metadata_generator": (
-                _locked('vendor/repository_metadata_generator.py')['blob_sha'],
-                _locked('vendor/repository_metadata_generator.py')['sha256'],
-            ),
-        }
-        for name, (blob, digest) in expected.items():
-            path = ROOT / "vendor" / (name + ".py")
-            provenance = json.loads(path.with_suffix(".provenance.json").read_text())
-            self.assertEqual(provenance["source_repository"], "myon-bioinformatics/Ironmate")
-            self.assertEqual(provenance["source_path"], name + ".py")
-            self.assertEqual(provenance["source_commit"], _locked('vendor/' + name + '.py')['commit'])
-            self.assertEqual(provenance["schema_version"], "1.0")
-            self.assertEqual(provenance["blob_sha"], blob)
-            self.assertEqual(git_blob_sha(path), blob)
-            self.assertEqual(provenance["sha256"], digest)
-            self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), digest)
+    def test_generator_matches_finalized_source(self):
+        name = "repository_metadata_generator"
+        blob, digest = (
+            _locked("vendor/repository_metadata_generator.py")["blob_sha"],
+            _locked("vendor/repository_metadata_generator.py")["sha256"],
+        )
+        path = ROOT / "vendor" / (name + ".py")
+        provenance = json.loads(path.with_suffix(".provenance.json").read_text())
+        self.assertEqual(provenance["source_repository"], "myon-bioinformatics/Ironmate")
+        self.assertEqual(provenance["source_path"], name + ".py")
+        self.assertEqual(provenance["source_commit"], _locked("vendor/" + name + ".py")["commit"])
+        self.assertEqual(provenance["schema_version"], "1.0")
+        self.assertEqual(provenance["blob_sha"], blob)
+        self.assertEqual(git_blob_sha(path), blob)
+        self.assertEqual(provenance["sha256"], digest)
+        self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), digest)
 
-    def test_producer_pair_validates_distinct_source_commits(self):
+    def test_generator_validates_distinct_source_commits(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            entries = {}
-            for index, name in enumerate(("repository_metadata_contract", "repository_metadata_generator"), 1):
-                destination = "vendor/" + name + ".py"
-                entry = dict(_locked(destination), commit=str(index) * 40)
-                entries[destination] = entry
-                path = root / destination
-                path.parent.mkdir(exist_ok=True)
-                shutil.copyfile(ROOT / destination, path)
-                record = json.loads((ROOT / destination).with_suffix(".provenance.json").read_text(encoding="utf-8"))
-                record["source_commit"] = entry["commit"]
-                path.with_suffix(".provenance.json").write_text(json.dumps(record), encoding="utf-8")
-            with mock.patch.dict(globals(), {"ROOT": root, "_locked": lambda destination: entries[destination]}):
-                self.test_producer_pair_matches_finalized_source()
+            destination = "vendor/repository_metadata_generator.py"
+            entry = dict(_locked(destination), commit=str(1) * 40)
+            path = root / destination
+            path.parent.mkdir(exist_ok=True)
+            shutil.copyfile(ROOT / destination, path)
+            record = json.loads((ROOT / destination).with_suffix(".provenance.json").read_text(encoding="utf-8"))
+            record["source_commit"] = entry["commit"]
+            path.with_suffix(".provenance.json").write_text(json.dumps(record), encoding="utf-8")
+            with mock.patch.dict(globals(), {"ROOT": root, "_locked": lambda dest: entry}):
+                self.test_generator_matches_finalized_source()
 
     def test_checkout_identity_equivalence_refs_and_detached_head(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -107,7 +122,7 @@ class RepositoryMetadataProducerTests(unittest.TestCase):
             for context, branch in scenarios:
                 with mock.patch.object(diagnostics, "ROOT", root):
                     record = diagnostics.build_record(context, generated_at=now)
-                expected = diagnostics.CONTRACT.build_repository_record(
+                expected = _v1_record(
                     full_name=diagnostics.REPOSITORY,
                     sha=head,
                     branch=branch,
@@ -118,7 +133,7 @@ class RepositoryMetadataProducerTests(unittest.TestCase):
                     tooling={"python": platform.python_version()},
                 )
                 self.assertEqual(record, expected)
-                self.assertEqual(json.loads(diagnostics.CONTRACT.to_jsonl(record)), expected)
+                self.assertEqual(json.loads(diagnostics._metadata_jsonl(record)), expected)
             git("checkout", "--detach", "-q")
             with mock.patch.object(diagnostics, "ROOT", root):
                 detached = diagnostics.build_record({}, generated_at=now)
@@ -129,7 +144,7 @@ class RepositoryMetadataProducerTests(unittest.TestCase):
 
             standalone = Path(tmp) / "standalone"
             standalone.mkdir()
-            for name in ("repository_metadata_contract.py", "repository_metadata_generator.py"):
+            for name in ("gh_identity.py", "repository_metadata_generator.py"):
                 shutil.copyfile(ROOT / "vendor" / name, standalone / name)
             output = Path(tmp) / "output"
             env = os.environ.copy()
@@ -147,7 +162,7 @@ class RepositoryMetadataProducerTests(unittest.TestCase):
             self.assertIsNone(direct["measurements"]["working_tree_bytes"])
 
     def test_payload_preserves_resolver_and_unsupported_ref_behavior(self):
-        record = diagnostics.CONTRACT.build_repository_record(
+        record = _v1_record(
             full_name=diagnostics.REPOSITORY, sha="b" * 40, branch="feature/example",
             timestamp="2026-09-29T01:02:03Z", subject="test", generated_at="2026-09-29T01:02:03Z",
         )
