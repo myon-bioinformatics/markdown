@@ -14,8 +14,8 @@ import markdown as md
 
 
 def test_cross_domain_composition_fails_instead_of_coercing():
-    if md.tomllib is None:
-        pytest.skip("TOML reader requires Python 3.11+")
+    if md.toml_reader() is None:
+        pytest.skip("TOML reader requires Python 3.11+ or Node with smol-toml")
 
     # A TOML integer is outside dotenv's flat string-value subset.
     x = "count = 3\n"

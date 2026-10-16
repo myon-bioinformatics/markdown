@@ -127,7 +127,7 @@ CONVERSION_EDGES = (
         "target": "markdown_structured_v1",
         "family": "structured-v1",
         "domain": "JSON-compatible TOML values excluding datetime/date/time",
-        "runtime_available": md.tomllib is not None,
+        "runtime_available": md.toml_reader() is not None,
     },
     {
         "id": "markdown_structured_v1_to_toml",
@@ -355,7 +355,7 @@ def _collect_structured_cycles() -> tuple[list[dict[str, Any]], list[str]]:
     cycles: list[dict[str, Any]] = []
     unavailable: list[str] = []
     for case in STRUCTURED_CYCLE_CASES:
-        if case.get("requires_tomllib") and md.tomllib is None:
+        if case.get("requires_tomllib") and md.toml_reader() is None:
             unavailable.append(case["id"])
             continue
         cycles.append(_structured_cycle_record(case))

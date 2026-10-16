@@ -159,7 +159,7 @@ def test_conversion_graph_reports_reachability_without_crossing_carriers():
     assert ("html", "toml") not in pairs
     assert ("ini", "html") not in pairs
 
-    if audit.md.tomllib is None:
+    if audit.md.toml_reader() is None:
         assert ("toml", "ini") not in pairs
     else:
         assert ("toml", "ini") in pairs
@@ -170,7 +170,7 @@ def test_structured_cycles_are_stable_on_supported_python():
     report = audit.collect_report()
     expected_ids = {case["id"] for case in audit.STRUCTURED_CYCLE_CASES}
 
-    if audit.md.tomllib is None:
+    if audit.md.toml_reader() is None:
         assert report["structured_cycle_count"] == 0
         assert set(report["structured_cycle_unavailable_ids"]) == expected_ids
         return

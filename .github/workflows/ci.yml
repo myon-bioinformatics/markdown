@@ -109,6 +109,8 @@ jobs:
         env:
           PYTHONPATH: build/shared
           MARKDOWN_FAILURE_EVIDENCE: build/controlled-failure
+          # toml_to_markdown's Node fallback (smol-toml) on Python 3.9/3.10.
+          NODE_PATH: ${{ github.workspace }}/tests/mirror/node_modules
         run: python -m pytest -q --junitxml=build/junit/pytest-${{ matrix.python-version }}.xml
       - name: Preserve raw JUnit
         if: always()
