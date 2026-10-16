@@ -1,5 +1,5 @@
 # markdown.py
-# metadata: __all__=127 | base_sha=99b6a174a883f60a9c3ed01164a81fd7bd26ff76 | updated_at=2026-09-27T09:40:47Z
+# metadata: __all__=128 | base_sha=99b6a174a883f60a9c3ed01164a81fd7bd26ff76 | updated_at=2026-09-27T09:40:47Z
 """Stdlib-only Markdown utility functions.
 
 This module is intentionally a single file with no CLI / ``main`` entry point.
@@ -105,6 +105,7 @@ __all__ = [
     "ini_to_markdown",
     "markdown_to_ini",
     "toml_to_markdown",
+    "toml_reader",
     "markdown_to_toml",
     "dotenv_to_markdown",
     "markdown_to_dotenv",
@@ -2752,19 +2753,93 @@ def _toml_dumps(value: Any) -> str:
     return "".join(line + "\n" for line in lines)
 
 
+_TOML_NODE_SCRIPT = r"""
+let text = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (c) => (text += c)).on('end', () => {
+  let toml;
+  try { toml = require('smol-toml'); } catch (e) { process.stderr.write('missing'); process.exit(3); }
+  let value;
+  try { value = toml.parse(text, {integersAsBigInt: 'asNeeded'}); } catch (e) { process.stderr.write('invalid:' + e.message); process.exit(4); }
+  try {
+    process.stdout.write(JSON.stringify(value, function (key, raw) {
+      const v = this[key];
+      if (typeof v === 'bigint') return {'\u0000int': v.toString()};
+      if (typeof v === 'number' && !Number.isFinite(v)) throw new Error('non-finite float');
+      if (v && typeof v === 'object' && typeof v.toISOString === 'function') throw new Error('datetime');
+      return raw;
+    }));
+  } catch (e) { process.stderr.write('subset:' + e.message); process.exit(5); }
+});
+"""
+_TOML_READER: list[str | None] = []
+
+
+def toml_reader() -> str | None:
+    """Which TOML reader ``toml_to_markdown`` uses: ``"tomllib"``, ``"node"`` or None.
+
+    Python 3.11+ uses ``tomllib``. Older interpreters fall back to Node with the
+    npm ``smol-toml`` package (resolved via ``NODE_PATH`` or the current
+    directory), probed once on first use; None means neither is available.
+    """
+    if tomllib is not None:
+        return "tomllib"
+    if not _TOML_READER:
+        import shutil
+        import subprocess
+        node = shutil.which("node")
+        ok = False
+        if node:
+            probe = subprocess.run([node, "-e", "require('smol-toml')"], capture_output=True, timeout=30)
+            ok = probe.returncode == 0
+        _TOML_READER.append("node" if ok else None)
+    return _TOML_READER[0]
+
+
+def _int_markers(value: Any) -> Any:
+    if isinstance(value, dict):
+        if set(value) == {"\u0000int"}:
+            return int(value["\u0000int"])
+        return {k: _int_markers(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_int_markers(v) for v in value]
+    return value
+
+
+def _toml_loads(content: str) -> Any:
+    reader = toml_reader()
+    if reader == "tomllib":
+        try:
+            return tomllib.loads(content)
+        except tomllib.TOMLDecodeError as exc:
+            raise ValueError(f"Invalid TOML: {exc}") from exc
+    if reader is None:
+        raise RuntimeError(
+            "toml_to_markdown requires Python 3.11+ (tomllib) or Node with smol-toml"
+            " (npm i --no-save smol-toml)"
+        )
+    import shutil
+    import subprocess
+    done = subprocess.run([shutil.which("node") or "node", "-e", _TOML_NODE_SCRIPT], input=content,
+                          capture_output=True, text=True, encoding="utf-8", timeout=30)
+    if done.returncode == 4:
+        raise ValueError(f"Invalid TOML: {done.stderr.removeprefix('invalid:')[:300]}")
+    if done.returncode == 5:
+        raise ValueError("TOML contains values outside the reversible structured subset")
+    if done.returncode:
+        raise RuntimeError(f"Node TOML reader failed: {done.stderr[:200]}")
+    return _int_markers(json.loads(done.stdout))
+
+
 def toml_to_markdown(content: str, title: str = "TOML") -> str:
-    """Convert TOML to canonical structured Markdown on Python 3.11+.
+    """Convert TOML to canonical structured Markdown.
 
     The reversible subset is the JSON-compatible TOML value space. TOML
     datetime/date/time values and non-finite floats are rejected rather than
-    silently stringified.
+    silently stringified. Reads with ``tomllib`` (3.11+) or, on older Python,
+    Node + ``smol-toml`` (see :func:`toml_reader`).
     """
-    if tomllib is None:
-        raise RuntimeError("toml_to_markdown requires Python 3.11+ (tomllib)")
-    try:
-        value = tomllib.loads(content)
-    except tomllib.TOMLDecodeError as exc:
-        raise ValueError(f"Invalid TOML: {exc}") from exc
+    value = _toml_loads(content)
     try:
         _structured_validate(value)
     except (TypeError, ValueError) as exc:

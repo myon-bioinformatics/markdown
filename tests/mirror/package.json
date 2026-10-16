@@ -1,2 +1,12 @@
-{"private": true, "type": "module", "description": "Independent JS readers for tests/test_mirror_js.py (no browser)",
- "devDependencies": {"linkedom": "0.18.13", "markdown-it": "15.0.3", "marked": "18.1.1", "string-width": "8.3.0"}}
+{
+ "private": true,
+ "type": "module",
+ "description": "Independent JS readers for tests/test_mirror_js.py (no browser)",
+ "devDependencies": {
+  "linkedom": "0.18.13",
+  "markdown-it": "15.0.3",
+  "marked": "18.1.1",
+  "string-width": "8.3.0",
+  "smol-toml": "1.9.1"
+ }
+}

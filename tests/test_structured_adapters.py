@@ -59,7 +59,7 @@ def test_dotenv_rejects_duplicate_and_invalid_keys():
         md.dotenv_to_markdown("BAD-KEY=value\n")
 
 
-@pytest.mark.skipif(sys.version_info < (3, 11), reason="tomllib is Python 3.11+")
+@pytest.mark.skipif(md.toml_reader() is None, reason="needs tomllib (3.11+) or Node with smol-toml")
 def test_toml_semantic_round_trip_and_canonical_fixed_point():
     source = (
         'title = "TOML Example"\n'
@@ -116,6 +116,7 @@ def test_markdown_to_toml_rejects_null():
 
 def test_toml_reader_requires_python_311_when_tomllib_unavailable(monkeypatch):
     monkeypatch.setattr(md, "tomllib", None)
+    monkeypatch.setattr(md, "_TOML_READER", [None])  # and no Node fallback
     with pytest.raises(RuntimeError, match="3.11"):
         md.toml_to_markdown('x = 1\n')
 
