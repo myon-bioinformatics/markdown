@@ -60,7 +60,10 @@ def normalized(key: str, items: list) -> collections.Counter:
 
 @pytest.fixture(scope="module")
 def readers():
-    files = sorted(p for p in ROOT.rglob("*.md") if "node_modules" not in p.parts and ".git" not in p.parts)
+    # This repository's own documents only: CI checks out helper repos (.vendor-sync-tools) inside it.
+    skip = {"node_modules", "build"}
+    files = sorted(p for p in ROOT.rglob("*.md")
+                   if not any(part.startswith(".") or part in skip for part in p.relative_to(ROOT).parts))
     texts = [p.read_text(encoding="utf-8") for p in files]
     done = subprocess.run(["node", str(MIRROR / "facts.mjs")], input=json.dumps({"markdown": texts, "width": WIDTHS}),
                           capture_output=True, text=True, check=True, timeout=120)
