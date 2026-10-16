@@ -336,7 +336,6 @@ _ANGLE_URL_RE = re.compile(r"<(https?://[^>\s]+)>")
 _BARE_URL_RE = re.compile(r"(?<![\"'(\\[])(https?://[^\s)<>\"]+)")
 _DATA_URI_RE = re.compile(r"(?<![A-Za-z0-9_-])data:([^,\s]*),([^\s]*)", re.IGNORECASE)
 _DATA_URI_MEDIA_TYPE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9._+-]*/[A-Za-z0-9._+-]+\Z")
-_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 _HTML_TAG_RE = re.compile(r"</?([A-Za-z][A-Za-z0-9]*)\b[^>]*>", re.DOTALL)
 _HTML_IMG_RE = re.compile(
     r"<img\b([^>]*)/?>",
@@ -488,13 +487,34 @@ def _mask_inline_code(text: str) -> str:
     return "".join(chars)
 
 
+def _mask_html_comments(text: str) -> str:
+    """Blank HTML comments, preserving newlines so later spans stay aligned.
+
+    A comment runs from ``<!--`` through ``-->``. With no closing ``-->`` it
+    runs through EOF, the same way an unterminated HTML comment block does.
+    """
+    chars = list(text)
+    index = 0
+    while index < len(text):
+        if not text.startswith("<!--", index):
+            index += 1
+            continue
+        end = text.find("-->", index + 4)
+        stop = len(text) if end < 0 else end + 3
+        for masked_index in range(index, stop):
+            if chars[masked_index] not in "\r\n":
+                chars[masked_index] = " "
+        index = stop
+    return "".join(chars)
+
+
 def _live_text(content: str) -> str:
     """``content`` with fenced code and inline code spans blanked, same length.
 
     Extractors search this view so that Markdown shown inside code (a ``#``
     comment, a ``[text](url)`` sample) is not reported as a heading, link or
     image, then read the matched text back from ``content`` at the same span.
-    HTML comments are blanked too.
+    HTML comments are blanked too, including one that never closes.
     """
     raw = content.splitlines(keepends=True)
     bodies = [line.rstrip("\r\n") for line in raw]
@@ -506,7 +526,7 @@ def _live_text(content: str) -> str:
         else:
             out.append(_mask_inline_code(body) + ending)
     # HTML comments (e.g. commented-out templates) are not rendered either.
-    return _HTML_COMMENT_RE.sub(lambda m: re.sub(r"[^\r\n]", " ", m.group(0)), "".join(out))
+    return _mask_html_comments("".join(out))
 
 
 def _live_matches(pattern: re.Pattern[str], live: str, content: str):

@@ -49,3 +49,30 @@ def test_crlf_input_keeps_spans():
 
 def test_display_width_counts_emoji_sequences_once():
     assert [md._display_width(t) for t in ("👍🏽", "👨‍👩‍👧", "❤️", "​", "x‍y", "日本")] == [2, 2, 2, 0, 2, 4]
+
+
+def test_unterminated_html_comment_hides_headings_and_links_through_eof():
+    text = (
+        "# Visible\n\n"
+        "[keep](https://keep.example)\n\n"
+        "![keep](keep.png)\n\n"
+        "<!--\n"
+        "# hidden\n"
+        "[hidden](https://example.invalid)\n"
+        "![hidden](hidden.png)\n"
+    )
+    assert md.extract_sections(text) == [{"level": 1, "title": "Visible"}]
+    assert [link["url"] for link in md.extract_links(text)] == ["https://keep.example"]
+    assert [image["url"] for image in md.extract_images(text)] == ["keep.png"]
+
+
+def test_closed_html_comment_does_not_hide_what_follows():
+    text = "<!--\n# hidden\n[hidden](https://example.invalid)\n-->\n# After\n[a](https://after.example)\n"
+    assert md.extract_sections(text) == [{"level": 1, "title": "After"}]
+    assert [link["url"] for link in md.extract_links(text)] == ["https://after.example"]
+
+
+def test_comment_opener_inside_a_fence_does_not_eat_the_rest():
+    text = "```\n<!--\n```\n# After\n[a](https://after.example)\n"
+    assert md.extract_sections(text) == [{"level": 1, "title": "After"}]
+    assert [link["url"] for link in md.extract_links(text)] == ["https://after.example"]

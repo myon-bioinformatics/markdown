@@ -88,3 +88,37 @@ def test_display_width_agrees_with_string_width(readers):
     expected = readers[2]["string-width"]
     actual = [md._display_width(text) for text in WIDTHS]
     assert [(t, a, e) for t, a, e in zip(WIDTHS, actual, expected) if a != e] == []
+
+
+# An HTML comment with no closing "-->" runs to EOF for markdown-it and marked.
+UNTERMINATED_COMMENT = """# Visible
+
+[keep](https://keep.example)
+
+![keep](keep.png)
+
+<!--
+# hidden
+[hidden](https://example.invalid)
+![hidden](hidden.png)
+"""
+
+
+def test_unterminated_html_comment_agrees_with_js_renderers():
+    done = subprocess.run(
+        ["node", str(MIRROR / "facts.mjs")],
+        input=json.dumps({"markdown": [UNTERMINATED_COMMENT], "width": []}),
+        capture_output=True, text=True, check=True, timeout=120,
+    )
+    facts = json.loads(done.stdout)
+    py = ours(UNTERMINATED_COMMENT)
+    assert py["headings"] == [[1, "Visible"]]
+    assert py["links"] == ["https://keep.example"]
+    assert py["images"] == [["keep.png", "keep"]]
+    for reader in ("markdown-it", "marked"):
+        theirs = facts[reader][0]
+        assert normalized("headings", py["headings"]) == normalized("headings", theirs["headings"])
+        assert normalized("images", py["images"]) == normalized("images", theirs["images"])
+        assert "https://example.invalid" not in theirs["links"]
+        assert "hidden.png" not in [src for src, _alt in theirs["images"]]
+    assert normalized("links", py["links"]) == normalized("links", facts["markdown-it"][0]["links"])
