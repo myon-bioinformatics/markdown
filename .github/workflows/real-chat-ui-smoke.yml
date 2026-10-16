@@ -72,7 +72,7 @@ jobs:
         run: |
           pip install -r requirements-dev.txt
           pip install -r requirements-frontend.txt
-          playwright install --with-deps chromium
+          playwright install --with-deps --only-shell chromium
 
       - name: Start the mock backends and Open WebUI (docker compose)
         # Both mocks now run as compose services on the stack's own Docker
