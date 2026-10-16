@@ -335,6 +335,7 @@ _ANGLE_URL_RE = re.compile(r"<(https?://[^>\s]+)>")
 _BARE_URL_RE = re.compile(r"(?<![\"'(\\[])(https?://[^\s)<>\"]+)")
 _DATA_URI_RE = re.compile(r"(?<![A-Za-z0-9_-])data:([^,\s]*),([^\s]*)", re.IGNORECASE)
 _DATA_URI_MEDIA_TYPE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9._+-]*/[A-Za-z0-9._+-]+\Z")
+_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 _HTML_TAG_RE = re.compile(r"</?([A-Za-z][A-Za-z0-9]*)\b[^>]*>", re.DOTALL)
 _HTML_IMG_RE = re.compile(
     r"<img\b([^>]*)/?>",
@@ -486,6 +487,34 @@ def _mask_inline_code(text: str) -> str:
     return "".join(chars)
 
 
+def _live_text(content: str) -> str:
+    """``content`` with fenced code and inline code spans blanked, same length.
+
+    Extractors search this view so that Markdown shown inside code (a ``#``
+    comment, a ``[text](url)`` sample) is not reported as a heading, link or
+    image, then read the matched text back from ``content`` at the same span.
+    HTML comments are blanked too.
+    """
+    raw = content.splitlines(keepends=True)
+    bodies = [line.rstrip("\r\n") for line in raw]
+    out = []
+    for line, body, item in zip(raw, bodies, _scan_lines(bodies)):
+        ending = line[len(body):]
+        if item.in_fenced_code:
+            out.append(" " * len(body) + ending)
+        else:
+            out.append(_mask_inline_code(body) + ending)
+    # HTML comments (e.g. commented-out templates) are not rendered either.
+    return _HTML_COMMENT_RE.sub(lambda m: re.sub(r"[^\r\n]", " ", m.group(0)), "".join(out))
+
+
+def _live_matches(pattern: re.Pattern[str], live: str, content: str):
+    """Matches found in the live view, re-read from ``content`` when possible."""
+    for match in pattern.finditer(live):
+        original = pattern.match(content, match.start())
+        yield original if original is not None and original.end() == match.end() else match
+
+
 # ---------------------------------------------------------------------------
 # I/O
 # ---------------------------------------------------------------------------
@@ -582,7 +611,10 @@ def extract_sections(content: str) -> list[dict[str, Any]]:
     ``split_sections()`` instead.
     """
     sections: list[dict[str, Any]] = []
-    for line in content.splitlines():
+    for line, live in zip(content.splitlines(), _live_text(content).splitlines()):
+        # Headings inside fenced code are code, not structure.
+        if not live.strip():
+            continue
         match = _HEADING_RE.match(line)
         if match:
             sections.append(
@@ -643,7 +675,7 @@ def _parse_attrs(attr_text: str) -> dict[str, str]:
 
 def _reference_map(content: str) -> dict[str, dict[str, str]]:
     refs: dict[str, dict[str, str]] = {}
-    for line in content.splitlines():
+    for line in _live_text(content).splitlines():
         match = _REF_DEF_RE.match(line)
         if match:
             key = match.group(1).strip().lower()
@@ -655,12 +687,16 @@ def _reference_map(content: str) -> dict[str, dict[str, str]]:
 
 
 def extract_links(content: str) -> list[dict[str, Any]]:
-    """Extract inline and reference-style links (not bare images)."""
+    """Extract inline, reference-style, angle-autolink and HTML links (not bare images).
+
+    Links shown inside fenced code or inline code spans are not reported.
+    """
     refs = _reference_map(content)
+    live = _live_text(content)
     links: list[dict[str, Any]] = []
 
     # Linked images: [![alt](img)](href) — record the outer link.
-    for match in _LINKED_IMAGE_RE.finditer(content):
+    for match in _live_matches(_LINKED_IMAGE_RE, live, content):
         links.append(
             {
                 "text": "",
@@ -671,11 +707,11 @@ def extract_links(content: str) -> list[dict[str, Any]]:
         )
 
     # Mask constructs that would confuse the inline-link regex.
-    masked = _LINKED_IMAGE_RE.sub(lambda m: " " * len(m.group(0)), content)
+    masked = _LINKED_IMAGE_RE.sub(lambda m: " " * len(m.group(0)), live)
     masked = _INLINE_IMAGE_RE.sub(lambda m: " " * len(m.group(0)), masked)
     masked = _REF_IMAGE_RE.sub(lambda m: " " * len(m.group(0)), masked)
 
-    for match in _INLINE_LINK_RE.finditer(masked):
+    for match in _live_matches(_INLINE_LINK_RE, masked, content):
         text = match.group(1)
         links.append(
             {
@@ -686,7 +722,7 @@ def extract_links(content: str) -> list[dict[str, Any]]:
             }
         )
 
-    for match in _REF_LINK_RE.finditer(masked):
+    for match in _live_matches(_REF_LINK_RE, masked, content):
         text = match.group(1)
         key = (match.group(2) or text).strip().lower()
         ref = refs.get(key, {})
@@ -700,7 +736,10 @@ def extract_links(content: str) -> list[dict[str, Any]]:
             }
         )
 
-    for match in _HTML_A_RE.finditer(content):
+    for match in _ANGLE_URL_RE.finditer(masked):
+        links.append({"text": match.group(1), "url": match.group(1), "title": "", "style": "autolink"})
+
+    for match in _live_matches(_HTML_A_RE, live, content):
         attrs = _parse_attrs(match.group(1))
         href = attrs.get("href", "")
         if href:
@@ -716,11 +755,12 @@ def extract_links(content: str) -> list[dict[str, Any]]:
 
 
 def extract_images(content: str) -> list[dict[str, Any]]:
-    """Extract Markdown and HTML images."""
+    """Extract Markdown and HTML images (not those shown inside code)."""
     refs = _reference_map(content)
+    live = _live_text(content)
     images: list[dict[str, Any]] = []
 
-    for match in _INLINE_IMAGE_RE.finditer(content):
+    for match in _live_matches(_INLINE_IMAGE_RE, live, content):
         images.append(
             {
                 "alt": match.group(1),
@@ -730,7 +770,7 @@ def extract_images(content: str) -> list[dict[str, Any]]:
             }
         )
 
-    for match in _REF_IMAGE_RE.finditer(content):
+    for match in _live_matches(_REF_IMAGE_RE, live, content):
         alt = match.group(1)
         key = match.group(2).strip().lower()
         ref = refs.get(key, {})
@@ -744,7 +784,7 @@ def extract_images(content: str) -> list[dict[str, Any]]:
             }
         )
 
-    for match in _HTML_IMG_RE.finditer(content):
+    for match in _live_matches(_HTML_IMG_RE, live, content):
         attrs = _parse_attrs(match.group(1))
         src = attrs.get("src", "")
         if src:
@@ -1974,15 +2014,37 @@ def table(headers: Any, rows: Any) -> str:
 def _display_width(value: Any) -> int:
     """Return a terminal-style display width for a Markdown table cell.
 
-    Combining marks take no column; full-width and wide East Asian characters
-    take two. Ambiguous-width characters deliberately stay one column so the
-    result is stable across common Western and Japanese terminals.
+    Combining marks and format characters (zero-width space, ZWJ, variation
+    selectors) take no column; full-width and wide East Asian characters take
+    two. Ambiguous-width characters deliberately stay one column so the result
+    is stable across common Western and Japanese terminals. Emoji sequences
+    count once: a skin-tone modifier or a ZWJ-joined part adds nothing, and
+    VS16 (emoji presentation) widens a narrow base to two. Cross-checked
+    against the npm ``string-width`` package in ``tests/test_mirror_js.py``.
     """
     width = 0
+    previous = 0
+    pictographic = False
+    joined = False
     for char in str(value):
-        if unicodedata.combining(char):
+        if char == "\u200d":
+            # ZWJ glues emoji into one glyph; between letters it is just invisible.
+            joined = pictographic
             continue
-        width += 2 if unicodedata.east_asian_width(char) in {"F", "W"} else 1
+        if char == "\ufe0f":
+            if previous == 1:
+                width += 1
+                previous = 2
+            continue
+        if (unicodedata.combining(char) or unicodedata.category(char) in {"Mn", "Me", "Cf"}
+                or (previous and 0x1F3FB <= ord(char) <= 0x1F3FF)):
+            continue
+        if joined:
+            joined = False
+            continue
+        previous = 2 if unicodedata.east_asian_width(char) in {"F", "W"} else 1
+        pictographic = ord(char) >= 0x1F000 or 0x2600 <= ord(char) <= 0x27BF
+        width += previous
     return width
 
 

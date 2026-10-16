@@ -81,6 +81,11 @@ jobs:
         run: python -S -c "import importlib.util; s=importlib.util.spec_from_file_location('vendored_ghi','vendor/gh_identity.py'); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); assert hasattr(m,'capabilities')"
       - name: Install test deps
         run: pip install -r requirements-dev.txt
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - name: Install JS mirror readers (no browser)
+        run: npm ci --prefix tests/mirror --no-audit --no-fund
       - name: Fetch pinned xprobe JUnit importer
         env:
           XPROBE_COMMIT: 7e7015b2df69ad446b968f6fa49711b5b1dbdd3f
