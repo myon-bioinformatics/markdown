@@ -492,20 +492,42 @@ def _mask_html_comments(text: str) -> str:
 
     A comment runs from ``<!--`` through ``-->``. With no closing ``-->`` it
     runs through EOF, the same way an unterminated HTML comment block does.
+    Code protects comment openers; inside a comment, code markers are literal
+    and cannot hide its closing delimiter or open a fence in following text.
     """
-    chars = list(text)
-    index = 0
-    while index < len(text):
-        if not text.startswith("<!--", index):
-            index += 1
-            continue
-        end = text.find("-->", index + 4)
-        stop = len(text) if end < 0 else end + 3
-        for masked_index in range(index, stop):
-            if chars[masked_index] not in "\r\n":
-                chars[masked_index] = " "
-        index = stop
-    return "".join(chars)
+    out = []
+    active_fence = None
+    in_comment = False
+    for line in text.splitlines(keepends=True):
+        if not in_comment:
+            next_fence, opened, _closed = _advance_fence(active_fence, line.rstrip("\r\n"))
+            in_code = active_fence is not None or opened
+            active_fence = next_fence
+            if in_code:
+                out.append(line)
+                continue
+        chars = list(line)
+        index = 0
+        while index < len(line):
+            if in_comment or line.startswith("<!--", index):
+                end = line.find("-->", index if in_comment else index + 4)
+                stop = len(line) if end < 0 else end + 3
+                for masked_index in range(index, stop):
+                    if chars[masked_index] not in "\r\n":
+                        chars[masked_index] = " "
+                in_comment = end < 0
+                index = stop
+            elif line[index] == "`":
+                end = index + 1
+                while end < len(line) and line[end] == "`":
+                    end += 1
+                marker = line[index:end]
+                close = line.find(marker, end)
+                index = end if close < 0 else close + len(marker)
+            else:
+                index += 1
+        out.append("".join(chars))
+    return "".join(out)
 
 
 def _live_text(content: str) -> str:
@@ -516,7 +538,9 @@ def _live_text(content: str) -> str:
     image, then read the matched text back from ``content`` at the same span.
     HTML comments are blanked too, including one that never closes.
     """
-    raw = content.splitlines(keepends=True)
+    # Resolve comment/code precedence before blanking code, so a fence or
+    # backtick inside a comment cannot erase the comment's closing delimiter.
+    raw = _mask_html_comments(content).splitlines(keepends=True)
     bodies = [line.rstrip("\r\n") for line in raw]
     out = []
     for line, body, item in zip(raw, bodies, _scan_lines(bodies)):
@@ -525,8 +549,7 @@ def _live_text(content: str) -> str:
             out.append(" " * len(body) + ending)
         else:
             out.append(_mask_inline_code(body) + ending)
-    # HTML comments (e.g. commented-out templates) are not rendered either.
-    return _mask_html_comments("".join(out))
+    return "".join(out)
 
 
 def _live_matches(pattern: re.Pattern[str], live: str, content: str):
@@ -636,12 +659,12 @@ def extract_sections(content: str) -> list[dict[str, Any]]:
         # Headings inside fenced code are code, not structure.
         if not live.strip():
             continue
-        match = _HEADING_RE.match(line)
+        match = _HEADING_RE.match(live)
         if match:
             sections.append(
                 {
                     "level": len(match.group(1)),
-                    "title": match.group(2).strip(),
+                    "title": line[match.start(2):match.end(2)].strip(),
                 }
             )
     return sections
@@ -2780,15 +2803,22 @@ process.stdin.on('data', (c) => (text += c)).on('end', () => {
   let toml;
   try { toml = require('smol-toml'); } catch (e) { process.stderr.write('missing'); process.exit(3); }
   let value;
-  try { value = toml.parse(text, {integersAsBigInt: 'asNeeded'}); } catch (e) { process.stderr.write('invalid:' + e.message); process.exit(4); }
+  try { value = toml.parse(text, {integersAsBigInt: true}); } catch (e) { process.stderr.write('invalid:' + e.message); process.exit(4); }
+  // Tag every container as well as every numeric scalar. Literal TOML keys
+  // cannot then impersonate metadata, and integral floats remain floats.
+  function encode(v) {
+    if (typeof v === 'bigint') return ['int', v.toString()];
+    if (typeof v === 'number') {
+      if (!Number.isFinite(v)) throw new Error('non-finite float');
+      return ['float', Object.is(v, -0) ? '-0.0' : v.toString()];
+    }
+    if (v && typeof v === 'object' && typeof v.toISOString === 'function') throw new Error('datetime');
+    if (Array.isArray(v)) return ['array', v.map(encode)];
+    if (v && typeof v === 'object') return ['table', Object.entries(v).map(([k, child]) => [k, encode(child)])];
+    return ['scalar', v];
+  }
   try {
-    process.stdout.write(JSON.stringify(value, function (key, raw) {
-      const v = this[key];
-      if (typeof v === 'bigint') return {'\u0000int': v.toString()};
-      if (typeof v === 'number' && !Number.isFinite(v)) throw new Error('non-finite float');
-      if (v && typeof v === 'object' && typeof v.toISOString === 'function') throw new Error('datetime');
-      return raw;
-    }));
+    process.stdout.write(JSON.stringify(encode(value)));
   } catch (e) { process.stderr.write('subset:' + e.message); process.exit(5); }
 });
 """
@@ -2816,14 +2846,20 @@ def toml_reader() -> str | None:
     return _TOML_READER[0]
 
 
-def _int_markers(value: Any) -> Any:
-    if isinstance(value, dict):
-        if set(value) == {"\u0000int"}:
-            return int(value["\u0000int"])
-        return {k: _int_markers(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_int_markers(v) for v in value]
-    return value
+def _toml_node_value(value: Any) -> Any:
+    """Decode the tagged Node transport without interpreting user table keys."""
+    kind, raw = value
+    if kind == "int":
+        return int(raw)
+    if kind == "float":
+        return float(raw)
+    if kind == "table":
+        return {key: _toml_node_value(child) for key, child in raw}
+    if kind == "array":
+        return [_toml_node_value(child) for child in raw]
+    if kind == "scalar":
+        return raw
+    raise ValueError("Unknown Node TOML value type")
 
 
 def _toml_loads(content: str) -> Any:
@@ -2848,7 +2884,7 @@ def _toml_loads(content: str) -> Any:
         raise ValueError("TOML contains values outside the reversible structured subset")
     if done.returncode:
         raise RuntimeError(f"Node TOML reader failed: {done.stderr[:200]}")
-    return _int_markers(json.loads(done.stdout))
+    return _toml_node_value(json.loads(done.stdout))
 
 
 def toml_to_markdown(content: str, title: str = "TOML") -> str:

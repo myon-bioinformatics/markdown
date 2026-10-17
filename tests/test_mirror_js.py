@@ -122,3 +122,20 @@ def test_unterminated_html_comment_agrees_with_js_renderers():
         assert "https://example.invalid" not in theirs["links"]
         assert "hidden.png" not in [src for src, _alt in theirs["images"]]
     assert normalized("links", py["links"]) == normalized("links", facts["markdown-it"][0]["links"])
+
+
+def test_comment_code_boundaries_agree_with_js_renderers():
+    comments = ["<!--\n```\n-->\n", "<!--\n~~~\n-->\n", "<!-- ` --> `\n",
+                "<!--\n`-->`\n", "`<!--`\n", "```\n<!--\n```\n", "<!--\n# hidden --> tail\n"]
+    texts = [comment + "# After\n[a](https://after.example)\n![a](after.png)\n" for comment in comments]
+    done = subprocess.run(
+        ["node", str(MIRROR / "facts.mjs")],
+        input=json.dumps({"markdown": texts, "width": []}),
+        capture_output=True, text=True, check=True, timeout=120,
+    )
+    facts = json.loads(done.stdout)
+    for reader in ("markdown-it", "marked"):
+        for text, theirs in zip(texts, facts[reader]):
+            py = ours(text)
+            for key in ("headings", "links", "images"):
+                assert normalized(key, py[key]) == normalized(key, theirs[key]), (reader, key, text)

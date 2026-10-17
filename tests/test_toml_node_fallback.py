@@ -36,6 +36,29 @@ def test_node_reader_matches_tomllib(node_only):
 
 
 @needs_node
+@pytest.mark.parametrize("source,expected", [
+    ("values = [9007199254740991, 9007199254740992, 9007199254740993, "
+     "-9007199254740993, 9223372036854775807, -9223372036854775808]\n",
+     {"values": [9007199254740991, 9007199254740992, 9007199254740993,
+                 -9007199254740993, 9223372036854775807, -9223372036854775808]}),
+    ("values = [1.0, -0.0, 1e3, 9007199254740992.0, 5e-324]\n",
+     {"values": [1.0, -0.0, 1000.0, 9007199254740992.0, 5e-324]}),
+    ('x = {"\\u0000int" = "42"}\n', {"x": {"\u0000int": "42"}}),
+    ('x = {"\\u0000int" = "not an integer"}\n', {"x": {"\u0000int": "not an integer"}}),
+    ('[[items]]\nvalue = 9007199254740993\nratio = 1.0\n'
+     '[items.nested]\n"\\u0000int" = "42"\n',
+     {"items": [{"value": 9007199254740993, "ratio": 1.0, "nested": {"\u0000int": "42"}}]}),
+])
+def test_node_reader_preserves_numeric_types_and_literal_keys(node_only, source, expected):
+    document = md.toml_to_markdown(source)
+    # Canonical documents distinguish int/float and the sign of zero, unlike ==.
+    assert document == md.structured_to_markdown(expected, title="TOML")
+    if sys.version_info >= (3, 11):
+        import tomllib
+        assert document == md.structured_to_markdown(tomllib.loads(source), title="TOML")
+
+
+@needs_node
 def test_node_reader_keeps_the_reversible_subset_and_errors(node_only):
     with pytest.raises(ValueError, match="outside the reversible structured subset"):
         md.toml_to_markdown("when = 1979-05-27\n")

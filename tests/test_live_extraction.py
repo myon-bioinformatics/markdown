@@ -1,4 +1,6 @@
 """Extractors ignore Markdown shown inside code or HTML comments; angle autolinks count."""
+import pytest
+
 import markdown as md
 
 DOC = """# Title
@@ -76,3 +78,27 @@ def test_comment_opener_inside_a_fence_does_not_eat_the_rest():
     text = "```\n<!--\n```\n# After\n[a](https://after.example)\n"
     assert md.extract_sections(text) == [{"level": 1, "title": "After"}]
     assert [link["url"] for link in md.extract_links(text)] == ["https://after.example"]
+
+
+@pytest.mark.parametrize("comment", [
+    "<!--\n```\n-->\n",
+    "<!--\n~~~\n-->\n",
+    "<!-- ` --> `\n",
+    "<!--\n`-->`\n",
+])
+def test_code_markers_inside_comments_do_not_hide_following_content(comment):
+    text = comment + "# After\n[a](https://after.example)\n![a](after.png)\n"
+    assert md.extract_sections(text) == [{"level": 1, "title": "After"}]
+    assert [link["url"] for link in md.extract_links(text)] == ["https://after.example"]
+    assert [image["url"] for image in md.extract_images(text)] == ["after.png"]
+
+
+def test_comment_opener_inside_inline_code_does_not_hide_following_content():
+    text = "`<!--`\n# After\n[a](https://after.example)\n"
+    assert md.extract_sections(text) == [{"level": 1, "title": "After"}]
+    assert [link["url"] for link in md.extract_links(text)] == ["https://after.example"]
+
+
+def test_visible_tail_does_not_reactivate_a_commented_heading_marker():
+    text = "<!--\n# hidden --> tail\n# After\n"
+    assert md.extract_sections(text) == [{"level": 1, "title": "After"}]
