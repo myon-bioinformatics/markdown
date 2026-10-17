@@ -1,5 +1,5 @@
 # markdown.py
-# metadata: __all__=127 | base_sha=99b6a174a883f60a9c3ed01164a81fd7bd26ff76 | updated_at=2026-09-27T09:40:47Z
+# metadata: __all__=128 | base_sha=99b6a174a883f60a9c3ed01164a81fd7bd26ff76 | updated_at=2026-09-27T09:40:47Z
 """Stdlib-only Markdown utility functions.
 
 This module is intentionally a single file with no CLI / ``main`` entry point.
@@ -105,6 +105,7 @@ __all__ = [
     "ini_to_markdown",
     "markdown_to_ini",
     "toml_to_markdown",
+    "toml_reader",
     "markdown_to_toml",
     "dotenv_to_markdown",
     "markdown_to_dotenv",
@@ -486,6 +487,78 @@ def _mask_inline_code(text: str) -> str:
     return "".join(chars)
 
 
+def _mask_html_comments(text: str) -> str:
+    """Blank HTML comments, preserving newlines so later spans stay aligned.
+
+    A comment runs from ``<!--`` through ``-->``. With no closing ``-->`` it
+    runs through EOF, the same way an unterminated HTML comment block does.
+    Code protects comment openers; inside a comment, code markers are literal
+    and cannot hide its closing delimiter or open a fence in following text.
+    """
+    out = []
+    active_fence = None
+    in_comment = False
+    for line in text.splitlines(keepends=True):
+        if not in_comment:
+            next_fence, opened, _closed = _advance_fence(active_fence, line.rstrip("\r\n"))
+            in_code = active_fence is not None or opened
+            active_fence = next_fence
+            if in_code:
+                out.append(line)
+                continue
+        chars = list(line)
+        index = 0
+        while index < len(line):
+            if in_comment or line.startswith("<!--", index):
+                end = line.find("-->", index if in_comment else index + 4)
+                stop = len(line) if end < 0 else end + 3
+                for masked_index in range(index, stop):
+                    if chars[masked_index] not in "\r\n":
+                        chars[masked_index] = " "
+                in_comment = end < 0
+                index = stop
+            elif line[index] == "`":
+                end = index + 1
+                while end < len(line) and line[end] == "`":
+                    end += 1
+                marker = line[index:end]
+                close = line.find(marker, end)
+                index = end if close < 0 else close + len(marker)
+            else:
+                index += 1
+        out.append("".join(chars))
+    return "".join(out)
+
+
+def _live_text(content: str) -> str:
+    """``content`` with fenced code and inline code spans blanked, same length.
+
+    Extractors search this view so that Markdown shown inside code (a ``#``
+    comment, a ``[text](url)`` sample) is not reported as a heading, link or
+    image, then read the matched text back from ``content`` at the same span.
+    HTML comments are blanked too, including one that never closes.
+    """
+    # Resolve comment/code precedence before blanking code, so a fence or
+    # backtick inside a comment cannot erase the comment's closing delimiter.
+    raw = _mask_html_comments(content).splitlines(keepends=True)
+    bodies = [line.rstrip("\r\n") for line in raw]
+    out = []
+    for line, body, item in zip(raw, bodies, _scan_lines(bodies)):
+        ending = line[len(body):]
+        if item.in_fenced_code:
+            out.append(" " * len(body) + ending)
+        else:
+            out.append(_mask_inline_code(body) + ending)
+    return "".join(out)
+
+
+def _live_matches(pattern: re.Pattern[str], live: str, content: str):
+    """Matches found in the live view, re-read from ``content`` when possible."""
+    for match in pattern.finditer(live):
+        original = pattern.match(content, match.start())
+        yield original if original is not None and original.end() == match.end() else match
+
+
 # ---------------------------------------------------------------------------
 # I/O
 # ---------------------------------------------------------------------------
@@ -582,13 +655,16 @@ def extract_sections(content: str) -> list[dict[str, Any]]:
     ``split_sections()`` instead.
     """
     sections: list[dict[str, Any]] = []
-    for line in content.splitlines():
-        match = _HEADING_RE.match(line)
+    for line, live in zip(content.splitlines(), _live_text(content).splitlines()):
+        # Headings inside fenced code are code, not structure.
+        if not live.strip():
+            continue
+        match = _HEADING_RE.match(live)
         if match:
             sections.append(
                 {
                     "level": len(match.group(1)),
-                    "title": match.group(2).strip(),
+                    "title": line[match.start(2):match.end(2)].strip(),
                 }
             )
     return sections
@@ -643,7 +719,7 @@ def _parse_attrs(attr_text: str) -> dict[str, str]:
 
 def _reference_map(content: str) -> dict[str, dict[str, str]]:
     refs: dict[str, dict[str, str]] = {}
-    for line in content.splitlines():
+    for line in _live_text(content).splitlines():
         match = _REF_DEF_RE.match(line)
         if match:
             key = match.group(1).strip().lower()
@@ -655,12 +731,16 @@ def _reference_map(content: str) -> dict[str, dict[str, str]]:
 
 
 def extract_links(content: str) -> list[dict[str, Any]]:
-    """Extract inline and reference-style links (not bare images)."""
+    """Extract inline, reference-style, angle-autolink and HTML links (not bare images).
+
+    Links shown inside fenced code or inline code spans are not reported.
+    """
     refs = _reference_map(content)
+    live = _live_text(content)
     links: list[dict[str, Any]] = []
 
     # Linked images: [![alt](img)](href) — record the outer link.
-    for match in _LINKED_IMAGE_RE.finditer(content):
+    for match in _live_matches(_LINKED_IMAGE_RE, live, content):
         links.append(
             {
                 "text": "",
@@ -671,11 +751,11 @@ def extract_links(content: str) -> list[dict[str, Any]]:
         )
 
     # Mask constructs that would confuse the inline-link regex.
-    masked = _LINKED_IMAGE_RE.sub(lambda m: " " * len(m.group(0)), content)
+    masked = _LINKED_IMAGE_RE.sub(lambda m: " " * len(m.group(0)), live)
     masked = _INLINE_IMAGE_RE.sub(lambda m: " " * len(m.group(0)), masked)
     masked = _REF_IMAGE_RE.sub(lambda m: " " * len(m.group(0)), masked)
 
-    for match in _INLINE_LINK_RE.finditer(masked):
+    for match in _live_matches(_INLINE_LINK_RE, masked, content):
         text = match.group(1)
         links.append(
             {
@@ -686,7 +766,7 @@ def extract_links(content: str) -> list[dict[str, Any]]:
             }
         )
 
-    for match in _REF_LINK_RE.finditer(masked):
+    for match in _live_matches(_REF_LINK_RE, masked, content):
         text = match.group(1)
         key = (match.group(2) or text).strip().lower()
         ref = refs.get(key, {})
@@ -700,7 +780,10 @@ def extract_links(content: str) -> list[dict[str, Any]]:
             }
         )
 
-    for match in _HTML_A_RE.finditer(content):
+    for match in _ANGLE_URL_RE.finditer(masked):
+        links.append({"text": match.group(1), "url": match.group(1), "title": "", "style": "autolink"})
+
+    for match in _live_matches(_HTML_A_RE, live, content):
         attrs = _parse_attrs(match.group(1))
         href = attrs.get("href", "")
         if href:
@@ -716,11 +799,12 @@ def extract_links(content: str) -> list[dict[str, Any]]:
 
 
 def extract_images(content: str) -> list[dict[str, Any]]:
-    """Extract Markdown and HTML images."""
+    """Extract Markdown and HTML images (not those shown inside code)."""
     refs = _reference_map(content)
+    live = _live_text(content)
     images: list[dict[str, Any]] = []
 
-    for match in _INLINE_IMAGE_RE.finditer(content):
+    for match in _live_matches(_INLINE_IMAGE_RE, live, content):
         images.append(
             {
                 "alt": match.group(1),
@@ -730,7 +814,7 @@ def extract_images(content: str) -> list[dict[str, Any]]:
             }
         )
 
-    for match in _REF_IMAGE_RE.finditer(content):
+    for match in _live_matches(_REF_IMAGE_RE, live, content):
         alt = match.group(1)
         key = match.group(2).strip().lower()
         ref = refs.get(key, {})
@@ -744,7 +828,7 @@ def extract_images(content: str) -> list[dict[str, Any]]:
             }
         )
 
-    for match in _HTML_IMG_RE.finditer(content):
+    for match in _live_matches(_HTML_IMG_RE, live, content):
         attrs = _parse_attrs(match.group(1))
         src = attrs.get("src", "")
         if src:
@@ -1974,15 +2058,37 @@ def table(headers: Any, rows: Any) -> str:
 def _display_width(value: Any) -> int:
     """Return a terminal-style display width for a Markdown table cell.
 
-    Combining marks take no column; full-width and wide East Asian characters
-    take two. Ambiguous-width characters deliberately stay one column so the
-    result is stable across common Western and Japanese terminals.
+    Combining marks and format characters (zero-width space, ZWJ, variation
+    selectors) take no column; full-width and wide East Asian characters take
+    two. Ambiguous-width characters deliberately stay one column so the result
+    is stable across common Western and Japanese terminals. Emoji sequences
+    count once: a skin-tone modifier or a ZWJ-joined part adds nothing, and
+    VS16 (emoji presentation) widens a narrow base to two. Cross-checked
+    against the npm ``string-width`` package in ``tests/test_mirror_js.py``.
     """
     width = 0
+    previous = 0
+    pictographic = False
+    joined = False
     for char in str(value):
-        if unicodedata.combining(char):
+        if char == "\u200d":
+            # ZWJ glues emoji into one glyph; between letters it is just invisible.
+            joined = pictographic
             continue
-        width += 2 if unicodedata.east_asian_width(char) in {"F", "W"} else 1
+        if char == "\ufe0f":
+            if previous == 1:
+                width += 1
+                previous = 2
+            continue
+        if (unicodedata.combining(char) or unicodedata.category(char) in {"Mn", "Me", "Cf"}
+                or (previous and 0x1F3FB <= ord(char) <= 0x1F3FF)):
+            continue
+        if joined:
+            joined = False
+            continue
+        previous = 2 if unicodedata.east_asian_width(char) in {"F", "W"} else 1
+        pictographic = ord(char) >= 0x1F000 or 0x2600 <= ord(char) <= 0x27BF
+        width += previous
     return width
 
 
@@ -2690,19 +2796,106 @@ def _toml_dumps(value: Any) -> str:
     return "".join(line + "\n" for line in lines)
 
 
+_TOML_NODE_SCRIPT = r"""
+let text = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (c) => (text += c)).on('end', () => {
+  let toml;
+  try { toml = require('smol-toml'); } catch (e) { process.stderr.write('missing'); process.exit(3); }
+  let value;
+  try { value = toml.parse(text, {integersAsBigInt: true}); } catch (e) { process.stderr.write('invalid:' + e.message); process.exit(4); }
+  // Tag every container as well as every numeric scalar. Literal TOML keys
+  // cannot then impersonate metadata, and integral floats remain floats.
+  function encode(v) {
+    if (typeof v === 'bigint') return ['int', v.toString()];
+    if (typeof v === 'number') {
+      if (!Number.isFinite(v)) throw new Error('non-finite float');
+      return ['float', Object.is(v, -0) ? '-0.0' : v.toString()];
+    }
+    if (v && typeof v === 'object' && typeof v.toISOString === 'function') throw new Error('datetime');
+    if (Array.isArray(v)) return ['array', v.map(encode)];
+    if (v && typeof v === 'object') return ['table', Object.entries(v).map(([k, child]) => [k, encode(child)])];
+    return ['scalar', v];
+  }
+  try {
+    process.stdout.write(JSON.stringify(encode(value)));
+  } catch (e) { process.stderr.write('subset:' + e.message); process.exit(5); }
+});
+"""
+_TOML_READER: list[str | None] = []
+
+
+def toml_reader() -> str | None:
+    """Which TOML reader ``toml_to_markdown`` uses: ``"tomllib"``, ``"node"`` or None.
+
+    Python 3.11+ uses ``tomllib``. Older interpreters fall back to Node with the
+    npm ``smol-toml`` package (resolved via ``NODE_PATH`` or the current
+    directory), probed once on first use; None means neither is available.
+    """
+    if tomllib is not None:
+        return "tomllib"
+    if not _TOML_READER:
+        import shutil
+        import subprocess
+        node = shutil.which("node")
+        ok = False
+        if node:
+            probe = subprocess.run([node, "-e", "require('smol-toml')"], capture_output=True, timeout=30)
+            ok = probe.returncode == 0
+        _TOML_READER.append("node" if ok else None)
+    return _TOML_READER[0]
+
+
+def _toml_node_value(value: Any) -> Any:
+    """Decode the tagged Node transport without interpreting user table keys."""
+    kind, raw = value
+    if kind == "int":
+        return int(raw)
+    if kind == "float":
+        return float(raw)
+    if kind == "table":
+        return {key: _toml_node_value(child) for key, child in raw}
+    if kind == "array":
+        return [_toml_node_value(child) for child in raw]
+    if kind == "scalar":
+        return raw
+    raise ValueError("Unknown Node TOML value type")
+
+
+def _toml_loads(content: str) -> Any:
+    reader = toml_reader()
+    if reader == "tomllib":
+        try:
+            return tomllib.loads(content)
+        except tomllib.TOMLDecodeError as exc:
+            raise ValueError(f"Invalid TOML: {exc}") from exc
+    if reader is None:
+        raise RuntimeError(
+            "toml_to_markdown requires Python 3.11+ (tomllib) or Node with smol-toml"
+            " (npm i --no-save smol-toml)"
+        )
+    import shutil
+    import subprocess
+    done = subprocess.run([shutil.which("node") or "node", "-e", _TOML_NODE_SCRIPT], input=content,
+                          capture_output=True, text=True, encoding="utf-8", timeout=30)
+    if done.returncode == 4:
+        raise ValueError(f"Invalid TOML: {done.stderr.removeprefix('invalid:')[:300]}")
+    if done.returncode == 5:
+        raise ValueError("TOML contains values outside the reversible structured subset")
+    if done.returncode:
+        raise RuntimeError(f"Node TOML reader failed: {done.stderr[:200]}")
+    return _toml_node_value(json.loads(done.stdout))
+
+
 def toml_to_markdown(content: str, title: str = "TOML") -> str:
-    """Convert TOML to canonical structured Markdown on Python 3.11+.
+    """Convert TOML to canonical structured Markdown.
 
     The reversible subset is the JSON-compatible TOML value space. TOML
     datetime/date/time values and non-finite floats are rejected rather than
-    silently stringified.
+    silently stringified. Reads with ``tomllib`` (3.11+) or, on older Python,
+    Node + ``smol-toml`` (see :func:`toml_reader`).
     """
-    if tomllib is None:
-        raise RuntimeError("toml_to_markdown requires Python 3.11+ (tomllib)")
-    try:
-        value = tomllib.loads(content)
-    except tomllib.TOMLDecodeError as exc:
-        raise ValueError(f"Invalid TOML: {exc}") from exc
+    value = _toml_loads(content)
     try:
         _structured_validate(value)
     except (TypeError, ValueError) as exc:

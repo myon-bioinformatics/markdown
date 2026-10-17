@@ -81,6 +81,11 @@ jobs:
         run: python -S -c "import importlib.util; s=importlib.util.spec_from_file_location('vendored_ghi','vendor/gh_identity.py'); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); assert hasattr(m,'capabilities')"
       - name: Install test deps
         run: pip install -r requirements-dev.txt
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - name: Install JS mirror readers (no browser)
+        run: npm ci --prefix tests/mirror --no-audit --no-fund
       - name: Fetch pinned xprobe JUnit importer
         env:
           XPROBE_COMMIT: 7e7015b2df69ad446b968f6fa49711b5b1dbdd3f
@@ -104,6 +109,8 @@ jobs:
         env:
           PYTHONPATH: build/shared
           MARKDOWN_FAILURE_EVIDENCE: build/controlled-failure
+          # toml_to_markdown's Node fallback (smol-toml) on Python 3.9/3.10.
+          NODE_PATH: ${{ github.workspace }}/tests/mirror/node_modules
         run: python -m pytest -q --junitxml=build/junit/pytest-${{ matrix.python-version }}.xml
       - name: Preserve raw JUnit
         if: always()
@@ -166,7 +173,7 @@ jobs:
           python -c "import ast, pathlib; ast.parse(pathlib.Path('demos/gradio_app.py').read_text())"
           python -c "import ast, pathlib; ast.parse(pathlib.Path('demos/streamlit_app.py').read_text())"
       - name: Install Playwright's Chromium
-        run: playwright install --with-deps chromium
+        run: playwright install --with-deps --only-shell chromium
       - name: Run Gradio/Streamlit/chat UI frontend tests
         run: pytest -q tests/frontend
 
