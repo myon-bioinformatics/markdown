@@ -7,7 +7,7 @@ provenance sidecar in this repository: `vendor.lock.json` is the only
 provenance record.
 
 The shared tool is checked out from `myon-bioinformatics/myon-bioinformatics` at
-`b000e5967cb7596f6f9f20fe396a686fdc700c16`. Checkout credentials are not
+`1eda992aa6fa31a902e2c06428e53ab17e8fe3c1`. Checkout credentials are not
 persisted.
 
 `vendor.lock.json` is the acquisition contract: each entry's `ref` is a full
@@ -20,7 +20,7 @@ those hashes against the checked-in tree.
 ```bash
 set -euo pipefail
 git clone https://github.com/myon-bioinformatics/myon-bioinformatics.git .vendor-sync-tools
-git -C .vendor-sync-tools checkout --detach b000e5967cb7596f6f9f20fe396a686fdc700c16
+git -C .vendor-sync-tools checkout --detach 1eda992aa6fa31a902e2c06428e53ab17e8fe3c1
 python -S .vendor-sync-tools/vendor_sync.py check --manifest vendor.lock.json
 ```
 
