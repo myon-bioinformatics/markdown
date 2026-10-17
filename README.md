@@ -399,7 +399,7 @@ the real text they wrap still survives (same "unsupported tag, text not data" fa
 
 Every other frontend test here either has nothing to click (`demos/gradio_app.py` /
 `demos/streamlit_app.py`) or clicks through a mock chat screen this repo itself built
-(`demos/chat_ui_demo.py`). `tests/real_chat_ui/test_openwebui_docker.py` goes one step further:
+(`demos/chat_ui_demo.py`). `tests/real_chat_ui/test_markdown_openwebui_docker.py` goes one step further:
 it drives a **real, unmodified Open WebUI**, running from its own published Docker image, and
 verifies *that actual product* renders `markdown.py`-generated Markdown correctly — not a mock of
 it.

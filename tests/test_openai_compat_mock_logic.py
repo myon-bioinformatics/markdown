@@ -1,7 +1,7 @@
 """No-server coverage for demos/openai_compat_mock.py's tool-call round trip.
 
 The HTTP server itself is only exercised for real by
-tests/real_chat_ui/test_openwebui_docker.py (which needs a live container),
+tests/real_chat_ui/test_markdown_openwebui_docker.py (which needs a live container),
 but the logic that decides whether to issue a tool call and how to render a
 tool's result back into Markdown is plain functions -- testable directly,
 the same pattern tests/test_demo_logic.py already uses for the other demos.

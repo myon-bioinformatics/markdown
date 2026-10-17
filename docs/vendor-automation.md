@@ -12,7 +12,7 @@ persisted.
 
 `vendor.lock.json` is the acquisition contract: each entry's `ref` is a full
 40-character commit SHA equal to `commit`, with Git blob and SHA-256 hashes for
-every vendored byte. Local tests in `tests/test_vendor_lock.py` cross-check
+every vendored byte. Local tests in `tests/test_markdown_vendor_lock.py` cross-check
 those hashes against the checked-in tree.
 
 ## Local verification

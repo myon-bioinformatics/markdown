@@ -18,7 +18,7 @@ name: real-chat-ui-smoke
 # frontend-smoke job's own policy. Never gates a PR.
 #
 # Both inputs are optional so "Run workflow" with no changes still runs the
-# three fixed-content assertions in test_openwebui_docker.py unchanged:
+# three fixed-content assertions in test_markdown_openwebui_docker.py unchanged:
 #   message   - an extra chat message to send through the real Open WebUI UI.
 #               Runs test_openwebui_renders_a_custom_message_from_the_mock_backend
 #               in addition to the three fixed cases; since the text is

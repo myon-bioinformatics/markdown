@@ -101,7 +101,7 @@ because they are concrete evidence behind several stable IDs above.
   way a real user would -- `Escape` closes the top-most modal
   (`common/Modal.svelte`'s own `handleKeyDown` checks `isTopModal()` and hides
   it). Implemented as `_dismiss_blocking_dialog()` in
-  `tests/real_chat_ui/test_openwebui_docker.py`, called at the top of
+  `tests/real_chat_ui/test_markdown_openwebui_docker.py`, called at the top of
   `_send_message()` so every test gets it for free.
 - **Generalizable lesson**: any account state that is normally "seen once,
   then dismissed and remembered" (release notes, onboarding tours, cookie
@@ -268,7 +268,7 @@ because they are concrete evidence behind several stable IDs above.
 
 ## 6. `wait_for_function` against a captured `element_handle()` can hang forever on live content
 
-- **Product / run**: our own test (`test_openwebui_docker.py`), not Open
+- **Product / run**: our own test (`test_markdown_openwebui_docker.py`), not Open
   WebUI -- [run 35417244601](https://github.com/myon-bioinformatics/markdown/actions/runs/35417244601).
 - **What we tried**: for the list test,
   `page.wait_for_function("(el) => el.querySelectorAll('li').length >= 3", arg=container.element_handle(), timeout=30_000)`
@@ -290,7 +290,7 @@ because they are concrete evidence behind several stable IDs above.
 - **Fix**: poll via a fresh `document.querySelectorAll(...)` lookup inside
   the injected function itself (re-run on every poll tick) instead of a
   captured handle -- `_wait_for_last_response()` in
-  `test_openwebui_docker.py`.
+  `test_markdown_openwebui_docker.py`.
 - **Generalizable lesson**: `element_handle()` is a snapshot, not a live
   reference -- safe for a condition checked once, but the wrong tool for a
   `wait_for_function` poll against content a framework might still be
