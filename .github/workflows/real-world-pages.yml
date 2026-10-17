@@ -27,12 +27,12 @@ on:
       - "scripts/check_report_screenshots.py"
       - "tests/test_report_screenshot_evidence.py"
       - "markdown.py"
-      - "scripts/repository_diagnostics.py"
+      - "scripts/markdown_repository_diagnostics.py"
       - "vendor/gh_identity.py"
       - "tests/test_repository_metadata_producer.py"
       - "vendor/github_public_resolver.py"
       - "vendor.lock.json"
-      - "tests/test_repository_diagnostics.py"
+      - "tests/test_markdown_repository_diagnostics.py"
       - "fixtures/benchmark/**"
       - "fixtures/provenance.yaml"
       - ".github/workflows/real-world-pages.yml"
@@ -43,7 +43,7 @@ on:
       - "scripts/check_report_screenshots.py"
       - "tests/test_report_screenshot_evidence.py"
       - "markdown.py"
-      - "scripts/repository_diagnostics.py"
+      - "scripts/markdown_repository_diagnostics.py"
       - "vendor/gh_identity.py"
       - "tests/test_repository_metadata_producer.py"
       - "vendor/github_public_resolver.py"
@@ -92,7 +92,7 @@ jobs:
         id: capture
         run: |
           python scripts/real_world_pages_report.py --out _site
-          python scripts/repository_diagnostics.py _site
+          python scripts/markdown_repository_diagnostics.py _site
       - name: Require fixture receipts and prove corruption rejection
         if: always()
         env:
