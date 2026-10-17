@@ -39,7 +39,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import markdown as md
-from scripts.repository_diagnostics import GH_IDENTITY, REPOSITORY
+from scripts.markdown_repository_diagnostics import GH_IDENTITY, REPOSITORY
 
 _TAG_COUNT_RES = {
     "h1": re.compile(r"<h1\b"),

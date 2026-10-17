@@ -1,6 +1,6 @@
 """Real Open WebUI, driven through its actual native MCP tool-call round trip.
 
-test_openwebui_docker.py proves a real product renders markdown.py output
+test_markdown_openwebui_docker.py proves a real product renders markdown.py output
 for a plain assistant reply. This goes one step further: register a real
 MCP tool server (mcp-toolcall-lab's openwebui_mcp_mock.py, Streamable HTTP --
 the same transport Open WebUI's own MCP client speaks natively, confirmed
@@ -63,7 +63,7 @@ def page(browser):
 
 
 def _dismiss_blocking_dialog(page) -> None:
-    """See test_openwebui_docker.py's own copy for why -- the changelog
+    """See test_markdown_openwebui_docker.py's own copy for why -- the changelog
     modal fires on every run against this fresh auto-provisioned admin."""
     dialog = page.locator('div[role="dialog"][aria-modal="true"]')
     if dialog.count():
@@ -119,7 +119,7 @@ def test_openwebui_mcp_tool_call_result_renders_in_the_real_ui(page) -> None:
     container = page.locator("#response-content-container").last
     # A full round trip (tool call -> Open WebUI dispatches to the real MCP
     # server -> result -> second model call -> render) is slower than a
-    # single-turn reply, hence the longer timeout than test_openwebui_docker.py.
+    # single-turn reply, hence the longer timeout than test_markdown_openwebui_docker.py.
     container.locator("table").wait_for(timeout=60_000)
 
     table = container.locator("table")
