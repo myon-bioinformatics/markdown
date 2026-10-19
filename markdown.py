@@ -964,27 +964,28 @@ def extract_data_uris(content: str) -> list[dict[str, str]]:
 
 
 def slugify(text: str) -> str:
-    """Convert heading text to a standard GitHub-compatible anchor slug.
+    """Convert supported inline heading text to a GitHub-style anchor slug.
 
-    Lowercase characters, remove punctuation/symbols (except hyphens and spaces),
-    and replace whitespace runs with a single hyphen. Unicode letters/digits are kept.
+    Lowercase Unicode letters, retain numbers/combining marks, hyphens and
+    underscores, remove other punctuation/symbols, and replace each ASCII space
+    with a hyphen. Other whitespace is removed. The lightweight inline parser
+    handles emphasis, inline code, images and inline links; raw HTML, reference
+    links and platform-specific extensions are not resolved by this helper.
 
     >>> slugify("Hello World!")
     'hello-world'
     >>> slugify("User & Permissions (v2.0)")
-    'user-permissions-v20'
+    'user--permissions-v20'
     """
-    cleaned = _lite_plain(_lite_inline(str(text)))
-    lowered = cleaned.lower()
+    cleaned = _lite_plain(_lite_inline(str(text))).strip().lower()
     chars = []
-    for char in lowered:
+    for char in cleaned:
         category = unicodedata.category(char)
-        if category.startswith("L") or category.startswith("N") or char == "-":
+        if category[0] in {"L", "N", "M"} or char in "-_":
             chars.append(char)
-        elif char.isspace():
-            chars.append(" ")
-    raw = "".join(chars).strip()
-    return re.sub(r"\s+", "-", raw)
+        elif char == " ":
+            chars.append("-")
+    return "".join(chars)
 
 
 def table_of_contents(
@@ -993,67 +994,72 @@ def table_of_contents(
     min_level: int = 1,
     max_level: int = 6,
 ) -> str:
-    """Generate a Markdown Table of Contents (bullet list) from live ATX headings.
+    """Generate a Markdown bullet list from live top-level ATX headings.
 
-    Headings inside fenced code blocks are ignored. Duplicate anchor slugs are
-    disambiguated with numeric suffixes (`#heading`, `#heading-1`, ...). Indentation
-    is relative based on heading hierarchy.
+    Fenced code and HTML comments are ignored. Up to three leading spaces and
+    optional closing hashes are accepted. Duplicate slugs are allocated across
+    all ATX headings before level filtering, including collisions with numeric
+    suffixes. Indentation is relative to the included heading hierarchy.
+
+    Labels are escaped plain text, so heading links cannot create nested links.
+    Inline text follows ``slugify``'s lightweight subset. Setext headings,
+    nested headings, and raw HTML block semantics are outside the supported
+    input subset; this is not a complete GitHub Markdown renderer.
 
     :param content: Markdown source string.
     :param min_level: Minimum heading level (1..6) to include.
     :param max_level: Maximum heading level (1..6) to include.
     """
-    if min_level < 1 or min_level > 6:
-        raise ValueError("min_level must be between 1 and 6")
-    if max_level < 1 or max_level > 6:
-        raise ValueError("max_level must be between 1 and 6")
+    if not isinstance(min_level, int) or isinstance(min_level, bool) or not 1 <= min_level <= 6:
+        raise ValueError("min_level must be an integer between 1 and 6")
+    if not isinstance(max_level, int) or isinstance(max_level, bool) or not 1 <= max_level <= 6:
+        raise ValueError("max_level must be an integer between 1 and 6")
     if min_level > max_level:
         raise ValueError("min_level cannot be greater than max_level")
 
     lines = content.splitlines()
-    scanned = _scan_lines(lines)
-    headings: list[tuple[int, str]] = []
-
-    for index, line in enumerate(lines):
-        if scanned[index].in_fenced_code:
-            continue
-        masked = _mask_inline_code(line)
-        match = _HEADING_RE.match(masked)
-        if match:
-            lvl = len(match.group(1))
-            if min_level <= lvl <= max_level:
-                title = line[match.start(2):match.end(2)].strip()
-                headings.append((lvl, title))
-
-    if not headings:
-        return ""
-
+    live_lines = _mask_html_comments(content).splitlines()
+    scanned = _scan_lines(live_lines)
+    heading_re = re.compile(r"^ {0,3}(#{1,6})(?:[ \t]+(.*)|[ \t]*)$")
     slug_counts: dict[str, int] = {}
     items: list[str] = []
     level_stack: list[int] = []
 
-    for lvl, title in headings:
+    for line, live, scan in zip(lines, live_lines, scanned):
+        if scan.in_fenced_code:
+            continue
+        # Match original inline code, not whitespace masking: greedy whitespace
+        # after the ATX marker otherwise swallows a code-only heading's title.
+        match = heading_re.match(live)
+        if not match:
+            continue
+        lvl = len(match.group(1))
+        title = line[match.start(2):match.end(2)].strip() if match.group(2) is not None else ""
+        # Remove live inline comments without interpreting literal code samples.
+        comment_spans = list(re.finditer(r"<!--.*?(?:-->|$)", _mask_inline_code(title)))
+        for comment in reversed(comment_spans):
+            title = title[:comment.start()] + title[comment.end():]
+        title = re.sub(r"(?:^|[ \t]+)#+[ \t]*$", "", title).strip()
         base_slug = slugify(title)
-        if base_slug in slug_counts:
-            slug_counts[base_slug] += 1
+        slug = base_slug
+        while slug in slug_counts:
+            slug_counts[base_slug] = slug_counts.get(base_slug, 0) + 1
             slug = f"{base_slug}-{slug_counts[base_slug]}"
-        else:
-            slug_counts[base_slug] = 0
-            slug = base_slug
+        slug_counts[slug] = 0
+        if not min_level <= lvl <= max_level:
+            continue
 
         while level_stack and level_stack[-1] > lvl:
             level_stack.pop()
-
         if not level_stack or level_stack[-1] < lvl:
             level_stack.append(lvl)
 
-        indent_depth = len(level_stack) - 1
-        indent = "  " * indent_depth
-        link_label = title.strip()
-        link = f"[{link_label}](#{slug})"
-        items.append(f"{indent}- {link}")
+        indent = "  " * (len(level_stack) - 1)
+        link_label = html_module.escape(_lite_plain(_lite_inline(title)), quote=False)
+        link_label = re.sub(r"([\\`*_\[\]])", r"\\\1", link_label)
+        items.append(f"{indent}- [{link_label}](#{slug})")
 
-    return "\n".join(items) + "\n"
+    return "\n".join(items) + ("\n" if items else "")
 
 
 def inventory(content: str) -> dict[str, Any]:

@@ -6,8 +6,8 @@ import markdown as md
 
 def test_slugify_basic():
     assert md.slugify("Hello World!") == "hello-world"
-    assert md.slugify("User & Permissions (v2.0)") == "user-permissions-v20"
-    assert md.slugify("  Spaces   And\tTabs  ") == "spaces-and-tabs"
+    assert md.slugify("User & Permissions (v2.0)") == "user--permissions-v20"
+    assert md.slugify("  Spaces   And\tTabs  ") == "spaces---andtabs"
 
 
 def test_slugify_formatting_and_links():
@@ -87,3 +87,57 @@ def test_table_of_contents_invalid_level_bounds():
 
 def test_table_of_contents_no_headings():
     assert md.table_of_contents("Just prose without headings.") == ""
+
+
+@pytest.mark.parametrize("source, kwargs, expected", [
+    ("# Repeat\n## Repeat", {"min_level": 2}, "- [Repeat](#repeat-1)\n"),
+    ("### Repeat\n## Repeat", {"max_level": 2}, "- [Repeat](#repeat-1)\n"),
+    ("# A\n# A\n# A-1", {}, "- [A](#a)\n- [A](#a-1)\n- [A-1](#a-1-1)\n"),
+    ("# A-1\n# A\n# A", {}, "- [A-1](#a-1)\n- [A](#a)\n- [A](#a-2)\n"),
+    ("# `code`", {}, "- [code](#code)\n"),
+    ("# `code` and **bold**", {}, "- [code and bold](#code-and-bold)\n"),
+    ("# [API](https://example.com)", {}, "- [API](#api)\n"),
+    ("   # Indented ###", {}, "- [Indented](#indented)\n"),
+    ("#\n## ###", {}, "- [](#)\n  - [](#-1)\n"),
+    ("    # Code\n# Real", {}, "- [Real](#real)\n"),
+    ("<!--\n# Hidden\n-->\n# Visible", {}, "- [Visible](#visible)\n"),
+    ("<!--\n```\n-->\n# Visible", {}, "- [Visible](#visible)\n"),
+    ("~~~\n# Hidden\n~~~\n# Visible", {}, "- [Visible](#visible)\n"),
+])
+def test_table_of_contents_regressions(source, kwargs, expected):
+    assert md.table_of_contents(source, **kwargs) == expected
+
+
+@pytest.mark.parametrize("heading, expected", [
+    ("foo_bar", "foo_bar"),
+    ("Hello  World", "hello--world"),
+    ("Cafe\u0301", "cafe\u0301"),
+    ("Hello\tWorld", "helloworld"),
+    ("_Italic_ and **bold**", "italic-and-bold"),
+    ("日本語 😀", "日本語-"),
+])
+def test_slugify_github_style_subset(heading, expected):
+    assert md.slugify(heading) == expected
+
+
+@pytest.mark.parametrize("value", [True, False, 1.5, "2", None])
+@pytest.mark.parametrize("argument", ["min_level", "max_level"])
+def test_table_of_contents_non_integer_bounds(value, argument):
+    with pytest.raises(ValueError):
+        md.table_of_contents("# Heading", **{argument: value})
+
+
+def test_table_of_contents_labels_are_plain_escaped_text():
+    assert md.table_of_contents("# `a[b]` & `*x*`") == (
+        "- [a\\[b\\] &amp; \\*x\\*](#ab--x)\n"
+    )
+
+
+@pytest.mark.parametrize("source, expected", [
+    ("# Heading <!-- hidden -->", "- [Heading](#heading)\n"),
+    ("# A <!-- hidden --> B", "- [A  B](#a--b)\n"),
+    ("# A <!-- hidden\n# Hidden\n-->\n# B", "- [A](#a)\n- [B](#b)\n"),
+    ("# `<!-- sample -->`", "- [&lt;!-- sample --&gt;](#---sample---)\n"),
+])
+def test_table_of_contents_inline_comments(source, expected):
+    assert md.table_of_contents(source) == expected
