@@ -24,6 +24,8 @@ __all__ = [
     "extract_raw_html",
     "extract_urls",
     "extract_data_uris",
+    "slugify",
+    "table_of_contents",
     "extract_section",
     "strip_prose_keep_structure",
     "minify_markdown",
@@ -191,7 +193,7 @@ SUPPORTED = {
         "images ![alt](url)",
         "raw HTML tags (best-effort extraction)",
         "horizontal rules (--- *** ___)",
-        "context helpers: extract_section / strip_prose_keep_structure / minify_markdown / safe_truncate",
+        "context helpers: slugify / table_of_contents / extract_section / strip_prose_keep_structure / minify_markdown / safe_truncate",
         "llm io: split_reasoning / compact_llm_output / llm_output_digest / "
         "extract_identifiers (answer vs. <think>/<thinking>/<reasoning>/Open WebUI "
         "<details type=reasoning> blocks, log-safe compaction, a JSON-able digest, "
@@ -959,6 +961,99 @@ def extract_data_uris(content: str) -> list[dict[str, str]]:
             "metadata": metadata,
         })
     return found
+
+
+def slugify(text: str) -> str:
+    """Convert heading text to a standard GitHub-compatible anchor slug.
+
+    Lowercase characters, remove punctuation/symbols (except hyphens and spaces),
+    and replace whitespace runs with a single hyphen. Unicode letters/digits are kept.
+
+    >>> slugify("Hello World!")
+    'hello-world'
+    >>> slugify("User & Permissions (v2.0)")
+    'user-permissions-v20'
+    """
+    cleaned = _lite_plain(_lite_inline(str(text)))
+    lowered = cleaned.lower()
+    chars = []
+    for char in lowered:
+        category = unicodedata.category(char)
+        if category.startswith("L") or category.startswith("N") or char == "-":
+            chars.append(char)
+        elif char.isspace():
+            chars.append(" ")
+    raw = "".join(chars).strip()
+    return re.sub(r"\s+", "-", raw)
+
+
+def table_of_contents(
+    content: str,
+    *,
+    min_level: int = 1,
+    max_level: int = 6,
+) -> str:
+    """Generate a Markdown Table of Contents (bullet list) from live ATX headings.
+
+    Headings inside fenced code blocks are ignored. Duplicate anchor slugs are
+    disambiguated with numeric suffixes (`#heading`, `#heading-1`, ...). Indentation
+    is relative based on heading hierarchy.
+
+    :param content: Markdown source string.
+    :param min_level: Minimum heading level (1..6) to include.
+    :param max_level: Maximum heading level (1..6) to include.
+    """
+    if min_level < 1 or min_level > 6:
+        raise ValueError("min_level must be between 1 and 6")
+    if max_level < 1 or max_level > 6:
+        raise ValueError("max_level must be between 1 and 6")
+    if min_level > max_level:
+        raise ValueError("min_level cannot be greater than max_level")
+
+    lines = content.splitlines()
+    scanned = _scan_lines(lines)
+    headings: list[tuple[int, str]] = []
+
+    for index, line in enumerate(lines):
+        if scanned[index].in_fenced_code:
+            continue
+        masked = _mask_inline_code(line)
+        match = _HEADING_RE.match(masked)
+        if match:
+            lvl = len(match.group(1))
+            if min_level <= lvl <= max_level:
+                title = line[match.start(2):match.end(2)].strip()
+                headings.append((lvl, title))
+
+    if not headings:
+        return ""
+
+    slug_counts: dict[str, int] = {}
+    items: list[str] = []
+    level_stack: list[int] = []
+
+    for lvl, title in headings:
+        base_slug = slugify(title)
+        if base_slug in slug_counts:
+            slug_counts[base_slug] += 1
+            slug = f"{base_slug}-{slug_counts[base_slug]}"
+        else:
+            slug_counts[base_slug] = 0
+            slug = base_slug
+
+        while level_stack and level_stack[-1] > lvl:
+            level_stack.pop()
+
+        if not level_stack or level_stack[-1] < lvl:
+            level_stack.append(lvl)
+
+        indent_depth = len(level_stack) - 1
+        indent = "  " * indent_depth
+        link_label = title.strip()
+        link = f"[{link_label}](#{slug})"
+        items.append(f"{indent}- {link}")
+
+    return "\n".join(items) + "\n"
 
 
 def inventory(content: str) -> dict[str, Any]:
