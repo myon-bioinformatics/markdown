@@ -16,3 +16,15 @@ venv/
 .vendor-sync-tools/
 build/shared/
 node_modules/
+
+# --- common ignores (shared) ---
+*.py[cod]
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.egg-info/
+.DS_Store
+Thumbs.db
+# --- end common ignores ---
