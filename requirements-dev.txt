@@ -1,2 +1,4 @@
-pytest>=8.0
-PyYAML>=6.0
+# 8.4.2 is the newest pytest that still installs on Python 3.9 (CI).
+# Python 3.10 and newer resolve to the current 9.x release.
+pytest>=8.4.2
+PyYAML>=6.0.3
