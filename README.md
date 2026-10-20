@@ -599,3 +599,23 @@ its run ID is stale, or its receipt stage is failed. Available receipts upload
 with the report after failure. This does not add screen-content assertions.
 
 Public source placement and automatic Python CI updates: [vendor automation](docs/vendor-automation.md).
+
+## Runtime and development Python policy
+
+The standard-library runtime supports Python 3.9+; this change preserves the
+existing runtime floor. The separate `runtime-compatibility` CI lane executes
+behavior tests with `python -S`, without installing pytest or any third-party
+package. Development/test environments use Python 3.11+ and a committed uv lock:
+
+```sh
+uv sync --locked --group dev --python 3.11
+uv run --locked python -m pytest
+uv sync --locked --group dev --group frontend --python 3.11  # Gradio/Streamlit/Playwright tests
+python -S -m unittest discover -s tests -p test_runtime_compatibility.py -v
+```
+
+`pyproject.toml` is the canonical development dependency definition; legacy
+requirements files remain for downstream callers. Runtime metadata does not
+raise the source/vendoring floor to the development floor. CI pins setup-python
+v7.0.0 and setup-uv v10.3.0 by full commit SHA, and uses uv 0.13.3. Setup actions
+using Node 24 require runner 2.327.1 or newer (GitHub-hosted runners are used).
