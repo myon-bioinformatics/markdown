@@ -158,7 +158,7 @@ jobs:
         run: |
           uv sync --locked --group dev --group frontend --python "$(python -c 'import sys; print(sys.executable)')"
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
-          pytest --version
+          .venv/bin/pytest --version
       - name: Run headless frontend mock tests on locked pytest
         run: |
           pytest -q \
