@@ -23,6 +23,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import markdown as md
+from scripts.converter_cases import arguments, select_keys
 
 
 HTML_CASES = {
@@ -351,27 +352,42 @@ def _structured_cycle_record(case: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _collect_structured_cycles() -> tuple[list[dict[str, Any]], list[str]]:
+def _collect_structured_cycles(selected=None) -> tuple[list[dict[str, Any]], list[str]]:
     cycles: list[dict[str, Any]] = []
     unavailable: list[str] = []
     for case in STRUCTURED_CYCLE_CASES:
+        if selected is not None and 'structured_cycle:' + case['id'] not in selected:
+            continue
         if case.get("requires_tomllib") and md.toml_reader() is None:
             unavailable.append(case["id"])
             continue
         cycles.append(_structured_cycle_record(case))
     return cycles, unavailable
 
-def collect_report() -> dict[str, Any]:
+def case_keys():
+    return ([f'html:{key}' for key in HTML_CASES]
+            + [f'markdown:{key}' for key in MARKDOWN_CASES]
+            + [f'html:{path.stem}' for path in sorted((ROOT / 'fixtures/benchmark').glob('*.html'))]
+            + [f"structured_cycle:{case['id']}" for case in STRUCTURED_CYCLE_CASES])
+
+
+def collect_report(*, patterns=('*',), exclude=()) -> dict[str, Any]:
+    patterns, exclude = tuple(patterns) if not isinstance(patterns, str) else patterns, tuple(exclude) if not isinstance(exclude, str) else exclude
+    selected = set(select_keys(case_keys(), patterns, exclude))
     cases: list[dict[str, Any]] = []
 
     for case_id, html in HTML_CASES.items():
+        if 'html:' + case_id not in selected:
+            continue
         cases.append(_html_record(case_id, html))
 
     for case_id, markdown in MARKDOWN_CASES.items():
+        if 'markdown:' + case_id not in selected:
+            continue
         cases.append(_markdown_record(case_id, markdown))
 
     benchmark_dir = ROOT / "fixtures" / "benchmark"
-    real_world_paths = sorted(benchmark_dir.glob("*.html"))
+    real_world_paths = [path for path in sorted(benchmark_dir.glob("*.html")) if "html:" + path.stem in selected]
     for path in real_world_paths:
         cases.append(
             _html_record(
@@ -381,7 +397,7 @@ def collect_report() -> dict[str, Any]:
             )
         )
 
-    structured_cycles, unavailable_cycle_ids = _collect_structured_cycles()
+    structured_cycles, unavailable_cycle_ids = _collect_structured_cycles(selected)
 
     raw_divergent: list[str] = []
     expected_lossy: list[str] = []
@@ -403,7 +419,7 @@ def collect_report() -> dict[str, Any]:
             case["classification"] = "divergent"
             divergent.append(case_key)
 
-    return {
+    report = {
         "schema_version": 3,
         "case_count": len(cases),
         "stable_case_count": sum(
@@ -437,14 +453,30 @@ def collect_report() -> dict[str, Any]:
         "cases": cases,
     }
 
+    if patterns != ('*',) or exclude:
+        report['selection'] = {'scope': 'selected_cases', 'patterns': list(patterns),
+                               'exclude': list(exclude), 'selected': len(selected), 'available': len(case_keys())}
+    return report
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--out", default="converter_contract_audit.json")
+    parser.add_argument("--out")
+    arguments(parser)
     args = parser.parse_args(argv)
 
-    report = collect_report()
-    out = Path(args.out)
+    try:
+        patterns, exclude = args.case or ('*',), args.exclude or ()
+        if args.list:
+            if args.out is not None:
+                parser.error('--list cannot be combined with --out')
+            print(json.dumps({'cases': select_keys(case_keys(), patterns, exclude)}))
+            return 0
+        report = collect_report(patterns=patterns, exclude=exclude)
+    except (OSError, ValueError) as error:
+        print(f'error: {error}', file=sys.stderr)
+        return 2
+    out = Path(args.out or "converter_contract_audit.json")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(
         json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
