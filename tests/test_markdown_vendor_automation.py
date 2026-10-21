@@ -4,7 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ".github/workflows/ci.yml"
-VENDOR_SYNC_PIN = "1eda992aa6fa31a902e2c06428e53ab17e8fe3c1"
+VENDOR_SYNC_PIN = "2192ff22acafdd09e80ac722df91ee937aaedd5e"
 GHI_LOAD_COMMAND = (
     'python -S -c "import importlib.util; '
     "s=importlib.util.spec_from_file_location('vendored_ghi','vendor/gh_identity.py'); "
