@@ -619,3 +619,22 @@ requirements files remain for downstream callers. Runtime metadata does not
 raise the source/vendoring floor to the development floor. CI pins setup-python
 v7.0.0 and setup-uv v10.3.0 by full commit SHA, and uses uv 0.13.3. Setup actions
 using Node 24 require runner 2.327.1 or newer (GitHub-hosted runners are used).
+
+## Select converter evaluation cases
+
+```sh
+python -S scripts/converter_contract_audit.py --case 'html:*' --exclude '*unsafe*' --list
+python -S scripts/converter_parity_report.py --case 'html:table' --out table-parity.json
+```
+
+The two evaluation scripts share `--case` (repeatable OR), `--exclude`, and
+`--list`. Patterns match a case key or its id, case-sensitively. Keys use
+`html:`, `markdown:` or `structured_cycle:` prefixes; an unqualified id may
+select multiple kinds. Selection precedes fixture reading and conversion.
+Listing creates no report and cannot be combined with `--out`; invalid rules
+or empty selections return 2. With no rules, the existing full report remains
+byte-for-byte equivalent. Subsets report their explicit selection scope/counts;
+the parity decision hint is `selected_cases_only`, never a whole-corpus claim.
+A selected unavailable structured cycle stays explicitly unavailable.
+
+Validation: 25 focused tests passed; both entry points list cases with `python -S`.

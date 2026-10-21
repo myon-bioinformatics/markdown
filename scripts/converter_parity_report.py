@@ -22,6 +22,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import markdown as md
+from scripts.converter_cases import arguments, select_keys
 
 
 SYNTHETIC_CASES = {
@@ -73,14 +74,23 @@ def _record(case_id: str, source: str, html: str) -> dict[str, Any]:
     return record
 
 
-def collect_report() -> dict[str, Any]:
+def case_keys():
+    return ([f'html:{key}' for key in SYNTHETIC_CASES]
+            + [f'html:{path.stem}' for path in sorted((ROOT / 'fixtures/benchmark').glob('*.html'))])
+
+
+def collect_report(*, patterns=('*',), exclude=()) -> dict[str, Any]:
+    patterns, exclude = tuple(patterns) if not isinstance(patterns, str) else patterns, tuple(exclude) if not isinstance(exclude, str) else exclude
+    selected = set(select_keys(case_keys(), patterns, exclude))
     cases: list[dict[str, Any]] = []
 
     for case_id, html in SYNTHETIC_CASES.items():
+        if 'html:' + case_id not in selected:
+            continue
         cases.append(_record(case_id, "synthetic", html))
 
     benchmark_dir = ROOT / "fixtures" / "benchmark"
-    real_world_paths = sorted(benchmark_dir.glob("*.html"))
+    real_world_paths = [path for path in sorted(benchmark_dir.glob("*.html")) if "html:" + path.stem in selected]
     for path in real_world_paths:
         html = path.read_text(encoding="utf-8")
         cases.append(_record(path.stem, str(path.relative_to(ROOT)), html))
@@ -94,7 +104,7 @@ def collect_report() -> dict[str, Any]:
     else:
         decision_hint = "candidate_for_dom_first_evaluation"
 
-    return {
+    report = {
         "schema_version": 2,
         "case_count": len(cases),
         "match_count": len(cases) - len(mismatches),
@@ -109,14 +119,31 @@ def collect_report() -> dict[str, Any]:
         "cases": cases,
     }
 
+    if patterns != ('*',) or exclude:
+        report['selection'] = {'scope': 'selected_cases', 'patterns': list(patterns),
+                               'exclude': list(exclude), 'selected': len(selected), 'available': len(case_keys())}
+        report['decision_hint'] = 'selected_cases_only'
+    return report
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--out", default="converter_parity.json")
+    parser.add_argument("--out")
+    arguments(parser)
     args = parser.parse_args(argv)
 
-    report = collect_report()
-    out = Path(args.out)
+    try:
+        patterns, exclude = args.case or ('*',), args.exclude or ()
+        if args.list:
+            if args.out is not None:
+                parser.error('--list cannot be combined with --out')
+            print(json.dumps({'cases': select_keys(case_keys(), patterns, exclude)}))
+            return 0
+        report = collect_report(patterns=patterns, exclude=exclude)
+    except (OSError, ValueError) as error:
+        print(f'error: {error}', file=sys.stderr)
+        return 2
+    out = Path(args.out or "converter_parity.json")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(
         json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
