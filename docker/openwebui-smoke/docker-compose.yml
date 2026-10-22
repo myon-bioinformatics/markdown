@@ -63,7 +63,7 @@ services:
     environment:
       MCP_HOST: "0.0.0.0"
       MCP_PORT: "8000"
-    command: ["sh", "-c", "pip install --no-cache-dir --quiet 'fastmcp==3.4.7' && exec python openwebui_mcp_mock.py"]
+    command: ["sh", "-c", "pip install --no-cache-dir --quiet 'fastmcp>=3.4.7' && exec python openwebui_mcp_mock.py"]
     healthcheck:
       # A GET to a Streamable HTTP MCP endpoint answers 406 Not Acceptable
       # (it requires a real session-establishing POST) -- still a real HTTP
