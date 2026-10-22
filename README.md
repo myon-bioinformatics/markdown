@@ -616,7 +616,19 @@ python -S -m unittest discover -s tests -p test_runtime_compatibility.py -v
 
 `pyproject.toml` is the canonical development dependency definition; legacy
 requirements files remain for downstream callers. Runtime metadata does not
-raise the source/vendoring floor to the development floor. CI pins setup-python
+raise the source/vendoring floor to the development floor.
+
+`[tool.uv] override-dependencies` lifts transitive pins that upstream frontends
+still cap below current PyPI releases (remove each line when the cap is gone):
+
+- `pillow>=13.0.0` — Gradio / Streamlit declare `pillow<13` (Pillow 13.0.0+ security fixes).
+- `safehttpx>=0.2.0` — Gradio declares `safehttpx<0.2.0`.
+- `tomlkit>=0.15.2` — Gradio declares `tomlkit<0.15.0`.
+
+Playwright still caps `pyee<15`; on Python 3.11 the lock stays at pyee 13.0.1 because
+newer pyee releases require Python 3.12+. No override is applied for pyee.
+
+CI pins setup-python
 v7.0.0 and setup-uv v10.3.0 by full commit SHA, and uses uv 0.13.3. Setup actions
 using Node 24 require runner 2.327.1 or newer (GitHub-hosted runners are used).
 
