@@ -6,20 +6,31 @@
 
 [Icon](docs/brand/icon.png) · [Favicon](docs/brand/favicon.png)
 
-stdlib だけで動く、関数提供に特化した Python Markdown ユーティリティ。
+A function-focused Python Markdown utility that runs on the standard library only.
 
 ## GitHub About（推奨）
 
 > Stdlib-only Markdown helpers for Python: read/write, section extraction, and HTML↔Markdown utilities for URLs and images. Functions only—no CLI; verified by tests.
 
-## このリポジトリの立ち位置
+## Purpose
 
-ironmate などで使っていた `markdown.py` を、そのままのファイル名で pip 配布できるように育てるためのライブラリです。
+This library grows the `markdown.py` module, used earlier in projects such as Ironmate, so it can be published on pip under the same file name.
 
-- **標準ライブラリ前提** — 実行時依存を増やさず、できる範囲で機能を厚くする
-- **関数提供に特化** — `main` / CLI エントリポイントは持たない。確認はテスト（`demos/*.py` の実処理もブラウザ不要のプレーンな関数呼び出しとして直接検証、任意で Streamlit / Gradio のフロント確認も可能）で行う
-- **想定 API の方向性** — 既存の read / write / section 抽出に加え、HTML↔Markdown（URL・画像ファイルなど）の変換ヘルパを拡充していく
-- **ascii_artist** — ASCII art utilities は [`myon-bioinformatics/ascii_artist`](https://github.com/myon-bioinformatics/ascii_artist) に分離し、本リポジトリには同梱しない
+- **Standard library first** — avoid adding runtime dependencies, and extend features within that limit.
+- **Function-focused** — there is no `main` or CLI entry point. Behavior is verified by tests. The processing in `demos/*.py` is checked directly as plain function calls that need no browser; optional Streamlit / Gradio front-end checks are also possible.
+- **Planned API direction** — beyond the existing read / write / section extraction, expand the HTML↔Markdown helpers (URLs, image files, and so on).
+- **ascii_artist** — ASCII art utilities have moved to [`myon-bioinformatics/ascii_artist`](https://github.com/myon-bioinformatics/ascii_artist) and are not bundled here.
+
+<details>
+<summary>🇯🇵 日本語</summary>
+
+ironmate などで使っていた `markdown.py` を、同じファイル名のまま pip で配布できるように育てるライブラリです。
+
+- **標準ライブラリ前提**: 実行時の依存関係は増やさず、その範囲で機能を充実させます。
+- **関数提供に特化**: `main` や CLI のエントリポイントはありません。動作はテストで確認します。`demos/*.py` の処理も、ブラウザを使わない通常の関数呼び出しとして直接検証します。任意で Streamlit や Gradio の画面確認もできます。
+- **API の方向性**: 既存の read / write / セクション抽出に加えて、HTML と Markdown の相互変換ヘルパ（URL や画像ファイルなど）を広げていきます。
+- **ascii_artist**: ASCII アート関連のユーティリティは [`myon-bioinformatics/ascii_artist`](https://github.com/myon-bioinformatics/ascii_artist) に分離しており、このリポジトリには含めていません。
+</details>
 
 ## Layout
 
