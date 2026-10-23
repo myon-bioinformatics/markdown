@@ -265,7 +265,7 @@ jobs:
     with:
       commit-sha: ${{ github.event.pull_request.head.sha || github.sha }}
       expected-reports: '["junit-py3.11/pytest-3.11.xml","junit-py3.12/pytest-3.12.xml","junit-py3.13/pytest-3.13.xml","junit-py3.14/pytest-3.14.xml","junit-node-ubuntu-latest-24/node-ubuntu-latest-24.xml","junit-node-ubuntu-latest-latest/node-ubuntu-latest-latest.xml","junit-node-windows-latest-24/node-windows-latest-24.xml","junit-node-windows-latest-latest/node-windows-latest-latest.xml","junit-node-macos-latest-24/node-macos-latest-24.xml","junit-node-macos-latest-latest/node-macos-latest-latest.xml"]'
-      artifact-pattern: "junit-py*"
+      artifact-pattern: "junit-*"
       output-artifact: "failure-identity"
 
   test-locked:
