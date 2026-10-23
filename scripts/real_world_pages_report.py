@@ -39,7 +39,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import markdown as md
-from scripts.markdown_repository_diagnostics import GH_IDENTITY, REPOSITORY
+from scripts.markdown_repository_diagnostics import GH_IDENTITY, REPOSITORY, write_favicon
 
 _TAG_COUNT_RES = {
     "h1": re.compile(r"<h1\b"),
@@ -171,6 +171,7 @@ def build_report(out_dir: Path, revision: Mapping[str, Any] | None = None) -> No
     # CI passes a relative --out (_site), so resolve once up front.
     out_dir = out_dir.resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
+    write_favicon(out_dir)
     fixtures = _load_html_fixtures()
     rows: list[dict[str, Any]] = []
 
@@ -239,6 +240,7 @@ def _report_html(rows: list[dict[str, Any]], revision: Mapping[str, Any]) -> str
     return (
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+        '<link rel="icon" type="image/png" href="./favicon.png">'
         "<title>markdown.py: real-world HTML benchmark</title></head><body>"
         "<h1>real-world HTML -&gt; html_to_markdown() -&gt; markdown_to_html()</h1>"
         "<p><a href=\"repository-diagnostics.html\">Repository diagnostics</a> · "

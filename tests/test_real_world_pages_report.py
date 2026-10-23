@@ -77,6 +77,28 @@ def test_build_report_with_relative_out_does_not_raise_on_as_uri(tmp_path, monke
     assert all(uri.startswith("file://") for uri in seen_uris)
 
 
+def test_pages_favicon_is_local_and_benchmark_outputs_remain_unbranded(tmp_path, monkeypatch):
+    report = _load_report_module()
+    _stub_screenshot(report, monkeypatch)
+    site = tmp_path / "nested" / "_site"
+    report.build_report(site, revision=_FAKE_REVISION)
+
+    index = (site / "index.html").read_text(encoding="utf-8")
+    assert '<link rel="icon" type="image/png" href="./favicon.png">' in index
+    source = (ROOT / "docs/brand/favicon.png").read_bytes()
+    assert source.startswith(b"\x89PNG\r\n\x1a\n")
+    assert (site / "favicon.png").read_bytes() == source
+    for entry in report._load_html_fixtures():
+        original = (ROOT / "fixtures" / entry["path"]).read_text(encoding="utf-8")
+        assert (site / entry["id"] / "original.html").read_text(encoding="utf-8") == original
+        roundtrip = (site / entry["id"] / "roundtrip.html").read_text(encoding="utf-8")
+        expected_body = report.md.markdown_to_html(report.md.html_to_markdown(original))
+        assert roundtrip == f"<!doctype html><html><body>{expected_body}</body></html>\n"
+    (site / "favicon.png").write_bytes(b"old icon")
+    report.build_report(site, revision=_FAKE_REVISION)
+    assert (site / "favicon.png").read_bytes() == source
+
+
 def test_build_report_embeds_injected_revision_and_writes_build_meta(tmp_path, monkeypatch) -> None:
     report = _load_report_module()
     monkeypatch.chdir(tmp_path)

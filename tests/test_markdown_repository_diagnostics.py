@@ -51,7 +51,14 @@ def test_payload_not_checked_roundtrip(tmp_path, monkeypatch):
     assert payload["resolver"]["status"] == "not_checked"
     assert json.loads((tmp_path / diagnostics.JSONL_NAME).read_text()) == payload["metadata"]
     assert json.loads((tmp_path / diagnostics.JSON_NAME).read_text())["metadata"] == payload["metadata"]
-    assert (tmp_path / diagnostics.HTML_NAME).is_file()
+    html = (tmp_path / diagnostics.HTML_NAME).read_text(encoding="utf-8")
+    assert '<link rel="icon" type="image/png" href="./favicon.png">' in html
+    source = (ROOT / "docs/brand/favicon.png").read_bytes()
+    assert source.startswith(b"\x89PNG\r\n\x1a\n")
+    assert (tmp_path / "favicon.png").read_bytes() == source
+    (tmp_path / "favicon.png").write_bytes(b"old icon")
+    diagnostics.write_outputs(tmp_path, probe=False)
+    assert (tmp_path / "favicon.png").read_bytes() == source
 
 
 def test_page_uses_pinned_web_ui_renderer():
