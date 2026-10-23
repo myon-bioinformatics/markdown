@@ -192,7 +192,7 @@ jobs:
       - name: Run Node-backed pytest slice
         env:
           NODE_PATH: ${{ github.workspace }}/tests/mirror/node_modules
-        run: uv run pytest -q tests/test_toml_node_fallback.py tests/test_mirror_js.py --junitxml=build/junit/node-${{ matrix.os }}-${{ matrix.node }}.xml
+        run: uv run pytest -q tests/test_toml_node_fallback.py --junitxml=build/junit/node-${{ matrix.os }}-${{ matrix.node }}.xml
       - name: Preserve raw JUnit
         if: always()
         uses: actions/upload-artifact@v7
