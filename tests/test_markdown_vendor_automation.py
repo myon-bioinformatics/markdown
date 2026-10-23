@@ -22,6 +22,11 @@ EXPECTED = {
         "src/mcp_toolcall_lab/github_public_resolver.py",
         "vendor/github_public_resolver.py",
     ),
+    (
+        "myon-bioinformatics/myon-bioinformatics",
+        "node_launch.py",
+        "vendor/node_launch.py",
+    ),
 }
 
 
