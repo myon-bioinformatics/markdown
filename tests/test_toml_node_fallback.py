@@ -7,6 +7,7 @@ import subprocess
 import sys
 import zipapp
 from pathlib import Path
+from typing import Union
 
 import pytest
 
@@ -42,27 +43,35 @@ def _fake_node_main_source(*, version: str, on_eval: str) -> str:
 
 
 def _write_fake_node(tmp_path: Path, *, version: str, on_eval: str) -> Path:
-    """Cross-platform fake ``node`` executable (zipapp; no ``.cmd`` / ``.bat`` shims)."""
+    """Cross-platform fake ``node`` executable (no ``.cmd`` / ``.bat`` shims)."""
+    impl = tmp_path / "_fake_node_impl.py"
+    impl.write_text(_fake_node_main_source(version=version, on_eval=on_eval), encoding="utf-8")
+    if os.name == "nt":
+        launcher = tmp_path / "fake_node.exe"
+        shutil.copy2(sys.executable, launcher)
+        (tmp_path / "sitecustomize.py").write_text(
+            "import os, runpy\n"
+            "if os.environ.get('FAKE_NODE_ACTIVE') == '1':\n"
+            f"    runpy.run_path({repr(str(impl))}, run_name='__main__')\n",
+            encoding="utf-8",
+        )
+        return launcher
     pkg = tmp_path / "fake_node_pkg"
     pkg.mkdir()
-    (pkg / "__main__.py").write_text(
-        _fake_node_main_source(version=version, on_eval=on_eval),
-        encoding="utf-8",
-    )
-    if os.name == "nt":
-        dest = tmp_path / "fake_node.pyz"
-    else:
-        dest = tmp_path / "fake_node"
+    (pkg / "__main__.py").write_text(_fake_node_main_source(version=version, on_eval=on_eval), encoding="utf-8")
+    dest = tmp_path / "fake_node"
     zipapp.create_archive(str(pkg), str(dest), interpreter=sys.executable)
-    if os.name != "nt":
-        os.chmod(dest, 0o755)
+    os.chmod(dest, 0o755)
     return dest
 
 
-def _use_fake_node(monkeypatch, script: Path) -> None:
+def _use_fake_node(monkeypatch, script: Union[Path, str]) -> None:
     monkeypatch.setattr(md, "tomllib", None)
     monkeypatch.setattr(md, "_TOML_READER", [])
     monkeypatch.setenv("NODE", str(script))
+    if os.name == "nt":
+        monkeypatch.setenv("FAKE_NODE_ACTIVE", "1")
+        monkeypatch.setenv("PYTHONPATH", str(Path(script).parent))
     md._node_launch_module().clear_probe_cache()
 
 
