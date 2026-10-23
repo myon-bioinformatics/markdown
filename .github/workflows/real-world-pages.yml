@@ -23,6 +23,7 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
+      - "docs/brand/**"
       - "scripts/real_world_pages_report.py"
       - "scripts/check_report_screenshots.py"
       - "tests/test_report_screenshot_evidence.py"
@@ -39,6 +40,7 @@ on:
   push:
     branches: [main]
     paths:
+      - "docs/brand/**"
       - "scripts/real_world_pages_report.py"
       - "scripts/check_report_screenshots.py"
       - "tests/test_report_screenshot_evidence.py"
