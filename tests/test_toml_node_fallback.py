@@ -30,6 +30,30 @@ def _fake_node_key(path: Union[Path, str]) -> str:
     return str(Path(path).resolve())
 
 
+class _StdinClosesEarly:
+    """Simulate the child closing stdin before the parent finishes writing."""
+
+    def __init__(self, pipe_byte_limit: int = 4096) -> None:
+        self._limit = pipe_byte_limit
+        self._written = 0
+
+    def write(self, data: bytes) -> int:
+        if self._written >= self._limit:
+            raise BrokenPipeError()
+        remaining = self._limit - self._written
+        if len(data) > remaining:
+            self._written = self._limit
+            raise BrokenPipeError()
+        self._written += len(data)
+        return len(data)
+
+    def flush(self) -> None:
+        return None
+
+    def close(self) -> None:
+        return None
+
+
 def _run_fake_on_eval(on_eval: str) -> tuple[bytes, bytes, int]:
     import sys
     from io import StringIO
@@ -66,13 +90,17 @@ class _FakeNodePopen:
         self.args = command
         self._on_eval = on_eval
         self._close_stdin_unread = close_stdin_unread
-        stdin_r, stdin_w = os.pipe()
         stdout_r, stdout_w = os.pipe()
         stderr_r, stderr_w = os.pipe()
-        self.stdin = os.fdopen(stdin_w, "wb")
+        if close_stdin_unread:
+            self.stdin = _StdinClosesEarly()
+            self._stdin_r = None
+        else:
+            stdin_r, stdin_w = os.pipe()
+            self.stdin = os.fdopen(stdin_w, "wb")
+            self._stdin_r = stdin_r
         self.stdout = os.fdopen(stdout_r, "rb")
         self.stderr = os.fdopen(stderr_r, "rb")
-        self._stdin_r = stdin_r
         self._stdout_w = stdout_w
         self._stderr_w = stderr_w
         self.returncode: int | None = None
@@ -80,10 +108,6 @@ class _FakeNodePopen:
 
         def worker() -> None:
             if self._close_stdin_unread:
-                try:
-                    os.close(self._stdin_r)
-                except OSError:
-                    pass
                 try:
                     os.write(self._stderr_w, b"boom\n")
                 finally:
