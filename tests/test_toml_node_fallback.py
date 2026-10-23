@@ -1,7 +1,9 @@
 """toml_to_markdown without tomllib: Node + smol-toml must give the same document."""
 from __future__ import annotations
 
+import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -22,7 +24,32 @@ def node_only(monkeypatch):
     monkeypatch.setenv("NODE_PATH", str(MODULES))
     monkeypatch.setattr(md, "tomllib", None)
     monkeypatch.setattr(md, "_TOML_READER", [])
+    md._node_launch_module().clear_probe_cache()
     yield
+
+
+def _write_fake_node(tmp_path: Path, *, version: str, on_eval: str) -> Path:
+    script = tmp_path / "fake_node.py"
+    script.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        f'if len(sys.argv) >= 2 and sys.argv[1] == "--version":\n'
+        f'    print("{version}")\n'
+        "    raise SystemExit(0)\n"
+        'if len(sys.argv) >= 2 and sys.argv[1] == "-e":\n'
+        f"    {on_eval}\n"
+        "raise SystemExit(2)\n",
+        encoding="utf-8",
+    )
+    os.chmod(script, 0o755)
+    return script
+
+
+def _use_fake_node(monkeypatch, script: Path) -> None:
+    monkeypatch.setattr(md, "tomllib", None)
+    monkeypatch.setattr(md, "_TOML_READER", [])
+    monkeypatch.setenv("NODE", str(script))
+    md._node_launch_module().clear_probe_cache()
 
 
 @needs_node
@@ -72,6 +99,68 @@ def test_no_reader_names_both_options(monkeypatch):
     monkeypatch.setattr(md, "tomllib", None)
     monkeypatch.setattr(md, "_TOML_READER", [])
     monkeypatch.setattr(shutil, "which", lambda name, **kw: None)
+    md._node_launch_module().clear_probe_cache()
     assert md.toml_reader() is None
-    with pytest.raises(RuntimeError, match="tomllib.*smol-toml"):
+    with pytest.raises(RuntimeError, match=r"tomllib.*Node 24\+.*smol-toml"):
+        md.toml_to_markdown("a = 1\n")
+
+
+def test_node_20_is_rejected_as_reader(tmp_path, monkeypatch):
+    script = _write_fake_node(tmp_path, version="v20.0.0", on_eval="pass")
+    _use_fake_node(monkeypatch, script)
+    assert md.toml_reader() is None
+    with pytest.raises(RuntimeError, match=r"Node 24\+.*smol-toml"):
+        md.toml_to_markdown("a = 1\n")
+
+
+def test_toml_reader_probe_timeout_reraises_timeout_expired(monkeypatch):
+    monkeypatch.setattr(md, "tomllib", None)
+    monkeypatch.setattr(md, "_TOML_READER", [])
+    node_launch = md._node_launch_module()
+    monkeypatch.setattr(node_launch, "resolve_node", lambda **kwargs: "/fake/node")
+
+    def timed_out(*args, **kwargs):
+        raise node_launch.LaunchError(
+            "node_launch: Node process timed out",
+            code="ELAUNCHFAILURE",
+            stdout=b"",
+            stderr=b"",
+        )
+
+    monkeypatch.setattr(node_launch, "run", timed_out)
+    with pytest.raises(subprocess.TimeoutExpired) as info:
+        md.toml_reader()
+    assert info.value.timeout == 30
+
+
+def test_toml_loads_timeout_reraises_timeout_expired(monkeypatch):
+    monkeypatch.setattr(md, "tomllib", None)
+    monkeypatch.setattr(md, "_TOML_READER", ["node"])
+    node_launch = md._node_launch_module()
+    monkeypatch.setattr(node_launch, "resolve_node", lambda **kwargs: "/fake/node")
+
+    def timed_out(*args, **kwargs):
+        raise node_launch.LaunchError(
+            "node_launch: Node process timed out",
+            code="ELAUNCHFAILURE",
+            stdout=b"",
+            stderr=b"",
+        )
+
+    monkeypatch.setattr(node_launch, "run", timed_out)
+    with pytest.raises(subprocess.TimeoutExpired) as info:
+        md.toml_to_markdown("a = 1\n")
+    assert info.value.timeout == 30
+
+
+def test_toml_loads_stdin_closed_nonzero_surfaces_stderr(tmp_path, monkeypatch):
+    script = _write_fake_node(
+        tmp_path,
+        version="v24.0.0",
+        on_eval='import sys; sys.stderr.write("boom\\n"); sys.exit(3)',
+    )
+    _use_fake_node(monkeypatch, script)
+    monkeypatch.setattr(md, "_TOML_READER", ["node"])
+    monkeypatch.setattr(md, "tomllib", None)
+    with pytest.raises(RuntimeError, match=r"Node TOML reader failed: boom"):
         md.toml_to_markdown("a = 1\n")

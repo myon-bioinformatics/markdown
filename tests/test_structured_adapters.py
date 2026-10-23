@@ -117,7 +117,7 @@ def test_markdown_to_toml_rejects_null():
 def test_toml_reader_requires_python_311_when_tomllib_unavailable(monkeypatch):
     monkeypatch.setattr(md, "tomllib", None)
     monkeypatch.setattr(md, "_TOML_READER", [None])  # and no Node fallback
-    with pytest.raises(RuntimeError, match="3.11"):
+    with pytest.raises(RuntimeError, match=r"3\.11.*Node 24\+"):
         md.toml_to_markdown('x = 1\n')
 
 

@@ -2941,11 +2941,48 @@ def _node_launch_module() -> Any:
     return _NODE_LAUNCH
 
 
+def _decode_node_process_bytes(data: Any) -> str:
+    if isinstance(data, str):
+        return data
+    if not data:
+        return ""
+    return data.decode("utf-8", errors="replace")
+
+
+def _toml_node_run(
+    target: str,
+    *args: Any,
+    timeout: float = 30,
+    **kwargs: Any,
+) -> Any:
+    """Run vendored ``node_launch`` for TOML helpers with ``subprocess``-compatible errors."""
+    import subprocess
+
+    node_launch = _node_launch_module()
+    command = [target, *args]
+    try:
+        return node_launch.run(target, *args, timeout=timeout, **kwargs)
+    except node_launch.LaunchError as exc:
+        if exc.code == "ELAUNCHSTDINCLOSED":
+            status = exc.status if exc.status is not None else -1
+            if status != 0:
+                stderr = _decode_node_process_bytes(exc.stderr)
+                raise RuntimeError(f"Node TOML reader failed: {stderr[:200]}") from exc
+        if exc.code == "ELAUNCHFAILURE" and "timed out" in str(exc):
+            raise subprocess.TimeoutExpired(
+                cmd=command,
+                timeout=timeout,
+                output=exc.stdout,
+                stderr=exc.stderr,
+            ) from exc
+        raise
+
+
 def toml_reader() -> str | None:
     """Which TOML reader ``toml_to_markdown`` uses: ``"tomllib"``, ``"node"`` or None.
 
-    Python 3.11+ uses ``tomllib``. Older interpreters fall back to Node with the
-    npm ``smol-toml`` package (resolved via ``NODE_PATH`` or the current
+    Python 3.11+ uses ``tomllib``. Older interpreters fall back to Node 24+ with
+    the npm ``smol-toml`` package (resolved via ``NODE_PATH`` or the current
     directory), probed once on first use; None means neither is available.
     """
     if tomllib is not None:
@@ -2955,7 +2992,7 @@ def toml_reader() -> str | None:
         ok = False
         try:
             node_launch.resolve_node()
-            probe = node_launch.run("-e", "require('smol-toml')", timeout=30, check=False)
+            probe = _toml_node_run("-e", "require('smol-toml')", timeout=30, check=False)
             ok = probe.returncode == 0
         except node_launch.NodeNotFoundError:
             ok = False
@@ -2988,12 +3025,12 @@ def _toml_loads(content: str) -> Any:
             raise ValueError(f"Invalid TOML: {exc}") from exc
     if reader is None:
         raise RuntimeError(
-            "toml_to_markdown requires Python 3.11+ (tomllib) or Node with smol-toml"
+            "toml_to_markdown requires Python 3.11+ (tomllib) or Node 24+ with smol-toml"
             " (npm i --no-save smol-toml)"
         )
     node_launch = _node_launch_module()
     node_launch.resolve_node()
-    done = node_launch.run("-e", _TOML_NODE_SCRIPT, input=content, timeout=30, check=False)
+    done = _toml_node_run("-e", _TOML_NODE_SCRIPT, input=content, timeout=30, check=False)
     stderr = done.stderr.decode("utf-8", errors="replace")
     stdout = done.stdout.decode("utf-8", errors="replace")
     if done.returncode == 4:
@@ -3011,7 +3048,7 @@ def toml_to_markdown(content: str, title: str = "TOML") -> str:
     The reversible subset is the JSON-compatible TOML value space. TOML
     datetime/date/time values and non-finite floats are rejected rather than
     silently stringified. Reads with ``tomllib`` (3.11+) or, on older Python,
-    Node + ``smol-toml`` (see :func:`toml_reader`).
+    Node 24+ + ``smol-toml`` (see :func:`toml_reader`).
     """
     value = _toml_loads(content)
     try:
