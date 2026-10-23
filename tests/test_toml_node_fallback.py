@@ -5,7 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
-import zipapp
+import threading
 from pathlib import Path
 from typing import Union
 
@@ -13,40 +13,123 @@ import pytest
 
 import markdown as md
 
-_WINDOWS_FAKE_NODES: dict[str, tuple[str, Path]] = {}
+# Registered fake NODE paths: vendored ``_probe_node_once`` / ``Popen`` see these via
+# stubbed ``subprocess.run`` (--version) and ``subprocess.Popen`` (-e) in node_launch.
+_FAKE_NODE_SPECS: dict[str, tuple[str, str]] = {}
 
 
 def _fake_node_key(path: Union[Path, str]) -> str:
     return str(Path(path).resolve())
 
 
+def _run_fake_on_eval(on_eval: str) -> tuple[bytes, bytes, int]:
+    import sys
+    from io import StringIO
+
+    stderr = StringIO()
+    old_stderr = sys.stderr
+    code = 0
+    try:
+        sys.stderr = stderr
+        exec(on_eval, {"sys": sys})  # noqa: S102
+    except SystemExit as exc:
+        if exc.code is None:
+            code = 0
+        elif isinstance(exc.code, int):
+            code = exc.code
+        else:
+            code = 1
+    finally:
+        sys.stderr = old_stderr
+    return b"", stderr.getvalue().encode("utf-8", errors="replace"), code
+
+
+class _FakeNodePopen:
+    """Minimal ``Popen`` stand-in for registered fake node executables."""
+
+    def __init__(self, command: list[str], on_eval: str, **_kwargs: object) -> None:
+        self.args = command
+        self._on_eval = on_eval
+        stdin_r, stdin_w = os.pipe()
+        stdout_r, stdout_w = os.pipe()
+        stderr_r, stderr_w = os.pipe()
+        self.stdin = os.fdopen(stdin_w, "wb")
+        self.stdout = os.fdopen(stdout_r, "rb")
+        self.stderr = os.fdopen(stderr_r, "rb")
+        self._stdin_r = stdin_r
+        self._stdout_w = stdout_w
+        self._stderr_w = stderr_w
+        self.returncode: int | None = None
+        self._done = threading.Event()
+
+        def worker() -> None:
+            # Drain stdin in the background so ``wait()`` is not blocked on EOF
+            # before ``node_launch``'s stdin writer thread runs.
+            def drain_stdin() -> None:
+                try:
+                    with os.fdopen(self._stdin_r, "rb") as stream:
+                        while stream.read(65536):
+                            pass
+                except OSError:
+                    pass
+
+            threading.Thread(target=drain_stdin, daemon=True).start()
+            stdout, stderr, rc = _run_fake_on_eval(self._on_eval)
+            try:
+                if stdout:
+                    os.write(self._stdout_w, stdout)
+                if stderr:
+                    os.write(self._stderr_w, stderr)
+            finally:
+                os.close(self._stdout_w)
+                os.close(self._stderr_w)
+                self.returncode = rc
+                self._done.set()
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def wait(self, timeout: float | None = None) -> int:
+        if not self._done.wait(timeout):
+            raise subprocess.TimeoutExpired(self.args, timeout)
+        return self.returncode if self.returncode is not None else -1
+
+    def kill(self) -> None:
+        self.returncode = -9
+        self._done.set()
+
+
 @pytest.fixture(autouse=True)
-def _windows_fake_node_shim(monkeypatch):
-    if os.name != "nt":
-        yield
-        return
+def _node_launch_process_layer_stub(monkeypatch):
+    """Stub ``node_launch``'s ``subprocess`` calls for registered fake node paths only."""
     node_launch = md._node_launch_module()
-    real_probe = node_launch._probe_node_once
+    real_run = node_launch.subprocess.run
+    real_popen = node_launch.subprocess.Popen
 
-    def probe(path: str, probe_timeout: float) -> str:
-        spec = _WINDOWS_FAKE_NODES.get(_fake_node_key(path))
-        if spec is None:
-            return real_probe(path, probe_timeout)
-        version, _impl = spec
-        match = node_launch._NODE_VERSION.search(version)
-        if match is None:
-            raise node_launch.NodeNotFoundError("node_launch: node version probe failed: " + path)
-        major = int(match.group("major"))
-        if major < node_launch.MIN_NODE_MAJOR:
-            raise node_launch.NodeNotFoundError(
-                f"node_launch: node version must be {node_launch.MIN_NODE_MAJOR} or newer (found {major}): "
-                + path
+    def fake_run(args, *pargs, **kwargs):
+        if args and not isinstance(args, (str, bytes)):
+            argv = list(args)
+        else:
+            argv = [args, *pargs]
+        spec = _FAKE_NODE_SPECS.get(_fake_node_key(argv[0])) if argv else None
+        if spec is not None and len(argv) >= 2 and argv[1] == "--version":
+            version, _ = spec
+            return subprocess.CompletedProcess(
+                tuple(argv), 0, (version + "\n").encode(), b""
             )
-        return path
+        return real_run(args, *pargs, **kwargs)
 
-    monkeypatch.setattr(node_launch, "_probe_node_once", probe)
+    def fake_popen(command, **kwargs):
+        argv = [os.fspath(part) for part in command]
+        spec = _FAKE_NODE_SPECS.get(_fake_node_key(argv[0])) if argv else None
+        if spec is None:
+            return real_popen(command, **kwargs)
+        _, on_eval = spec
+        return _FakeNodePopen(argv, on_eval, **kwargs)
+
+    monkeypatch.setattr(node_launch.subprocess, "run", fake_run)
+    monkeypatch.setattr(node_launch.subprocess, "Popen", fake_popen)
     yield
-    _WINDOWS_FAKE_NODES.clear()
+    _FAKE_NODE_SPECS.clear()
 
 
 MODULES = Path(__file__).resolve().parent / "mirror" / "node_modules"
@@ -66,33 +149,12 @@ def node_only(monkeypatch):
     yield
 
 
-def _fake_node_main_source(*, version: str, on_eval: str) -> str:
-    return (
-        "import sys\n"
-        f'if len(sys.argv) >= 2 and sys.argv[1] == "--version":\n'
-        f'    print("{version}")\n'
-        "    raise SystemExit(0)\n"
-        'if len(sys.argv) >= 2 and sys.argv[1] == "-e":\n'
-        f"    {on_eval}\n"
-        "raise SystemExit(2)\n"
-    )
-
-
 def _write_fake_node(tmp_path: Path, *, version: str, on_eval: str) -> Path:
-    """Cross-platform fake ``node`` executable (no ``.cmd`` / ``.bat`` shims)."""
-    impl = tmp_path / "_fake_node_impl.py"
-    impl.write_text(_fake_node_main_source(version=version, on_eval=on_eval), encoding="utf-8")
-    if os.name == "nt":
-        launcher = tmp_path / "fake_node.exe"
-        launcher.write_bytes(b"")
-        _WINDOWS_FAKE_NODES[_fake_node_key(launcher)] = (version, impl)
-        return launcher
-    pkg = tmp_path / "fake_node_pkg"
-    pkg.mkdir()
-    (pkg / "__main__.py").write_text(_fake_node_main_source(version=version, on_eval=on_eval), encoding="utf-8")
-    dest = tmp_path / "fake_node"
-    zipapp.create_archive(str(pkg), str(dest), interpreter=sys.executable)
-    os.chmod(dest, 0o755)
+    """Register a fake NODE path; process-layer stubs implement ``--version`` and ``-e``."""
+    name = "fake_node.exe" if os.name == "nt" else "fake_node"
+    dest = tmp_path / name
+    dest.write_bytes(b"")
+    _FAKE_NODE_SPECS[_fake_node_key(dest)] = (version, on_eval)
     return dest
 
 
@@ -208,6 +270,22 @@ def test_toml_node_run_timeout_cmd_includes_resolved_node(monkeypatch):
     assert info.value.cmd == [fake, "-e", "1+1"]
 
 
+def test_toml_node_run_pops_node_and_probe_before_calling_run(monkeypatch):
+    node_launch = md._node_launch_module()
+    resolved = "/resolved/node"
+    monkeypatch.setattr(node_launch, "resolve_node", lambda **kwargs: resolved)
+    seen: dict[str, object] = {}
+
+    def record_run(*args, **kwargs):
+        seen["kwargs"] = dict(kwargs)
+        return subprocess.CompletedProcess([resolved, "-e", "x"], 0, b"", b"")
+
+    monkeypatch.setattr(node_launch, "run", record_run)
+    md._toml_node_run("-e", "x", node="/explicit", probe=True, check=False)
+    assert seen["kwargs"]["node"] == resolved
+    assert seen["kwargs"]["probe"] is False
+
+
 def test_toml_loads_timeout_reraises_timeout_expired(monkeypatch):
     monkeypatch.setattr(md, "tomllib", None)
     monkeypatch.setattr(md, "_TOML_READER", ["node"])
@@ -230,29 +308,13 @@ def test_toml_loads_timeout_reraises_timeout_expired(monkeypatch):
 
 
 def test_toml_loads_stdin_closed_nonzero_surfaces_stderr(tmp_path, monkeypatch):
-    monkeypatch.setattr(md, "tomllib", None)
-    node_launch = md._node_launch_module()
-    if os.name == "nt":
-        monkeypatch.setattr(md, "_TOML_READER", ["node"])
-        monkeypatch.setattr(node_launch, "resolve_node", lambda **kwargs: "C:\\fake\\node.exe")
-
-        def stdin_closed(*args, **kwargs):
-            raise node_launch.LaunchError(
-                "node_launch: Node stdin pipe closed unexpectedly",
-                code="ELAUNCHSTDINCLOSED",
-                status=3,
-                stdout=b"",
-                stderr=b"boom\n",
-            )
-
-        monkeypatch.setattr(node_launch, "run", stdin_closed)
-    else:
-        script = _write_fake_node(
-            tmp_path,
-            version="v24.0.0",
-            on_eval='import sys; sys.stderr.write("boom\\n"); sys.exit(3)',
-        )
-        _use_fake_node(monkeypatch, script)
-        monkeypatch.setattr(md, "_TOML_READER", ["node"])
+    """Non-zero exit with stderr after stdin close (via fake NODE process stub)."""
+    script = _write_fake_node(
+        tmp_path,
+        version="v24.0.0",
+        on_eval='import sys; sys.stderr.write("boom\\n"); sys.exit(3)',
+    )
+    _use_fake_node(monkeypatch, script)
+    monkeypatch.setattr(md, "_TOML_READER", ["node"])
     with pytest.raises(RuntimeError, match=r"Node TOML reader failed: boom"):
         md.toml_to_markdown("a = 1\n")

@@ -2959,8 +2959,10 @@ def _toml_node_run(
     import subprocess
 
     node_launch = _node_launch_module()
-    node = kwargs.get("node")
-    env_var = kwargs.get("env_var", node_launch.DEFAULT_ENV_VAR)
+    run_kwargs = dict(kwargs)
+    node = run_kwargs.pop("node", None)
+    env_var = run_kwargs.pop("env_var", node_launch.DEFAULT_ENV_VAR)
+    run_kwargs.pop("probe", None)
     executable = node_launch.resolve_node(node=node, env_var=env_var)
     command = node_launch.node_command(
         target, *args, node=executable, probe=False, env_var=env_var
@@ -2972,7 +2974,7 @@ def _toml_node_run(
             timeout=timeout,
             node=executable,
             probe=False,
-            **kwargs,
+            **run_kwargs,
         )
     except node_launch.LaunchError as exc:
         if exc.code == "ELAUNCHSTDINCLOSED":
