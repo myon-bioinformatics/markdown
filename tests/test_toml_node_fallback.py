@@ -7,7 +7,7 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
-from typing import Union
+from typing import NamedTuple, Union
 
 import pytest
 
@@ -15,7 +15,15 @@ import markdown as md
 
 # Registered fake NODE paths: vendored ``_probe_node_once`` / ``Popen`` see these via
 # stubbed ``subprocess.run`` (--version) and ``subprocess.Popen`` (-e) in node_launch.
-_FAKE_NODE_SPECS: dict[str, tuple[str, str]] = {}
+class _FakeNodeSpec(NamedTuple):
+    version: str
+    on_eval: str
+    close_stdin_unread: bool = False
+
+
+_FAKE_NODE_SPECS: dict[str, _FakeNodeSpec] = {}
+# Larger than a typical ``os.pipe()`` buffer so an unread stdin close yields ``EPIPE``.
+_STDIN_CLOSED_PAYLOAD = "a = " + repr("x" * 70000) + "\n"
 
 
 def _fake_node_key(path: Union[Path, str]) -> str:
@@ -47,9 +55,17 @@ def _run_fake_on_eval(on_eval: str) -> tuple[bytes, bytes, int]:
 class _FakeNodePopen:
     """Minimal ``Popen`` stand-in for registered fake node executables."""
 
-    def __init__(self, command: list[str], on_eval: str, **_kwargs: object) -> None:
+    def __init__(
+        self,
+        command: list[str],
+        on_eval: str,
+        *,
+        close_stdin_unread: bool = False,
+        **_kwargs: object,
+    ) -> None:
         self.args = command
         self._on_eval = on_eval
+        self._close_stdin_unread = close_stdin_unread
         stdin_r, stdin_w = os.pipe()
         stdout_r, stdout_w = os.pipe()
         stderr_r, stderr_w = os.pipe()
@@ -63,6 +79,20 @@ class _FakeNodePopen:
         self._done = threading.Event()
 
         def worker() -> None:
+            if self._close_stdin_unread:
+                try:
+                    os.close(self._stdin_r)
+                except OSError:
+                    pass
+                try:
+                    os.write(self._stderr_w, b"boom\n")
+                finally:
+                    os.close(self._stdout_w)
+                    os.close(self._stderr_w)
+                    self.returncode = 3
+                    self._done.set()
+                return
+
             # Drain stdin in the background so ``wait()`` is not blocked on EOF
             # before ``node_launch``'s stdin writer thread runs.
             def drain_stdin() -> None:
@@ -112,9 +142,8 @@ def _node_launch_process_layer_stub(monkeypatch):
             argv = [args, *pargs]
         spec = _FAKE_NODE_SPECS.get(_fake_node_key(argv[0])) if argv else None
         if spec is not None and len(argv) >= 2 and argv[1] == "--version":
-            version, _ = spec
             return subprocess.CompletedProcess(
-                tuple(argv), 0, (version + "\n").encode(), b""
+                tuple(argv), 0, (spec.version + "\n").encode(), b""
             )
         return real_run(args, *pargs, **kwargs)
 
@@ -123,8 +152,12 @@ def _node_launch_process_layer_stub(monkeypatch):
         spec = _FAKE_NODE_SPECS.get(_fake_node_key(argv[0])) if argv else None
         if spec is None:
             return real_popen(command, **kwargs)
-        _, on_eval = spec
-        return _FakeNodePopen(argv, on_eval, **kwargs)
+        return _FakeNodePopen(
+            argv,
+            spec.on_eval,
+            close_stdin_unread=spec.close_stdin_unread,
+            **kwargs,
+        )
 
     monkeypatch.setattr(node_launch.subprocess, "run", fake_run)
     monkeypatch.setattr(node_launch.subprocess, "Popen", fake_popen)
@@ -149,12 +182,20 @@ def node_only(monkeypatch):
     yield
 
 
-def _write_fake_node(tmp_path: Path, *, version: str, on_eval: str) -> Path:
+def _write_fake_node(
+    tmp_path: Path,
+    *,
+    version: str,
+    on_eval: str = "pass",
+    close_stdin_unread: bool = False,
+) -> Path:
     """Register a fake NODE path; process-layer stubs implement ``--version`` and ``-e``."""
     name = "fake_node.exe" if os.name == "nt" else "fake_node"
     dest = tmp_path / name
     dest.write_bytes(b"")
-    _FAKE_NODE_SPECS[_fake_node_key(dest)] = (version, on_eval)
+    _FAKE_NODE_SPECS[_fake_node_key(dest)] = _FakeNodeSpec(
+        version, on_eval, close_stdin_unread=close_stdin_unread
+    )
     return dest
 
 
@@ -307,14 +348,29 @@ def test_toml_loads_timeout_reraises_timeout_expired(monkeypatch):
     assert info.value.cmd == ["/fake/node", "-e", md._TOML_NODE_SCRIPT]
 
 
+def test_toml_node_run_stdin_closed_launch_error_maps_stderr(monkeypatch):
+    """``_toml_node_run`` maps ``ELAUNCHSTDINCLOSED`` with non-zero status to ``RuntimeError``."""
+    node_launch = md._node_launch_module()
+    monkeypatch.setattr(node_launch, "resolve_node", lambda **kwargs: "/fake/node")
+
+    def stdin_closed(*args, **kwargs):
+        raise node_launch.LaunchError(
+            "node_launch: Node stdin pipe closed unexpectedly",
+            code="ELAUNCHSTDINCLOSED",
+            status=3,
+            stdout=b"",
+            stderr=b"boom\n",
+        )
+
+    monkeypatch.setattr(node_launch, "run", stdin_closed)
+    with pytest.raises(RuntimeError, match=r"Node TOML reader failed: boom"):
+        md._toml_node_run("-e", "x", input="tiny\n", check=False)
+
+
 def test_toml_loads_stdin_closed_nonzero_surfaces_stderr(tmp_path, monkeypatch):
-    """Non-zero exit with stderr after stdin close (via fake NODE process stub)."""
-    script = _write_fake_node(
-        tmp_path,
-        version="v24.0.0",
-        on_eval='import sys; sys.stderr.write("boom\\n"); sys.exit(3)',
-    )
+    """``node_launch`` ``ELAUNCHSTDINCLOSED`` (unread stdin close + large payload) → ``RuntimeError``."""
+    script = _write_fake_node(tmp_path, version="v24.0.0", close_stdin_unread=True)
     _use_fake_node(monkeypatch, script)
     monkeypatch.setattr(md, "_TOML_READER", ["node"])
     with pytest.raises(RuntimeError, match=r"Node TOML reader failed: boom"):
-        md.toml_to_markdown("a = 1\n")
+        md.toml_to_markdown(_STDIN_CLOSED_PAYLOAD)
