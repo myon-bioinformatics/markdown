@@ -1,13 +1,193 @@
 """toml_to_markdown without tomllib: Node + smol-toml must give the same document."""
 from __future__ import annotations
 
+import os
 import shutil
+import subprocess
 import sys
+import threading
 from pathlib import Path
+from typing import NamedTuple, Union
 
 import pytest
 
 import markdown as md
+
+# Registered fake NODE paths: vendored ``_probe_node_once`` / ``Popen`` see these via
+# stubbed ``subprocess.run`` (--version) and ``subprocess.Popen`` (-e) in node_launch.
+class _FakeNodeSpec(NamedTuple):
+    version: str
+    on_eval: str
+    close_stdin_unread: bool = False
+
+
+_FAKE_NODE_SPECS: dict[str, _FakeNodeSpec] = {}
+# Larger than a typical ``os.pipe()`` buffer so an unread stdin close yields ``EPIPE``.
+_STDIN_CLOSED_PAYLOAD = "a = " + repr("x" * 70000) + "\n"
+
+
+def _fake_node_key(path: Union[Path, str]) -> str:
+    return str(Path(path).resolve())
+
+
+class _StdinClosesEarly:
+    """Simulate the child closing stdin before the parent finishes writing."""
+
+    def __init__(self, pipe_byte_limit: int = 4096) -> None:
+        self._limit = pipe_byte_limit
+        self._written = 0
+
+    def write(self, data: bytes) -> int:
+        if self._written >= self._limit:
+            raise BrokenPipeError()
+        remaining = self._limit - self._written
+        if len(data) > remaining:
+            self._written = self._limit
+            raise BrokenPipeError()
+        self._written += len(data)
+        return len(data)
+
+    def flush(self) -> None:
+        return None
+
+    def close(self) -> None:
+        return None
+
+
+def _run_fake_on_eval(on_eval: str) -> tuple[bytes, bytes, int]:
+    import sys
+    from io import StringIO
+
+    stderr = StringIO()
+    old_stderr = sys.stderr
+    code = 0
+    try:
+        sys.stderr = stderr
+        exec(on_eval, {"sys": sys})  # noqa: S102
+    except SystemExit as exc:
+        if exc.code is None:
+            code = 0
+        elif isinstance(exc.code, int):
+            code = exc.code
+        else:
+            code = 1
+    finally:
+        sys.stderr = old_stderr
+    return b"", stderr.getvalue().encode("utf-8", errors="replace"), code
+
+
+class _FakeNodePopen:
+    """Minimal ``Popen`` stand-in for registered fake node executables."""
+
+    def __init__(
+        self,
+        command: list[str],
+        on_eval: str,
+        *,
+        close_stdin_unread: bool = False,
+        **_kwargs: object,
+    ) -> None:
+        self.args = command
+        self._on_eval = on_eval
+        self._close_stdin_unread = close_stdin_unread
+        stdout_r, stdout_w = os.pipe()
+        stderr_r, stderr_w = os.pipe()
+        if close_stdin_unread:
+            self.stdin = _StdinClosesEarly()
+            self._stdin_r = None
+        else:
+            stdin_r, stdin_w = os.pipe()
+            self.stdin = os.fdopen(stdin_w, "wb")
+            self._stdin_r = stdin_r
+        self.stdout = os.fdopen(stdout_r, "rb")
+        self.stderr = os.fdopen(stderr_r, "rb")
+        self._stdout_w = stdout_w
+        self._stderr_w = stderr_w
+        self.returncode: int | None = None
+        self._done = threading.Event()
+
+        def worker() -> None:
+            if self._close_stdin_unread:
+                try:
+                    os.write(self._stderr_w, b"boom\n")
+                finally:
+                    os.close(self._stdout_w)
+                    os.close(self._stderr_w)
+                    self.returncode = 3
+                    self._done.set()
+                return
+
+            # Drain stdin in the background so ``wait()`` is not blocked on EOF
+            # before ``node_launch``'s stdin writer thread runs.
+            def drain_stdin() -> None:
+                try:
+                    with os.fdopen(self._stdin_r, "rb") as stream:
+                        while stream.read(65536):
+                            pass
+                except OSError:
+                    pass
+
+            threading.Thread(target=drain_stdin, daemon=True).start()
+            stdout, stderr, rc = _run_fake_on_eval(self._on_eval)
+            try:
+                if stdout:
+                    os.write(self._stdout_w, stdout)
+                if stderr:
+                    os.write(self._stderr_w, stderr)
+            finally:
+                os.close(self._stdout_w)
+                os.close(self._stderr_w)
+                self.returncode = rc
+                self._done.set()
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def wait(self, timeout: float | None = None) -> int:
+        if not self._done.wait(timeout):
+            raise subprocess.TimeoutExpired(self.args, timeout)
+        return self.returncode if self.returncode is not None else -1
+
+    def kill(self) -> None:
+        self.returncode = -9
+        self._done.set()
+
+
+@pytest.fixture(autouse=True)
+def _node_launch_process_layer_stub(monkeypatch):
+    """Stub ``node_launch``'s ``subprocess`` calls for registered fake node paths only."""
+    node_launch = md._node_launch_module()
+    real_run = node_launch.subprocess.run
+    real_popen = node_launch.subprocess.Popen
+
+    def fake_run(args, *pargs, **kwargs):
+        if args and not isinstance(args, (str, bytes)):
+            argv = list(args)
+        else:
+            argv = [args, *pargs]
+        spec = _FAKE_NODE_SPECS.get(_fake_node_key(argv[0])) if argv else None
+        if spec is not None and len(argv) >= 2 and argv[1] == "--version":
+            return subprocess.CompletedProcess(
+                tuple(argv), 0, (spec.version + "\n").encode(), b""
+            )
+        return real_run(args, *pargs, **kwargs)
+
+    def fake_popen(command, **kwargs):
+        argv = [os.fspath(part) for part in command]
+        spec = _FAKE_NODE_SPECS.get(_fake_node_key(argv[0])) if argv else None
+        if spec is None:
+            return real_popen(command, **kwargs)
+        return _FakeNodePopen(
+            argv,
+            spec.on_eval,
+            close_stdin_unread=spec.close_stdin_unread,
+            **kwargs,
+        )
+
+    monkeypatch.setattr(node_launch.subprocess, "run", fake_run)
+    monkeypatch.setattr(node_launch.subprocess, "Popen", fake_popen)
+    yield
+    _FAKE_NODE_SPECS.clear()
+
 
 MODULES = Path(__file__).resolve().parent / "mirror" / "node_modules"
 needs_node = pytest.mark.skipif(shutil.which("node") is None or not (MODULES / "smol-toml").is_dir(),
@@ -22,7 +202,32 @@ def node_only(monkeypatch):
     monkeypatch.setenv("NODE_PATH", str(MODULES))
     monkeypatch.setattr(md, "tomllib", None)
     monkeypatch.setattr(md, "_TOML_READER", [])
+    md._node_launch_module().clear_probe_cache()
     yield
+
+
+def _write_fake_node(
+    tmp_path: Path,
+    *,
+    version: str,
+    on_eval: str = "pass",
+    close_stdin_unread: bool = False,
+) -> Path:
+    """Register a fake NODE path; process-layer stubs implement ``--version`` and ``-e``."""
+    name = "fake_node.exe" if os.name == "nt" else "fake_node"
+    dest = tmp_path / name
+    dest.write_bytes(b"")
+    _FAKE_NODE_SPECS[_fake_node_key(dest)] = _FakeNodeSpec(
+        version, on_eval, close_stdin_unread=close_stdin_unread
+    )
+    return dest
+
+
+def _use_fake_node(monkeypatch, script: Union[Path, str]) -> None:
+    monkeypatch.setattr(md, "tomllib", None)
+    monkeypatch.setattr(md, "_TOML_READER", [])
+    monkeypatch.setenv("NODE", str(script))
+    md._node_launch_module().clear_probe_cache()
 
 
 @needs_node
@@ -72,6 +277,124 @@ def test_no_reader_names_both_options(monkeypatch):
     monkeypatch.setattr(md, "tomllib", None)
     monkeypatch.setattr(md, "_TOML_READER", [])
     monkeypatch.setattr(shutil, "which", lambda name, **kw: None)
+    md._node_launch_module().clear_probe_cache()
     assert md.toml_reader() is None
-    with pytest.raises(RuntimeError, match="tomllib.*smol-toml"):
+    with pytest.raises(RuntimeError, match=r"tomllib.*Node 24\+.*smol-toml"):
         md.toml_to_markdown("a = 1\n")
+
+
+def test_node_20_is_rejected_as_reader(tmp_path, monkeypatch):
+    script = _write_fake_node(tmp_path, version="v20.0.0", on_eval="pass")
+    _use_fake_node(monkeypatch, script)
+    node_launch = md._node_launch_module()
+    with pytest.raises(node_launch.NodeNotFoundError, match=r"must be 24.*found 20"):
+        node_launch.resolve_node(env_var="NODE")
+    assert md.toml_reader() is None
+    with pytest.raises(RuntimeError, match=r"Node 24\+.*smol-toml"):
+        md.toml_to_markdown("a = 1\n")
+
+
+def test_toml_reader_probe_timeout_reraises_timeout_expired(monkeypatch):
+    monkeypatch.setattr(md, "tomllib", None)
+    monkeypatch.setattr(md, "_TOML_READER", [])
+    node_launch = md._node_launch_module()
+    monkeypatch.setattr(node_launch, "resolve_node", lambda **kwargs: "/fake/node")
+
+    def timed_out(*args, **kwargs):
+        raise node_launch.LaunchError(
+            "node_launch: Node process timed out",
+            code="ELAUNCHFAILURE",
+            stdout=b"",
+            stderr=b"",
+        )
+
+    monkeypatch.setattr(node_launch, "run", timed_out)
+    with pytest.raises(subprocess.TimeoutExpired) as info:
+        md.toml_reader()
+    assert info.value.timeout == 30
+    assert info.value.cmd == ["/fake/node", "-e", "require('smol-toml')"]
+
+
+def test_toml_node_run_timeout_cmd_includes_resolved_node(monkeypatch):
+    node_launch = md._node_launch_module()
+    fake = "/opt/node24/bin/node"
+    monkeypatch.setattr(node_launch, "resolve_node", lambda **kwargs: fake)
+
+    def timed_out(*args, **kwargs):
+        raise node_launch.LaunchError(
+            "node_launch: Node process timed out",
+            code="ELAUNCHFAILURE",
+            stdout=b"",
+            stderr=b"",
+        )
+
+    monkeypatch.setattr(node_launch, "run", timed_out)
+    with pytest.raises(subprocess.TimeoutExpired) as info:
+        md._toml_node_run("-e", "1+1", timeout=12, check=False)
+    assert info.value.timeout == 12
+    assert info.value.cmd == [fake, "-e", "1+1"]
+
+
+def test_toml_node_run_pops_node_and_probe_before_calling_run(monkeypatch):
+    node_launch = md._node_launch_module()
+    resolved = "/resolved/node"
+    monkeypatch.setattr(node_launch, "resolve_node", lambda **kwargs: resolved)
+    seen: dict[str, object] = {}
+
+    def record_run(*args, **kwargs):
+        seen["kwargs"] = dict(kwargs)
+        return subprocess.CompletedProcess([resolved, "-e", "x"], 0, b"", b"")
+
+    monkeypatch.setattr(node_launch, "run", record_run)
+    md._toml_node_run("-e", "x", node="/explicit", probe=True, check=False)
+    assert seen["kwargs"]["node"] == resolved
+    assert seen["kwargs"]["probe"] is False
+
+
+def test_toml_loads_timeout_reraises_timeout_expired(monkeypatch):
+    monkeypatch.setattr(md, "tomllib", None)
+    monkeypatch.setattr(md, "_TOML_READER", ["node"])
+    node_launch = md._node_launch_module()
+    monkeypatch.setattr(node_launch, "resolve_node", lambda **kwargs: "/fake/node")
+
+    def timed_out(*args, **kwargs):
+        raise node_launch.LaunchError(
+            "node_launch: Node process timed out",
+            code="ELAUNCHFAILURE",
+            stdout=b"",
+            stderr=b"",
+        )
+
+    monkeypatch.setattr(node_launch, "run", timed_out)
+    with pytest.raises(subprocess.TimeoutExpired) as info:
+        md.toml_to_markdown("a = 1\n")
+    assert info.value.timeout == 30
+    assert info.value.cmd == ["/fake/node", "-e", md._TOML_NODE_SCRIPT]
+
+
+def test_toml_node_run_stdin_closed_launch_error_maps_stderr(monkeypatch):
+    """``_toml_node_run`` maps ``ELAUNCHSTDINCLOSED`` with non-zero status to ``RuntimeError``."""
+    node_launch = md._node_launch_module()
+    monkeypatch.setattr(node_launch, "resolve_node", lambda **kwargs: "/fake/node")
+
+    def stdin_closed(*args, **kwargs):
+        raise node_launch.LaunchError(
+            "node_launch: Node stdin pipe closed unexpectedly",
+            code="ELAUNCHSTDINCLOSED",
+            status=3,
+            stdout=b"",
+            stderr=b"boom\n",
+        )
+
+    monkeypatch.setattr(node_launch, "run", stdin_closed)
+    with pytest.raises(RuntimeError, match=r"Node TOML reader failed: boom"):
+        md._toml_node_run("-e", "x", input="tiny\n", check=False)
+
+
+def test_toml_loads_stdin_closed_nonzero_surfaces_stderr(tmp_path, monkeypatch):
+    """``node_launch`` ``ELAUNCHSTDINCLOSED`` (unread stdin close + large payload) → ``RuntimeError``."""
+    script = _write_fake_node(tmp_path, version="v24.0.0", close_stdin_unread=True)
+    _use_fake_node(monkeypatch, script)
+    monkeypatch.setattr(md, "_TOML_READER", ["node"])
+    with pytest.raises(RuntimeError, match=r"Node TOML reader failed: boom"):
+        md.toml_to_markdown(_STDIN_CLOSED_PAYLOAD)
