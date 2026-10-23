@@ -24,7 +24,12 @@ git -C .vendor-sync-tools checkout --detach 1eda992aa6fa31a902e2c06428e53ab17e8f
 python -S .vendor-sync-tools/vendor_sync.py check --manifest vendor.lock.json
 ```
 
-Run the existing Python suite with its test-only dependencies after verification.
+Run the existing Python suite with its test-only dependencies after verification:
+
+```bash
+uv sync --locked --group dev
+uv run pytest
+```
 
 ## What a green run covers
 

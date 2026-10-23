@@ -7,7 +7,6 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
-import sys
 
 import pytest
 
@@ -45,7 +44,7 @@ def test_skip(): pass
 ''', encoding="utf-8")
     env = dict(os.environ, PYTHONPATH=str(ROOT), PYTEST_DISABLE_PLUGIN_AUTOLOAD="1")
     env.pop("PYTEST_ADDOPTS", None)
-    command = [sys.executable, "-m", "pytest", "-q"]
+    command = ["uv", "run", "--project", str(ROOT), "pytest", "-q"]
     if junit:
         command += ["--junitxml=junit.xml", "-o", "junit_logging=all"]
     result = subprocess.run(command, cwd=tmp_path, env=env, capture_output=True,

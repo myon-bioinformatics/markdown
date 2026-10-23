@@ -285,14 +285,14 @@ states its contract.
 ## Test / demo
 
 ```bash
-pip install -r requirements-dev.txt
-pytest
+uv sync --locked --group dev
+uv run pytest
 
 # optional frontends (only needed to see the actual UI — not to verify behavior)
-pip install -r requirements-frontend.txt
-python demos/gradio_app.py
-streamlit run demos/streamlit_app.py
-python demos/chat_ui_demo.py   # generic mock chat UI (gr.Chatbot)
+uv sync --locked --group dev --group frontend
+uv run python demos/gradio_app.py
+uv run streamlit run demos/streamlit_app.py
+uv run python demos/chat_ui_demo.py   # generic mock chat UI (gr.Chatbot)
 
 # verify demo behavior without a browser or either frontend framework installed:
 # analyze()/build_view() are plain functions, so a one-liner is enough.
@@ -302,7 +302,7 @@ print(gradio_app.analyze('# Hi\n\n[x](https://example.com)\n'))"
 # optional: verify each app's real wiring with no browser, no clicking, no JS —
 # gradio_client / curl hit Gradio's own HTTP API directly; AppTest runs the
 # Streamlit script headless; curl checks Streamlit's HTTP health + index.
-pytest tests/frontend
+uv run pytest tests/frontend
 ```
 
 Gradio's backend is a plain FastAPI app, so `tests/frontend/test_gradio_curl.py` drives it with
@@ -329,7 +329,7 @@ test still checks Gradio's DOM, while `tests/test_chat_ui_demo_logic.py`
 checks the library HTML path. `tests/frontend/test_chat_ui_screen.py`
 types a message, clicks Send, and asserts on the resulting DOM
 (a real `<table>` with `<th>`/`<td>` rows, `<pre><code>`, `<li>`, `<strong>`/`<em>`)
-via Playwright (`pip install -r requirements-frontend.txt && playwright install chromium`).
+via Playwright (`uv sync --locked --group dev --group frontend && uv run playwright install chromium`).
 Its pure rendering logic (`render_assistant_turn` / `respond`, no gradio import
 needed) is covered separately in `tests/test_chat_ui_demo_logic.py`.
 
@@ -398,7 +398,7 @@ Results, GitHub-flavored constructs found inside the real GitHub Docs excerpt:
 | inline HTML | UNSUPPORTED — escaped, not passed through |
 
 ```bash
-pytest tests/test_benchmark_commonmark.py tests/test_benchmark_realworld.py tests/test_benchmark_html_roundtrip.py -v
+uv run pytest tests/test_benchmark_commonmark.py tests/test_benchmark_realworld.py tests/test_benchmark_html_roundtrip.py -v
 ```
 
 All three run in the default `pytest` — no extra dependency installs. `test_benchmark_html_roundtrip.py`
@@ -438,7 +438,7 @@ git clone https://github.com/myon-bioinformatics/mcp-toolcall-lab mcp-toolcall-l
 docker compose -f docker/openwebui-smoke/docker-compose.yml up -d
 # wait for http://127.0.0.1:3000/health
 OPEN_WEBUI_BASE_URL=http://127.0.0.1:3000 MOCK_MCP_SERVER_NAME="Mock MCP (mcp-toolcall-lab)" \
-  pytest tests/real_chat_ui/ -v
+  uv run pytest tests/real_chat_ui/ -v
 docker compose -f docker/openwebui-smoke/docker-compose.yml down -v
 ```
 
@@ -619,21 +619,24 @@ Public source placement and automatic Python CI updates: [vendor automation](doc
 
 ## Runtime and development Python policy
 
-The standard-library runtime supports Python 3.9+; this change preserves the
-existing runtime floor. The separate `runtime-compatibility` CI lane executes
-behavior tests with `python -S`, without installing pytest or any third-party
-package. Development/test environments use Python 3.11+ and a committed uv lock:
+The standard-library runtime still has behavior coverage on Python 3.9 and newer.
+The separate `runtime-compatibility` CI lane executes those checks with
+`python -S -m unittest`, without installing pytest or any third-party package.
+The uv project requires Python >=3.11. pytest is a dev dependency with a lower
+bound only, and every pytest lane runs through `uv run pytest` against the
+committed lock:
 
 ```sh
 uv sync --locked --group dev --python 3.11
-uv run --locked python -m pytest
+uv run pytest
 uv sync --locked --group dev --group frontend --python 3.11  # Gradio/Streamlit/Playwright tests
 python -S -m unittest discover -s tests -p test_runtime_compatibility.py -v
 ```
 
 `pyproject.toml` is the canonical development dependency definition; legacy
-requirements files remain for downstream callers. Runtime metadata does not
-raise the source/vendoring floor to the development floor.
+requirements files remain for downstream callers. The unittest lane does not
+install that uv environment, so the 3.9 and 3.10 checks stay independent of
+the uv project's Python floor.
 
 `[tool.uv] override-dependencies` lifts transitive pins that upstream frontends
 still cap below current PyPI releases (remove each line when the cap is gone):
@@ -645,9 +648,10 @@ still cap below current PyPI releases (remove each line when the cap is gone):
 Playwright still caps `pyee<15`; on Python 3.11 the lock stays at pyee 13.0.1 because
 newer pyee releases require Python 3.12+. No override is applied for pyee.
 
-CI pins setup-python
-v7.0.0 and setup-uv v10.3.0 by full commit SHA, and uses uv 0.13.3. Setup actions
-using Node 24 require runner 2.327.1 or newer (GitHub-hosted runners are used).
+CI pins astral-sh/setup-uv to full commit 07a047e608db84b3d8c06cd9a7c7dcc9c355c18e
+(v10.3.2) and installs uv version latest. Other actions from the actions
+organization use major version tags. Setup actions using Node 24 require runner
+2.327.1 or newer (GitHub-hosted runners are used).
 
 ## Select converter evaluation cases
 
