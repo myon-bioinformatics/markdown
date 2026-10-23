@@ -1,5 +1,11 @@
 # markdown
 
+<p align="center">
+  <img src="docs/brand/icon.png" alt="markdown icon" width="160" />
+</p>
+
+[Icon](docs/brand/icon.png) · [Favicon](docs/brand/favicon.png)
+
 stdlib だけで動く、関数提供に特化した Python Markdown ユーティリティ。
 
 ## GitHub About（推奨）
