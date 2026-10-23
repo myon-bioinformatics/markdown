@@ -2959,9 +2959,21 @@ def _toml_node_run(
     import subprocess
 
     node_launch = _node_launch_module()
-    command = [target, *args]
+    node = kwargs.get("node")
+    env_var = kwargs.get("env_var", node_launch.DEFAULT_ENV_VAR)
+    executable = node_launch.resolve_node(node=node, env_var=env_var)
+    command = node_launch.node_command(
+        target, *args, node=executable, probe=False, env_var=env_var
+    )
     try:
-        return node_launch.run(target, *args, timeout=timeout, **kwargs)
+        return node_launch.run(
+            target,
+            *args,
+            timeout=timeout,
+            node=executable,
+            probe=False,
+            **kwargs,
+        )
     except node_launch.LaunchError as exc:
         if exc.code == "ELAUNCHSTDINCLOSED":
             status = exc.status if exc.status is not None else -1
@@ -2991,7 +3003,6 @@ def toml_reader() -> str | None:
         node_launch = _node_launch_module()
         ok = False
         try:
-            node_launch.resolve_node()
             probe = _toml_node_run("-e", "require('smol-toml')", timeout=30, check=False)
             ok = probe.returncode == 0
         except node_launch.NodeNotFoundError:
@@ -3028,8 +3039,6 @@ def _toml_loads(content: str) -> Any:
             "toml_to_markdown requires Python 3.11+ (tomllib) or Node 24+ with smol-toml"
             " (npm i --no-save smol-toml)"
         )
-    node_launch = _node_launch_module()
-    node_launch.resolve_node()
     done = _toml_node_run("-e", _TOML_NODE_SCRIPT, input=content, timeout=30, check=False)
     stderr = done.stderr.decode("utf-8", errors="replace")
     stdout = done.stdout.decode("utf-8", errors="replace")

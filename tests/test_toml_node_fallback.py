@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
+import zipapp
 from pathlib import Path
 
 import pytest
@@ -28,21 +29,34 @@ def node_only(monkeypatch):
     yield
 
 
-def _write_fake_node(tmp_path: Path, *, version: str, on_eval: str) -> Path:
-    script = tmp_path / "fake_node.py"
-    script.write_text(
-        "#!/usr/bin/env python3\n"
+def _fake_node_main_source(*, version: str, on_eval: str) -> str:
+    return (
         "import sys\n"
         f'if len(sys.argv) >= 2 and sys.argv[1] == "--version":\n'
         f'    print("{version}")\n'
         "    raise SystemExit(0)\n"
         'if len(sys.argv) >= 2 and sys.argv[1] == "-e":\n'
         f"    {on_eval}\n"
-        "raise SystemExit(2)\n",
+        "raise SystemExit(2)\n"
+    )
+
+
+def _write_fake_node(tmp_path: Path, *, version: str, on_eval: str) -> Path:
+    """Cross-platform fake ``node`` executable (zipapp; no ``.cmd`` / ``.bat`` shims)."""
+    pkg = tmp_path / "fake_node_pkg"
+    pkg.mkdir()
+    (pkg / "__main__.py").write_text(
+        _fake_node_main_source(version=version, on_eval=on_eval),
         encoding="utf-8",
     )
-    os.chmod(script, 0o755)
-    return script
+    if os.name == "nt":
+        dest = tmp_path / "fake_node.pyz"
+    else:
+        dest = tmp_path / "fake_node"
+    zipapp.create_archive(str(pkg), str(dest), interpreter=sys.executable)
+    if os.name != "nt":
+        os.chmod(dest, 0o755)
+    return dest
 
 
 def _use_fake_node(monkeypatch, script: Path) -> None:
@@ -108,6 +122,9 @@ def test_no_reader_names_both_options(monkeypatch):
 def test_node_20_is_rejected_as_reader(tmp_path, monkeypatch):
     script = _write_fake_node(tmp_path, version="v20.0.0", on_eval="pass")
     _use_fake_node(monkeypatch, script)
+    node_launch = md._node_launch_module()
+    with pytest.raises(node_launch.NodeNotFoundError, match=r"must be 24.*found 20"):
+        node_launch.resolve_node(env_var="NODE")
     assert md.toml_reader() is None
     with pytest.raises(RuntimeError, match=r"Node 24\+.*smol-toml"):
         md.toml_to_markdown("a = 1\n")
@@ -131,6 +148,27 @@ def test_toml_reader_probe_timeout_reraises_timeout_expired(monkeypatch):
     with pytest.raises(subprocess.TimeoutExpired) as info:
         md.toml_reader()
     assert info.value.timeout == 30
+    assert info.value.cmd == ["/fake/node", "-e", "require('smol-toml')"]
+
+
+def test_toml_node_run_timeout_cmd_includes_resolved_node(monkeypatch):
+    node_launch = md._node_launch_module()
+    fake = "/opt/node24/bin/node"
+    monkeypatch.setattr(node_launch, "resolve_node", lambda **kwargs: fake)
+
+    def timed_out(*args, **kwargs):
+        raise node_launch.LaunchError(
+            "node_launch: Node process timed out",
+            code="ELAUNCHFAILURE",
+            stdout=b"",
+            stderr=b"",
+        )
+
+    monkeypatch.setattr(node_launch, "run", timed_out)
+    with pytest.raises(subprocess.TimeoutExpired) as info:
+        md._toml_node_run("-e", "1+1", timeout=12, check=False)
+    assert info.value.timeout == 12
+    assert info.value.cmd == [fake, "-e", "1+1"]
 
 
 def test_toml_loads_timeout_reraises_timeout_expired(monkeypatch):
@@ -151,6 +189,7 @@ def test_toml_loads_timeout_reraises_timeout_expired(monkeypatch):
     with pytest.raises(subprocess.TimeoutExpired) as info:
         md.toml_to_markdown("a = 1\n")
     assert info.value.timeout == 30
+    assert info.value.cmd == ["/fake/node", "-e", md._TOML_NODE_SCRIPT]
 
 
 def test_toml_loads_stdin_closed_nonzero_surfaces_stderr(tmp_path, monkeypatch):
