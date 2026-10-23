@@ -48,12 +48,14 @@ def _write_fake_node(tmp_path: Path, *, version: str, on_eval: str) -> Path:
     impl.write_text(_fake_node_main_source(version=version, on_eval=on_eval), encoding="utf-8")
     if os.name == "nt":
         launcher = tmp_path / "fake_node.exe"
-        shutil.copy2(sys.executable, launcher)
+        if launcher.exists():
+            launcher.unlink()
+        # Symlink keeps the real interpreter's DLL layout; a lone ``.exe`` copy breaks probes.
+        os.symlink(sys.executable, launcher)
         (tmp_path / "sitecustomize.py").write_text(
             f"import runpy\nrunpy.run_path({repr(str(impl))}, run_name='__main__')\n",
             encoding="utf-8",
         )
-        # Pair with the copied interpreter so startup hooks run without ``.cmd`` shims.
         (tmp_path / "fake_node._pth").write_text(f"{tmp_path}\nimport site\n", encoding="utf-8")
         return launcher
     pkg = tmp_path / "fake_node_pkg"
