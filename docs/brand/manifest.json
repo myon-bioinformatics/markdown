@@ -13,15 +13,15 @@
       201,
       518
     ],
-    "favicon": [
-      210,
-      436,
-      278,
-      504
-    ],
     "icon_sha256": "4976d8a9deb6836a885119de6b895b97d95dc017c309acdf1b1e3583d4978018",
     "icon_rgb_sha256": "59e10497f56634448b2891b8430c17b32cfcc626d00b7c870cb16a9565410ae1",
-    "favicon_sha256": "130eb5bf686d4c96b6e87b914cd250a8ba7c9b0a82bb0520755c6baa7a115d76",
-    "favicon_rgb_sha256": "f82b6bce3073f11e514b47874fa9f2302dfb79de94702ed8c362f7a242cf8311"
+    "favicon_sha256": "a592aa9ce3e7005f4a9b73968463110c6d22c75fc96c2f7d1b4dc0d4337764a2",
+    "favicon_rgb_sha256": "6d835765a951f4c7e309b166241eff44bd1fa111ec9f26fa5b7f46f737f4528e",
+    "favicon_source": "docs/brand/icon.png resampled to 64x64 with LANCZOS",
+    "favicon_size": [
+      64,
+      64
+    ],
+    "favicon_background": "#fafafa"
   }
 }
