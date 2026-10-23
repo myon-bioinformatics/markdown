@@ -236,7 +236,7 @@ def test_toml_loads_stdin_closed_nonzero_surfaces_stderr(tmp_path, monkeypatch):
         monkeypatch.setattr(md, "_TOML_READER", ["node"])
         monkeypatch.setattr(node_launch, "resolve_node", lambda **kwargs: "C:\\fake\\node.exe")
 
-        def stdin_closed(**kwargs):
+        def stdin_closed(*args, **kwargs):
             raise node_launch.LaunchError(
                 "node_launch: Node stdin pipe closed unexpectedly",
                 code="ELAUNCHSTDINCLOSED",
