@@ -18,5 +18,9 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
+      # Stdlib unittest, not pytest: this step runs with `python -S` (no
+      # site-packages) on Python 3.9-3.14 to prove markdown.py works on a bare
+      # interpreter with nothing installed. pytest is an external module, so it
+      # cannot run here. All other tests run via `uv run pytest`.
       - name: Exercise runtime behavior without site-packages
         run: python -S -m unittest discover -s tests -p test_runtime_compatibility.py -v

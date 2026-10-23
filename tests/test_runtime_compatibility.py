@@ -1,3 +1,7 @@
+# Stdlib unittest, not pytest: this lane runs with `python -S` (no
+# site-packages) on Python 3.9-3.14 to prove markdown.py works on a bare
+# interpreter with nothing installed. pytest is an external module, so it
+# cannot run here. All other tests run via `uv run pytest`.
 """Behavior checks runnable using python -S on the source runtime floor."""
 import tempfile
 import unittest
