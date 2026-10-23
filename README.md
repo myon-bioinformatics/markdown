@@ -16,7 +16,7 @@ A function-focused Python Markdown utility that runs on the standard library onl
 
 This library grows the `markdown.py` module, used earlier in projects such as Ironmate, so it can be published on pip under the same file name.
 
-- **Standard library first** — avoid adding runtime dependencies, and extend features within that limit.
+- **Standard library first** — avoid adding runtime dependencies, and extend features within that limit. Standalone users copy the file from GitHub; the copied `markdown.py` keeps working on its own.
 - **Function-focused** — there is no `main` or CLI entry point. Behavior is verified by tests. The processing in `demos/*.py` is checked directly as plain function calls that need no browser; optional Streamlit / Gradio front-end checks are also possible.
 - **Planned API direction** — beyond the existing read / write / section extraction, expand the HTML↔Markdown helpers (URLs, image files, and so on).
 - **ascii_artist** — ASCII art utilities have moved to [`myon-bioinformatics/ascii_artist`](https://github.com/myon-bioinformatics/ascii_artist) and are not bundled here.
@@ -26,7 +26,7 @@ This library grows the `markdown.py` module, used earlier in projects such as Ir
 
 ironmate などで使っていた `markdown.py` を、同じファイル名のまま pip で配布できるように育てるライブラリです。
 
-- **標準ライブラリ前提**: 実行時の依存関係は増やさず、その範囲で機能を充実させます。
+- **標準ライブラリ前提**: 実行時の依存関係は増やさず、その範囲で機能を充実させます。スタンドアロンで使う場合は GitHub からファイルをコピーします。コピーした `markdown.py` 単体のまま動きます。
 - **関数提供に特化**: `main` や CLI のエントリポイントはありません。動作はテストで確認します。`demos/*.py` の処理も、ブラウザを使わない通常の関数呼び出しとして直接検証します。任意で Streamlit や Gradio の画面確認もできます。
 - **API の方向性**: 既存の read / write / セクション抽出に加えて、HTML と Markdown の相互変換ヘルパ（URL や画像ファイルなど）を広げていきます。
 - **ascii_artist**: ASCII アート関連のユーティリティは [`myon-bioinformatics/ascii_artist`](https://github.com/myon-bioinformatics/ascii_artist) に分離しており、このリポジトリには含めていません。
@@ -36,7 +36,7 @@ ironmate などで使っていた `markdown.py` を、同じファイル名の�
 
 | Path | Role |
 | --- | --- |
-| `markdown.py` | **Canonical vendoring artifact** — dependency-light single module; consumers may pin/copy it as `vendor/markdown.py` |
+| `markdown.py` | **Canonical vendoring artifact** — stdlib-only single module. Standalone users copy the file from GitHub; consumers may also pin it as `vendor/markdown.py` |
 | `tests/` | pytest = correctness |
 | `fixtures/` | Famous-README-inspired offline snippets + YAML/JSON/TOML + `benchmark/` (real, sourced Markdown) |
 | `demos/gradio_app.py` | Optional: paste/upload → instant analysis. `analyze()` has zero UI deps — call it directly |
@@ -90,9 +90,16 @@ This repository intentionally separates the **vendored filename** from the plann
 - Source/vendoring artifact: `markdown.py`
 - Typical vendored destination: `vendor/markdown.py`
 - Planned PyPI distribution name: `md-market`
+- uv git distribution name: `md-market` (no runtime dependencies)
 - Python module/file name: `markdown.py`
 
-`md-market` is only the PyPI distribution name. The actual module remains the single-file `markdown.py`, preserving the project's stdlib-only, copy-one-file vendoring model.
+`md-market` is only the distribution name. The actual module remains the single-file `markdown.py`, preserving the project's stdlib-only, copy-one-file vendoring model.
+
+Standalone users copy the file from GitHub. That copy stays standard-library only and keeps working on its own. Environments that install through uv use the repository URL below, which installs the same module and adds no runtime dependencies:
+
+```sh
+uv pip install git+https://github.com/myon-bioinformatics/markdown
+```
 
 Ironmate is a vendored consumer: changes are developed here first, then a reviewed snapshot of `markdown.py` is refreshed in Ironmate.
 
@@ -622,9 +629,10 @@ Public source placement and automatic Python CI updates: [vendor automation](doc
 The standard-library runtime still has behavior coverage on Python 3.9 and newer.
 The separate `runtime-compatibility` CI lane executes those checks with
 `python -S -m unittest`, without installing pytest or any third-party package.
-The uv project requires Python >=3.11. pytest is a dev dependency with a lower
-bound only, and every pytest lane runs through `uv run pytest` against the
-committed lock:
+The uv project requires Python >=3.11 and has no runtime dependencies.
+pytest is a dev dependency with a lower bound only, and every pytest lane
+runs through `uv run pytest` against the committed lock. Standalone users
+copy the file from GitHub; that copy does not need this uv project:
 
 ```sh
 uv sync --locked --group dev --python 3.11

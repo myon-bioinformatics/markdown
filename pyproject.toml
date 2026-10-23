@@ -1,6 +1,11 @@
+[build-system]
+requires = ["hatchling>=1.32.4"]
+build-backend = "hatchling.build"
+
 [project]
-name = "markdown-dev"
+name = "md-market"
 version = "0.0.0"
+description = "Stdlib-only Markdown helpers"
 requires-python = ">=3.11"
 dependencies = []
 
@@ -12,9 +17,8 @@ frontend = [
   "playwright>=1.64.0",
 ]
 
-# Vendored/source runtime has no dependencies. uv manages contributor tools only.
+# Installed artifact is the stdlib-only markdown.py. uv manages contributor tools.
 [tool.uv]
-package = false
 environments = ["sys_platform != 'emscripten' and python_version >= '3.11'"]
 override-dependencies = [
   "pillow>=13.0.0",
@@ -25,3 +29,9 @@ override-dependencies = [
 [tool.uv.dependency-groups]
 dev = { requires-python = ">=3.11" }
 frontend = { requires-python = ">=3.11" }
+
+[tool.hatch.build.targets.wheel]
+only-include = ["markdown.py"]
+
+[tool.hatch.build.targets.sdist]
+only-include = ["markdown.py"]
