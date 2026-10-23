@@ -31,10 +31,11 @@ Timeouts before child completion are not covered by this example's retention.
 
 To run locally, fetch and verify `build/shared/xprobe.py` using the
 `Fetch pinned xprobe JUnit importer` step in `.github/workflows/ci.yml`,
-install `requirements-dev.txt`, then run:
+sync the locked dev group, then run:
 
 ```sh
-PYTHONPATH=build/shared python -m pytest -q
+uv sync --locked --group dev
+PYTHONPATH=build/shared uv run pytest -q
 ```
 
 Optionally set `MARKDOWN_FAILURE_EVIDENCE` to a new output directory to retain

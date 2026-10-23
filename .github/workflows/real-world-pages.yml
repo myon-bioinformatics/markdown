@@ -76,12 +76,12 @@ jobs:
           ref: 6a2e32a4bbe49be5268e6b30040d665a89eecf66
           path: .browser-test-kit
           persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
-          version: "0.13.3"
+          version: "latest"
       - name: Sync locked development environment
         shell: bash
         run: |
@@ -90,7 +90,7 @@ jobs:
       - name: Test fixture-to-image requirements
         env:
           BROWSER_TEST_KIT: .browser-test-kit
-        run: python -m pytest -q tests/test_report_screenshot_evidence.py
+        run: uv run pytest -q tests/test_report_screenshot_evidence.py
 
   build:
     needs: checks
@@ -108,12 +108,12 @@ jobs:
           ref: 6a2e32a4bbe49be5268e6b30040d665a89eecf66
           path: .browser-test-kit
           persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
-          version: "0.13.3"
+          version: "latest"
       - name: Sync locked frontend environment
         shell: bash
         run: |

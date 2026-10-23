@@ -1,4 +1,4 @@
-# 8.4.2 is the newest pytest that still installs on Python 3.9 (CI).
-# Python 3.10 and newer resolve to the current 9.x release.
+# Lower bound only. The uv project requires Python >=3.11; the lock resolves
+# the newest release that satisfies this floor.
 pytest>=8.4.2
 PyYAML>=6.0.3

@@ -65,12 +65,12 @@ jobs:
           # of truth. Bump when that repo's mock tools/schema change.
           ref: fd25f006d94c6382c2ae174eac75daeea7f82561
           path: mcp-toolcall-lab
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
-          version: "0.13.3"
+          version: "latest"
       - name: Sync locked frontend test environment
         shell: bash
         run: |
@@ -106,7 +106,7 @@ jobs:
           # exactly -- test_openwebui_mcp_tool_call.py clicks the tools-list
           # row with this text, the same way a real user would.
           MOCK_MCP_SERVER_NAME: "Mock MCP (mcp-toolcall-lab)"
-        run: pytest -q tests/real_chat_ui/ -v
+        run: uv run pytest -q tests/real_chat_ui/ -v
 
       - name: Dump container logs on failure
         if: failure()
