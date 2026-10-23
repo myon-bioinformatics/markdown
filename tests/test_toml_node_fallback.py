@@ -13,6 +13,42 @@ import pytest
 
 import markdown as md
 
+_WINDOWS_FAKE_NODES: dict[str, tuple[str, Path]] = {}
+
+
+def _fake_node_key(path: Union[Path, str]) -> str:
+    return str(Path(path).resolve())
+
+
+@pytest.fixture(autouse=True)
+def _windows_fake_node_shim(monkeypatch):
+    if os.name != "nt":
+        yield
+        return
+    node_launch = md._node_launch_module()
+    real_probe = node_launch._probe_node_once
+
+    def probe(path: str, probe_timeout: float) -> str:
+        spec = _WINDOWS_FAKE_NODES.get(_fake_node_key(path))
+        if spec is None:
+            return real_probe(path, probe_timeout)
+        version, _impl = spec
+        match = node_launch._NODE_VERSION.search(version)
+        if match is None:
+            raise node_launch.NodeNotFoundError("node_launch: node version probe failed: " + path)
+        major = int(match.group("major"))
+        if major < node_launch.MIN_NODE_MAJOR:
+            raise node_launch.NodeNotFoundError(
+                f"node_launch: node version must be {node_launch.MIN_NODE_MAJOR} or newer (found {major}): "
+                + path
+            )
+        return path
+
+    monkeypatch.setattr(node_launch, "_probe_node_once", probe)
+    yield
+    _WINDOWS_FAKE_NODES.clear()
+
+
 MODULES = Path(__file__).resolve().parent / "mirror" / "node_modules"
 needs_node = pytest.mark.skipif(shutil.which("node") is None or not (MODULES / "smol-toml").is_dir(),
                                 reason="run `npm ci --prefix tests/mirror` to enable the Node TOML reader")
@@ -48,15 +84,8 @@ def _write_fake_node(tmp_path: Path, *, version: str, on_eval: str) -> Path:
     impl.write_text(_fake_node_main_source(version=version, on_eval=on_eval), encoding="utf-8")
     if os.name == "nt":
         launcher = tmp_path / "fake_node.exe"
-        if launcher.exists():
-            launcher.unlink()
-        # Symlink keeps the real interpreter's DLL layout; a lone ``.exe`` copy breaks probes.
-        os.symlink(sys.executable, launcher)
-        (tmp_path / "sitecustomize.py").write_text(
-            f"import runpy\nrunpy.run_path({repr(str(impl))}, run_name='__main__')\n",
-            encoding="utf-8",
-        )
-        (tmp_path / "fake_node._pth").write_text(f"{tmp_path}\nimport site\n", encoding="utf-8")
+        launcher.write_bytes(b"")
+        _WINDOWS_FAKE_NODES[_fake_node_key(launcher)] = (version, impl)
         return launcher
     pkg = tmp_path / "fake_node_pkg"
     pkg.mkdir()
@@ -201,13 +230,29 @@ def test_toml_loads_timeout_reraises_timeout_expired(monkeypatch):
 
 
 def test_toml_loads_stdin_closed_nonzero_surfaces_stderr(tmp_path, monkeypatch):
-    script = _write_fake_node(
-        tmp_path,
-        version="v24.0.0",
-        on_eval='import sys; sys.stderr.write("boom\\n"); sys.exit(3)',
-    )
-    _use_fake_node(monkeypatch, script)
-    monkeypatch.setattr(md, "_TOML_READER", ["node"])
     monkeypatch.setattr(md, "tomllib", None)
+    node_launch = md._node_launch_module()
+    if os.name == "nt":
+        monkeypatch.setattr(md, "_TOML_READER", ["node"])
+        monkeypatch.setattr(node_launch, "resolve_node", lambda **kwargs: "C:\\fake\\node.exe")
+
+        def stdin_closed(**kwargs):
+            raise node_launch.LaunchError(
+                "node_launch: Node stdin pipe closed unexpectedly",
+                code="ELAUNCHSTDINCLOSED",
+                status=3,
+                stdout=b"",
+                stderr=b"boom\n",
+            )
+
+        monkeypatch.setattr(node_launch, "run", stdin_closed)
+    else:
+        script = _write_fake_node(
+            tmp_path,
+            version="v24.0.0",
+            on_eval='import sys; sys.stderr.write("boom\\n"); sys.exit(3)',
+        )
+        _use_fake_node(monkeypatch, script)
+        monkeypatch.setattr(md, "_TOML_READER", ["node"])
     with pytest.raises(RuntimeError, match=r"Node TOML reader failed: boom"):
         md.toml_to_markdown("a = 1\n")
