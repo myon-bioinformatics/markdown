@@ -50,11 +50,11 @@ def _write_fake_node(tmp_path: Path, *, version: str, on_eval: str) -> Path:
         launcher = tmp_path / "fake_node.exe"
         shutil.copy2(sys.executable, launcher)
         (tmp_path / "sitecustomize.py").write_text(
-            "import os, runpy\n"
-            "if os.environ.get('FAKE_NODE_ACTIVE') == '1':\n"
-            f"    runpy.run_path({repr(str(impl))}, run_name='__main__')\n",
+            f"import runpy\nrunpy.run_path({repr(str(impl))}, run_name='__main__')\n",
             encoding="utf-8",
         )
+        # Pair with the copied interpreter so startup hooks run without ``.cmd`` shims.
+        (tmp_path / "fake_node._pth").write_text(f"{tmp_path}\nimport site\n", encoding="utf-8")
         return launcher
     pkg = tmp_path / "fake_node_pkg"
     pkg.mkdir()
@@ -69,9 +69,6 @@ def _use_fake_node(monkeypatch, script: Union[Path, str]) -> None:
     monkeypatch.setattr(md, "tomllib", None)
     monkeypatch.setattr(md, "_TOML_READER", [])
     monkeypatch.setenv("NODE", str(script))
-    if os.name == "nt":
-        monkeypatch.setenv("FAKE_NODE_ACTIVE", "1")
-        monkeypatch.setenv("PYTHONPATH", str(Path(script).parent))
     md._node_launch_module().clear_probe_cache()
 
 
