@@ -241,7 +241,9 @@ def _report_html(rows: list[dict[str, Any]], revision: Mapping[str, Any]) -> str
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
         '<link rel="icon" type="image/png" href="./favicon.png">'
+        '<link rel="apple-touch-icon" href="./icon.png">'
         "<title>markdown.py: real-world HTML benchmark</title></head><body>"
+        '<img src="./icon.png" width="80" height="80" alt="markdown icon">'
         "<h1>real-world HTML -&gt; html_to_markdown() -&gt; markdown_to_html()</h1>"
         "<p><a href=\"repository-diagnostics.html\">Repository diagnostics</a> · "
         "<a href=\"repository-diagnostics.json\">JSON</a> · "

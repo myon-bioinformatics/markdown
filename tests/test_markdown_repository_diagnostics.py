@@ -53,6 +53,9 @@ def test_payload_not_checked_roundtrip(tmp_path, monkeypatch):
     assert json.loads((tmp_path / diagnostics.JSON_NAME).read_text())["metadata"] == payload["metadata"]
     html = (tmp_path / diagnostics.HTML_NAME).read_text(encoding="utf-8")
     assert '<link rel="icon" type="image/png" href="./favicon.png">' in html
+    assert '<link rel="apple-touch-icon" href="./icon.png">' in html
+    assert 'src="./icon.png"' in html
+    assert (tmp_path / "icon.png").read_bytes() == (ROOT / "docs/brand/icon.png").read_bytes()
     source = (ROOT / "docs/brand/favicon.png").read_bytes()
     assert source.startswith(b"\x89PNG\r\n\x1a\n")
     assert (tmp_path / "favicon.png").read_bytes() == source
