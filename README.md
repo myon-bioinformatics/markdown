@@ -656,8 +656,8 @@ still cap below current PyPI releases (remove each line when the cap is gone):
 Playwright still caps `pyee<15`; on Python 3.11 the lock stays at pyee 13.0.1 because
 newer pyee releases require Python 3.12+. No override is applied for pyee.
 
-CI pins astral-sh/setup-uv to full commit 07a047e608db84b3d8c06cd9a7c7dcc9c355c18e
-(v10.3.2) and installs uv version latest. Other actions from the actions
+CI pins astral-sh/setup-uv to full commit 68559e99cc807c1eb7e9238fd43a15bba460eec2
+(v10.3.3) and installs uv version latest. Other actions from the actions
 organization use major version tags. Setup actions using Node 24 require runner
 2.327.1 or newer (GitHub-hosted runners are used).
 
