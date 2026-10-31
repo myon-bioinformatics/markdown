@@ -34,7 +34,7 @@ uv run pytest
 ## What a green run covers
 
 `resolve-vendor` performs check → materialize → check on one Python version.
-The primary `pytest` matrix and the independent `test-locked` job on Python 3.15
+The primary `pytest` matrix and the independent `test-locked` job on Python 3.12
 each verify the lock, load vendored `gh_identity.py` under `python -S`, and run
 the suite. Pages/Docker continue shipping checked-in bytes; nothing is written
 back to main.
