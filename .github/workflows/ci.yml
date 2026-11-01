@@ -190,12 +190,84 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ matrix.node }}
-      - name: Install JS mirror readers (no browser)
-        run: npm ci --prefix tests/mirror --no-audit --no-fund
+      - name: Prepare and install pinned TOML-only dependency
+        shell: bash
+        run: |
+          python -S - <<'PYTHON'
+          import hashlib
+          import importlib.util
+          import json
+          import os
+          from pathlib import Path
+          import shutil
+          import subprocess
+          import tempfile
+          import urllib.request
+          
+          workspace = Path(os.environ["GITHUB_WORKSPACE"])
+          work = Path(tempfile.mkdtemp(prefix="nano-toml-ci-", dir=os.environ["RUNNER_TEMP"]))
+          helper = work / "nano_node.py"
+          url = "https://raw.githubusercontent.com/myon-bioinformatics/myon-bioinformatics/dd2f4dcf64cfc8246003c4423e40a19ae88e86e1/tools/nano_node.py"
+          with urllib.request.urlopen(url, timeout=30) as response:
+              data = response.read(256 * 1024 + 1)
+          if len(data) > 256 * 1024 or hashlib.sha256(data).hexdigest() != "9aa7e8a6bd99e385f3157490b8e91aa50e4c781b5eb23f449aaad5fa9f6d06dc":
+              raise RuntimeError("pinned nano helper hash mismatch")
+          helper.write_bytes(data)
+          spec = importlib.util.spec_from_file_location("nano_ci", helper)
+          nano = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(nano)
+          prepared = nano.prepare(workspace / "tests/mirror", work / "prepared",
+                                  feature="markdown-toml", dependencies_only=True)
+          receipt = json.loads((prepared / "receipt.json").read_bytes())
+          if (receipt.get("dependencies_only") is not True
+                  or receipt.get("application_source_staged") is not False
+                  or receipt.get("candidate_locked_package_records") != 1):
+              raise RuntimeError("unexpected dependency-only receipt")
+          project = prepared / "markdown-toml"
+          for filename, digest in (("package.json", receipt["projected_manifest_sha256"]),
+                                   ("package-lock.json", receipt["projected_lock_sha256"])):
+              if hashlib.sha256((project / filename).read_bytes()).hexdigest() != digest:
+                  raise RuntimeError("projected input changed before install")
+          env = {k: v for k, v in os.environ.items() if not k.lower().startswith("npm_config_")
+                 and k not in ("NODE_OPTIONS", "NODE_PATH", "NODE_ENV")}
+          env.update(HOME=str(prepared / "home"), XDG_CONFIG_HOME=str(prepared / "config"))
+          npm = shutil.which("npm")
+          if not npm:
+              raise RuntimeError("npm not found")
+          subprocess.run([npm, "ci", "--ignore-scripts", "--include=dev", "--no-audit", "--no-fund",
+                          "--registry=https://registry.npmjs.org", "--userconfig", str(prepared / "user.npmrc"),
+                          "--globalconfig", str(prepared / "global.npmrc"), "--cache", str(prepared / "cache")],
+                         cwd=project, env=env, check=True, timeout=180)
+          installed = project / "node_modules"
+          locked = json.loads((installed / ".package-lock.json").read_bytes())
+          if set(locked.get("packages", {})) != {"node_modules/smol-toml"}:
+              raise RuntimeError("unexpected installed TOML package set")
+          if json.loads((installed / "smol-toml/package.json").read_bytes())["version"] != "1.9.1":
+              raise RuntimeError("required pinned smol-toml is missing or changed")
+          # Copy only dependencies; application/tests/config remain the live checkout.
+          # A copy works on Windows without requiring symlink privileges.
+          target = workspace / "tests/mirror/node_modules"
+          if target.exists() or target.is_symlink():
+              raise RuntimeError("refusing to overwrite an existing test dependency directory")
+          shutil.copytree(installed, target)
+          print("TOML job: 32 original lock records -> 1 installed package; live tests unchanged")
+          PYTHON
       - name: Run Node-backed pytest slice
         env:
           NODE_PATH: ${{ github.workspace }}/tests/mirror/node_modules
         run: uv run pytest -q tests/test_toml_node_fallback.py --junitxml=build/junit/node-${{ matrix.os }}-${{ matrix.node }}.xml
+      - name: Require the complete non-skipped TOML slice
+        shell: bash
+        env:
+          TOML_JUNIT: build/junit/node-${{ matrix.os }}-${{ matrix.node }}.xml
+        run: |
+          python -S - <<'PYTHON'
+          import os
+          import xml.etree.ElementTree as ET
+          cases = ET.parse(os.environ["TOML_JUNIT"]).getroot().findall(".//testcase")
+          if len(cases) < 15 or any(case.find("skipped") is not None for case in cases):
+              raise SystemExit("expected all 15 or more TOML tests with zero skips")
+          PYTHON
       - name: Preserve raw JUnit
         if: always()
         uses: actions/upload-artifact@v7
