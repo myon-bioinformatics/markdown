@@ -179,7 +179,13 @@ benchmark, change CI, or claim the whole repository is minimized.
 
 ## Browser-free frontend CI
 
-The normal frontend wiring job has two parallel slices on Python 3.15:
+Choose dependencies by the check you need, rather than always splitting jobs.
+For a small Gradio API check or Streamlit-only check, use the corresponding feature
+group. For combined frontend work, keep the `frontend` umbrella (Gradio + Streamlit +
+Playwright), so shared dependencies are installed only once. The normal CI job runs
+all seven existing browser-free wiring tests in this single combined environment.
+
+Selective API-only commands:
 
 ```sh
 export GRADIO_ANALYTICS_ENABLED=False HF_HUB_DISABLE_TELEMETRY=1 GRADIO_SHARE=False
@@ -195,18 +201,28 @@ python -S scripts/check_frontend_slice.py streamlit streamlit.xml
 ```
 
 Run these sequentially locally, or use separate environments when running in parallel.
-`--no-sync` preserves the selected group during execution. CI requires the selected
-framework and curl, rejects the other framework and Playwright, and checks the exact
-four Gradio / three Streamlit JUnit identities with zero skips, failures or errors.
-The existing tests are unchanged. Servers bind to loopback; telemetry, public sharing,
-and SSR are disabled. No browser is installed or launched by these slices.
+`--no-sync` preserves the selected group during execution. The checker supports the
+exact four Gradio identities, three Streamlit identities, or their seven-test `all`
+union, always requiring zero skips, failures or errors. The existing tests are unchanged.
+With the environment opt-outs above, servers bind to loopback and telemetry, public
+sharing and SSR are disabled.
+
+Normal CI uses `uv sync --locked --group dev --group frontend`, runs the four listed
+test files together, and validates `check_frontend_slice.py all`. It requires all three
+framework packages and curl, but does not install browser binaries or launch a browser.
+Actual browser UI checks remain in the unchanged opt-in manual lane. This adjustment
+avoids the shared-dependency duplication seen in the experimental two-job proposal.
 
 `frontend` still includes `frontend-gradio`, `frontend-streamlit`, and
 `frontend-browser` (Playwright). Existing manual browser smoke, Pages and OpenWebUI
 workflows keep that complete group and their existing triggers. No runtime dependency
 or supported Python/Node matrix is changed by this split.
 
-### Bounded local comparison (2026-11-01)
+### Historical split comparison (2026-11-01)
+
+These measurements describe the earlier experimental two-job proposal, not the current
+normal CI topology. They are retained to explain why selective environments remain
+available while combined checks use a shared environment; no new speed claim is made.
 
 Linux x86_64, CPython 3.15.1, uv 0.13.4. The full umbrella export is byte-identical
 to the pre-split export; all 80 third-party lock records (versions, edges, URLs,

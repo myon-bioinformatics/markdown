@@ -25,7 +25,8 @@ def check(frontend: str, path: Path) -> None:
     root = ET.parse(path).getroot()
     cases = root.findall(".//testcase")
     identities = Counter((c.get("classname"), c.get("name")) for c in cases)
-    expected = Counter({identity: 1 for identity in EXPECTED[frontend]})
+    selected = set.union(*EXPECTED.values()) if frontend == "all" else EXPECTED[frontend]
+    expected = Counter({identity: 1 for identity in selected})
     if identities != expected:
         raise ValueError(f"Incomplete or unexpected {frontend} test identities: {identities}")
     if any(root.find(f".//{tag}") is not None for tag in ("skipped", "failure", "error")):
@@ -35,7 +36,7 @@ def check(frontend: str, path: Path) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("frontend", choices=EXPECTED)
+    parser.add_argument("frontend", choices=(*EXPECTED, "all"))
     parser.add_argument("junit", type=Path)
     args = parser.parse_args()
     check(args.frontend, args.junit)

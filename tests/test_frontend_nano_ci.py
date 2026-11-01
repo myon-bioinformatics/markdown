@@ -46,18 +46,19 @@ class FrontendNanoTests(unittest.TestCase):
         self.assertEqual(actual, expected)
         self.assertEqual(len(expected), 7)
 
-    def test_workflow_keeps_two_independent_no_browser_slices(self):
+    def test_workflow_uses_one_combined_environment_without_browser_execution(self):
         workflow = (ROOT / '.github/workflows/ci.yml').read_text()
         block = workflow.split('  frontend-mock-pytest-latest:', 1)[1].split('  frontend-smoke:', 1)[0]
-        self.assertIn('frontend: [gradio, streamlit]', block)
-        self.assertIn('fail-fast: false', block)
-        self.assertIn('--group "frontend-${{ matrix.frontend }}"', block)
+        self.assertNotIn('matrix:', block)
+        self.assertIn('--group frontend ', block)
         self.assertIn('uv run --no-sync pytest -q', block)
-        self.assertIn('scripts/check_frontend_slice.py ${{ matrix.frontend }}', block)
+        self.assertIn('scripts/check_frontend_slice.py all', block)
         self.assertIn('if-no-files-found: error', block)
         self.assertNotIn('playwright install', block)
-        self.assertNotIn('--group frontend ', block)
-        self.assertIn('find_spec("playwright") is None', block)
+        self.assertIn('for framework in ("gradio", "streamlit", "playwright"):', block)
+        for frontend in checker.EXPECTED:
+            for suffix in ('curl', 'ui'):
+                self.assertIn(f'tests/frontend/test_{frontend}_{suffix}.py', block)
         smoke = workflow.split('  frontend-smoke:', 1)[1].split('  failure-identity:', 1)[0]
         self.assertIn("github.event_name == 'workflow_dispatch'", smoke)
         self.assertIn('--group frontend ', smoke)
@@ -66,7 +67,8 @@ class FrontendNanoTests(unittest.TestCase):
     def test_complete_reports_and_rejection_probes(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'junit.xml'
-            for frontend, identities in checker.EXPECTED.items():
+            choices = dict(checker.EXPECTED, all=set.union(*checker.EXPECTED.values()))
+            for frontend, identities in choices.items():
                 for mutation in ('good', 'missing', 'duplicate', 'renamed', 'skipped', 'failure', 'error'):
                     with self.subTest(frontend=frontend, mutation=mutation):
                         root = ET.Element('testsuites')
