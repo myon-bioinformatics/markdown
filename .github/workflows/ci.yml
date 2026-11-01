@@ -97,7 +97,7 @@ jobs:
           fi
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '24'
+          node-version: '26'
       - name: Install JS mirror readers (no browser)
         run: npm ci --prefix tests/mirror --no-audit --no-fund
       - name: Fetch pinned xprobe JUnit importer
@@ -156,7 +156,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        node: ['24', 'latest']
+        node: ['26', 'latest']
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -361,7 +361,7 @@ jobs:
     uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-junit-identity.yml@9e3da7ae1846e9604ebc24bb5178f7de094a4e77
     with:
       commit-sha: ${{ github.event.pull_request.head.sha || github.sha }}
-      expected-reports: '["junit-py3.11/pytest-3.11.xml","junit-py3.12/pytest-3.12.xml","junit-py3.13/pytest-3.13.xml","junit-py3.14/pytest-3.14.xml","junit-node-ubuntu-latest-24/node-ubuntu-latest-24.xml","junit-node-ubuntu-latest-latest/node-ubuntu-latest-latest.xml","junit-node-windows-latest-24/node-windows-latest-24.xml","junit-node-windows-latest-latest/node-windows-latest-latest.xml","junit-node-macos-latest-24/node-macos-latest-24.xml","junit-node-macos-latest-latest/node-macos-latest-latest.xml"]'
+      expected-reports: '["junit-py3.11/pytest-3.11.xml","junit-py3.12/pytest-3.12.xml","junit-py3.13/pytest-3.13.xml","junit-py3.14/pytest-3.14.xml","junit-node-ubuntu-latest-26/node-ubuntu-latest-26.xml","junit-node-ubuntu-latest-latest/node-ubuntu-latest-latest.xml","junit-node-windows-latest-26/node-windows-latest-26.xml","junit-node-windows-latest-latest/node-windows-latest-latest.xml","junit-node-macos-latest-26/node-macos-latest-26.xml","junit-node-macos-latest-latest/node-macos-latest-latest.xml"]'
       artifact-pattern: "junit-*"
       output-artifact: "failure-identity"
 
