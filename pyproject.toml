@@ -11,10 +11,14 @@ dependencies = []
 
 [dependency-groups]
 dev = ["pytest>=8.4.2", "PyYAML>=6.0.3"]
+frontend-gradio = ["gradio>=6.30.0"]
+frontend-streamlit = ["streamlit>=1.66.0"]
+frontend-browser = ["playwright>=1.64.0"]
+# Backward-compatible full environment for manual/browser workflows.
 frontend = [
-  "gradio>=6.30.0",
-  "streamlit>=1.66.0",
-  "playwright>=1.64.0",
+  { include-group = "frontend-gradio" },
+  { include-group = "frontend-streamlit" },
+  { include-group = "frontend-browser" },
 ]
 
 # Installed artifact is the stdlib-only markdown.py. uv manages contributor tools.
@@ -29,6 +33,9 @@ override-dependencies = [
 [tool.uv.dependency-groups]
 dev = { requires-python = ">=3.11" }
 frontend = { requires-python = ">=3.11" }
+frontend-gradio = { requires-python = ">=3.11" }
+frontend-streamlit = { requires-python = ">=3.11" }
+frontend-browser = { requires-python = ">=3.11" }
 
 [tool.hatch.build.targets.wheel]
 only-include = ["markdown.py"]

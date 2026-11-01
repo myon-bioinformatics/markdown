@@ -303,6 +303,20 @@ jobs:
     needs: changes
     if: needs.changes.outputs.product_changed == 'true'
     runs-on: ubuntu-latest
+    name: Frontend wiring (${{ matrix.frontend }}, no browser)
+    env:
+      GRADIO_ANALYTICS_ENABLED: "False"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      GRADIO_SHARE: "False"
+      GRADIO_ROOT_PATH: ""
+      GRADIO_SSR_MODE: "False"
+      GRADIO_VIBE_MODE: ""
+      STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false"
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        frontend: [gradio, streamlit]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
@@ -314,16 +328,40 @@ jobs:
       - name: Sync locked frontend test environment
         shell: bash
         run: |
-          uv sync --locked --group dev --group frontend --python "$(python -c 'import sys; print(sys.executable)')"
+          uv sync --locked --group dev --group "frontend-${{ matrix.frontend }}" --python "$(python -c 'import sys; print(sys.executable)')"
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
-          uv run pytest --version
-      - name: Run headless frontend mock tests on locked pytest
+          uv run --no-sync pytest --version
+      - name: Require selected framework and no browser dependencies
+        env:
+          FRONTEND: ${{ matrix.frontend }}
         run: |
-          uv run pytest -q \
-            tests/frontend/test_gradio_curl.py \
-            tests/frontend/test_gradio_ui.py \
-            tests/frontend/test_streamlit_curl.py \
-            tests/frontend/test_streamlit_ui.py
+          .venv/bin/python - <<'PYTHON'
+          import importlib.util
+          import os
+          import shutil
+          selected = os.environ["FRONTEND"]
+          other = "streamlit" if selected == "gradio" else "gradio"
+          assert importlib.util.find_spec(selected) is not None
+          assert importlib.util.find_spec(other) is None
+          assert importlib.util.find_spec("playwright") is None
+          assert shutil.which("curl"), "curl is required; do not silently skip HTTP tests"
+          PYTHON
+      - name: Run existing browser-free wiring tests
+        run: |
+          uv run --no-sync pytest -q \
+            tests/frontend/test_${{ matrix.frontend }}_curl.py \
+            tests/frontend/test_${{ matrix.frontend }}_ui.py \
+            --junitxml=build/junit/frontend-${{ matrix.frontend }}.xml
+      - name: Require every selected test with zero skips
+        run: python -S scripts/check_frontend_slice.py ${{ matrix.frontend }} build/junit/frontend-${{ matrix.frontend }}.xml
+      - name: Preserve frontend JUnit
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: frontend-junit-${{ matrix.frontend }}
+          path: build/junit/frontend-${{ matrix.frontend }}.xml
+          if-no-files-found: error
+          retention-days: 14
 
   frontend-smoke:
     needs: changes
