@@ -46,6 +46,13 @@ ironmate などで使っていた `markdown.py` を、同じファイル名の�
 | `docs/antipatterns.md` | Stable library/integration anti-pattern IDs plus concrete CI/Docker/Playwright incidents, root causes, fixes, and regression lessons |
 | `scripts/real_world_pages_report.py` | Builds the `real-world-pages` GitHub Actions workflow's Pages report: original vs. `html_to_markdown()`→`markdown_to_html()` round-trip, screenshotted via Playwright's own CLI, for every real HTML fixture in `fixtures/provenance.yaml` |
 
+## Optional Gradio-only nano environment
+
+The stdlib-only `markdown.py` core needs no environment reduction. For the real
+Gradio frontend, see the [opt-in, pinned nano-environment recipe](docs/nano-environment.md).
+It keeps Gradio and its native dependencies, omits the separate Streamlit/browser
+closure, and leaves all existing dependency groups, tests and CI unchanged.
+
 ## Quick use
 
 ```python
