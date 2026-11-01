@@ -216,7 +216,29 @@ jobs:
           spec = importlib.util.spec_from_file_location("nano_ci", helper)
           nano = importlib.util.module_from_spec(spec)
           spec.loader.exec_module(nano)
-          prepared = nano.prepare(workspace / "tests/mirror", work / "prepared",
+          # Git's Windows checkout may convert LF to CRLF. Preserve the strict helper:
+          # stage the two current HEAD blobs, accepting only that exact checkout transform.
+          inputs = work / "inputs"
+          inputs.mkdir()
+          head = subprocess.run(["git", "rev-parse", "--verify", "HEAD"], cwd=workspace,
+                                capture_output=True, check=True, timeout=30).stdout.strip().decode("ascii")
+          if len(head) != 40 or any(c not in "0123456789abcdef" for c in head):
+              raise RuntimeError("expected the current checkout's full Git commit")
+          for filename in ("package.json", "package-lock.json"):
+              relative = "tests/mirror/" + filename
+              path = workspace / relative
+              if path.is_symlink() or not path.is_file():
+                  raise RuntimeError("expected regular checkout package input")
+              committed = subprocess.run(["git", "--no-pager", "show", head + ":" + relative],
+                                         cwd=workspace, capture_output=True, check=True, timeout=30).stdout
+              if path.read_bytes() not in (committed, committed.replace(b"\n", b"\r\n")):
+                  raise RuntimeError("checkout package input differs from HEAD beyond CRLF conversion")
+              (inputs / filename).write_bytes(committed)
+          if subprocess.run(["git", "rev-parse", "--verify", "HEAD"], cwd=workspace,
+                            capture_output=True, check=True, timeout=30).stdout.strip().decode("ascii") != head:
+              raise RuntimeError("checkout HEAD changed during input staging")
+          print("Preparing package inputs from current checkout HEAD:", head)
+          prepared = nano.prepare(inputs, work / "prepared",
                                   feature="markdown-toml", dependencies_only=True)
           receipt = json.loads((prepared / "receipt.json").read_bytes())
           if (receipt.get("dependencies_only") is not True
