@@ -329,8 +329,12 @@ there — the health endpoint and initial page. `tests/test_demo_logic.py` cover
 
 CI runs **pytest + PyYAML** (and stdlib `tomllib` / `json`), which already covers `demos/*.py`'s
 real logic via `tests/test_demo_logic.py` — no extra dependency installs needed. Gradio / Streamlit
-themselves (the actual UI, not its behavior) — including the browser-free `tests/frontend` wiring
-checks — stay optional (`workflow_dispatch` / local smoke).
+themselves are optional for library users. For API-only checks, select `frontend-gradio` (four tests) or
+`frontend-streamlit` (three tests). Normal CI runs all seven browser-free wiring checks
+in one shared `frontend` environment, avoiding duplicate shared dependency installs.
+That complete group also remains available for opt-in browser smoke (`workflow_dispatch`
+/ local smoke); installing Playwright does not launch or download a browser. See the
+[use-case-specific environment contract and comparison](docs/nano-environment.md#browser-free-frontend-ci).
 
 `demos/chat_ui_demo.py` is the one demo in this repo with an actual chat screen
 (a bubble-history `gr.Chatbot`, not tied to any specific product), so it's also

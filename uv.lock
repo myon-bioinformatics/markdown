@@ -908,10 +908,22 @@ frontend = [
     { name = "playwright" },
     { name = "streamlit" },
 ]
+frontend-browser = [
+    { name = "playwright" },
+]
+frontend-gradio = [
+    { name = "gradio" },
+]
+frontend-streamlit = [
+    { name = "streamlit" },
+]
 
 [package.group-requires-python]
 dev = ">=3.11"
-frontend = ">=3.11"
+frontend = ">=3.11,>=3.11,>=3.11,>=3.11"
+frontend-browser = ">=3.11"
+frontend-gradio = ">=3.11"
+frontend-streamlit = ">=3.11"
 
 [package.metadata]
 
@@ -925,6 +937,9 @@ frontend = [
     { name = "playwright", marker = "python_full_version >= '3.11'", specifier = ">=1.64.0" },
     { name = "streamlit", marker = "python_full_version >= '3.11'", specifier = ">=1.66.0" },
 ]
+frontend-browser = [{ name = "playwright", marker = "python_full_version >= '3.11'", specifier = ">=1.64.0" }]
+frontend-gradio = [{ name = "gradio", marker = "python_full_version >= '3.11'", specifier = ">=6.30.0" }]
+frontend-streamlit = [{ name = "streamlit", marker = "python_full_version >= '3.11'", specifier = ">=1.66.0" }]
 
 [[package]]
 name = "mdurl"
