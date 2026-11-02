@@ -279,7 +279,7 @@ def test_no_reader_names_both_options(monkeypatch):
     monkeypatch.setattr(shutil, "which", lambda name, **kw: None)
     md._node_launch_module().clear_probe_cache()
     assert md.toml_reader() is None
-    with pytest.raises(RuntimeError, match=r"tomllib.*Node 24\+.*smol-toml"):
+    with pytest.raises(RuntimeError, match=r"tomllib.*Node 26\+.*smol-toml"):
         md.toml_to_markdown("a = 1\n")
 
 
@@ -287,10 +287,10 @@ def test_node_20_is_rejected_as_reader(tmp_path, monkeypatch):
     script = _write_fake_node(tmp_path, version="v20.0.0", on_eval="pass")
     _use_fake_node(monkeypatch, script)
     node_launch = md._node_launch_module()
-    with pytest.raises(node_launch.NodeNotFoundError, match=r"must be 24.*found 20"):
+    with pytest.raises(node_launch.NodeNotFoundError, match=r"must be 26.*found 20"):
         node_launch.resolve_node(env_var="NODE")
     assert md.toml_reader() is None
-    with pytest.raises(RuntimeError, match=r"Node 24\+.*smol-toml"):
+    with pytest.raises(RuntimeError, match=r"Node 26\+.*smol-toml"):
         md.toml_to_markdown("a = 1\n")
 
 
@@ -393,7 +393,7 @@ def test_toml_node_run_stdin_closed_launch_error_maps_stderr(monkeypatch):
 
 def test_toml_loads_stdin_closed_nonzero_surfaces_stderr(tmp_path, monkeypatch):
     """``node_launch`` ``ELAUNCHSTDINCLOSED`` (unread stdin close + large payload) → ``RuntimeError``."""
-    script = _write_fake_node(tmp_path, version="v24.0.0", close_stdin_unread=True)
+    script = _write_fake_node(tmp_path, version="v26.0.0", close_stdin_unread=True)
     _use_fake_node(monkeypatch, script)
     monkeypatch.setattr(md, "_TOML_READER", ["node"])
     with pytest.raises(RuntimeError, match=r"Node TOML reader failed: boom"):

@@ -31,11 +31,11 @@ EXPECTED_REPORTS = [
     "junit-py3.12/pytest-3.12.xml",
     "junit-py3.13/pytest-3.13.xml",
     "junit-py3.14/pytest-3.14.xml",
-    "junit-node-ubuntu-latest-24/node-ubuntu-latest-24.xml",
+    "junit-node-ubuntu-latest-26/node-ubuntu-latest-26.xml",
     "junit-node-ubuntu-latest-latest/node-ubuntu-latest-latest.xml",
-    "junit-node-windows-latest-24/node-windows-latest-24.xml",
+    "junit-node-windows-latest-26/node-windows-latest-26.xml",
     "junit-node-windows-latest-latest/node-windows-latest-latest.xml",
-    "junit-node-macos-latest-24/node-macos-latest-24.xml",
+    "junit-node-macos-latest-26/node-macos-latest-26.xml",
     "junit-node-macos-latest-latest/node-macos-latest-latest.xml"
 ]
 
