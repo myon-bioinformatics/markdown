@@ -38,7 +38,7 @@ uv sync --locked --group dev
 PYTHONPATH=build/shared uv run pytest -q
 ```
 
-Optionally set `MARKDOWN_FAILURE_EVIDENCE` to a new output directory to retain
+Optionally set `FAILURE_EVIDENCE_DIR` to a new output directory to retain
 child reports; reuse is rejected to avoid mixing old and new evidence.
 No importer download occurs inside tests, and a missing importer is a collection
 error rather than a silently skipped regression. The standalone frontend and
