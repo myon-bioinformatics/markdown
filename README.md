@@ -690,3 +690,9 @@ the parity decision hint is `selected_cases_only`, never a whole-corpus claim.
 A selected unavailable structured cycle stays explicitly unavailable.
 
 Validation: 25 focused tests passed; both entry points list cases with `python -S`.
+
+## Focused test discovery
+
+See [standard-library discovery commands](docs/unittest-discovery.md) for
+validated `python -S -m unittest discover` recipes, filename/name filtering,
+and the boundary with the full pytest suite.
