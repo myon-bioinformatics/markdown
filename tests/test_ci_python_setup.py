@@ -83,7 +83,7 @@ class CiPythonSetupTests(unittest.TestCase):
         self.assertRegex(locked, r"python-version:\s*\n\s*- '3\.12'")
         self.assertIn("name: locked-junit-py${{ matrix.python-version }}", locked)
         self.assertIn("uv sync --locked --group dev", locked)
-        self.assertIn('python: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]', job("runtime-compatibility.yml", "runtime"))
+        self.assertIn('python: ["3.11", "3.12", "3.13", "3.14"]', job("runtime-compatibility.yml", "runtime"))
         self.assertIn("independent `test-locked` job on Python 3.12", (ROOT / "docs/vendor-automation.md").read_text(encoding="utf-8"))
 
 

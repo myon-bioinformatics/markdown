@@ -637,7 +637,8 @@ Public source placement and automatic Python CI updates: [vendor automation](doc
 
 ## Runtime and development Python policy
 
-The standard-library runtime still has behavior coverage on Python 3.9 and newer.
+The standard-library source runtime requires Python 3.11 or newer, matching the
+installable project's Python floor. Python 3.9 and 3.10 are no longer supported.
 The separate `runtime-compatibility` CI lane executes those checks with
 `python -S -m unittest`, without installing pytest or any third-party package.
 The uv project requires Python >=3.11 and has no runtime dependencies.
@@ -654,8 +655,8 @@ python -S -m unittest discover -s tests -p test_runtime_compatibility.py -v
 
 `pyproject.toml` is the canonical development dependency definition; legacy
 requirements files remain for downstream callers. The unittest lane does not
-install that uv environment, so the 3.9 and 3.10 checks stay independent of
-the uv project's Python floor.
+install that uv environment, so the Python 3.11-3.14 runtime checks stay
+independent of the development dependencies.
 
 `[tool.uv] override-dependencies` lifts transitive pins that upstream frontends
 still cap below current PyPI releases (remove each line when the cap is gone):
