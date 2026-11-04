@@ -1,0 +1,18 @@
+{
+  "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+  "baseline_sha": "cac8b72597e6b75d67653ee86a684707812406ca",
+  "lines": 50000,
+  "peak_bytes": {
+    "baseline": [
+      5248354,
+      5246018,
+      5246018
+    ],
+    "slotted": [
+      3646050,
+      3646050,
+      3646050
+    ]
+  },
+  "scope": "scanner allocations only; source lines/import excluded"
+}

@@ -414,7 +414,7 @@ _HOST_PORT_REFERENCE_RE = re.compile(
 # Shared lexical helpers. New format converters should use these helpers
 # instead of re-implementing fence state or treating inline code as prose.
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class _ScannedLine:
     """One physical Markdown line with its code-context classification."""
 
