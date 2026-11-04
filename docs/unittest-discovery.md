@@ -2,7 +2,7 @@
 
 Run from this repository root with Python 3.9 or newer. These commands use
 Python’s built-in test runner; no pip, uv sync, pytest or browser installation
-is needed for the listed checks. `-S` keeps site-packages out of the interpreter.
+is needed for the listed checks. `-S` disables automatic `site` initialization.
 
 This standard-library runtime-compatibility lane is separate from the uv/pytest
 development workflow, which still requires Python 3.11 or newer. See the
