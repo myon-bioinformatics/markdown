@@ -24,11 +24,13 @@ def main():
             tracemalloc.stop()
             fields=[(r.text,r.in_fenced_code,r.is_fence_open,r.is_fence_close) for r in scanned]
             if expected is None:expected=fields
-            assert fields==expected
+            if fields != expected:
+                raise SystemExit("scanner field mismatch")
             del scanned
         results[name]=samples
     content='# Hello\n\n```py\n# hidden\n```\n## World\n'
-    assert old.table_of_contents(content)==markdown.table_of_contents(content)
+    if old.table_of_contents(content) != markdown.table_of_contents(content):
+        raise SystemExit("table of contents mismatch")
     print(json.dumps({'python':sys.version,'baseline_sha':sha,'lines':len(lines),'peak_bytes':results,
                       'scope':'scanner allocations only; source lines/import excluded'},indent=2))
 
