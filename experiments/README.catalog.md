@@ -1,6 +1,6 @@
 # Real-world catalog integration experiment (not adopted)
 
-Proposed independent Draft PR target: `myon-bioinformatics/markdown`, based on
+Independent [Draft PR #139](https://github.com/myon-bioinformatics/markdown/pull/139), based on
 `8590570dd5af8c9ed132186e11a2521546ac83ea`.
 Only these four files under `experiments/` are added. No workflow, dependency,
 vendor lock, report producer, existing index, public URL or deployment is changed.
@@ -63,13 +63,21 @@ is opt-in and requires Playwright and an explicitly selected Chromium executable
   320, 390, 1440 all passed (6 conditions). Verified no horizontal page overflow,
   keyboard disclosure, local link targets, and navigation to roundtrip/stats.
   The 390px capture was also visually inspected. These are local browser checks;
-  hosted GitHub CI has not been run for this proposal.
+  they are not a claim about hosted GitHub CI.
 - Navigation to the existing roundtrip page exposes two already missing local
   source image assets (`image/tohoho.gif`, `image/popase.gif`). This experiment
   preserves that report exactly and does not claim those source assets exist.
 - Two adapter runs produced byte-identical HTML. Hashes of every other generated
   report file, including index.html, remained unchanged. `git diff --check` passed.
 
-No push, PR creation, merge, formal adoption or publication has been performed.
-External changes require user approval. Proposed PR title:
-`Experiment: index existing real-world report with pinned web-ui catalog`.
+The experiment was published as Draft PR #139 on 2026-11-03 with user approval.
+No merge, formal adoption or Pages deployment is authorized by this experiment.
+The renderer commit and SHA-256 above are historical experiment pins; subsequent
+web-ui #111 changes do not update them automatically.
+
+## Verifier regression coverage
+
+Browser acceptance checks raise explicit errors, including under Python -O/-OO.
+Synthetic unit tests exercise each failure and the success path at all three
+optimization levels without requiring Playwright. They do not replace the opt-in
+real-browser check above.

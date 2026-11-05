@@ -80,4 +80,46 @@ class CatalogTests(unittest.TestCase):
         wrong.write_text('raise RuntimeError("must not execute")')
         with self.assertRaises(ValueError): render(self.root, wrong)
 
+
+class BrowserVerifierTests(unittest.TestCase):
+    """Synthetic browser responses, including every rejection under -O/-OO."""
+
+    def test_acceptance_checks_at_every_optimization_level(self):
+        from unittest.mock import MagicMock
+        source = Path(__file__).with_name('check_catalog_browser.py').read_text()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'evidence.json').write_text('{}')
+            for optimization in (0, 1, 2):
+                namespace = {'__name__': 'browser_verifier_test'}
+                exec(compile(source, 'check_catalog_browser.py', 'exec',
+                             optimize=optimization), namespace)
+                for failure in (None, 'article', 'script', 'overflow', 'open',
+                                'close', 'missing', 'navigation', 'stats'):
+                    with self.subTest(optimization=optimization, failure=failure):
+                        page = MagicMock()
+                        locators = {key: MagicMock() for key in
+                                    ('article', 'script', 'summary', 'details[open]',
+                                     'article a', 'body')}
+                        page.locator.side_effect = locators.__getitem__
+                        locators['article'].count.return_value = 0 if failure == 'article' else 1
+                        locators['script'].count.return_value = 1 if failure == 'script' else 0
+                        page.evaluate.return_value = 321 if failure == 'overflow' else 320
+                        locators['details[open]'].count.side_effect = (
+                            [0, 0] if failure == 'open' else
+                            [1, 1] if failure == 'close' else [1, 0])
+                        locators['article a'].evaluate_all.return_value = [
+                            './missing.json' if failure == 'missing' else './evidence.json']
+                        page.url = ('file:///wrong.html' if failure == 'navigation'
+                                    else 'file:///tohoho_web_home/roundtrip.html')
+                        locators['body'].inner_text.return_value = (
+                            '{}' if failure == 'stats' else '{"h2": 24}')
+                        if failure is None:
+                            namespace['check_page'](page, root, 320)
+                            self.assertEqual(page.keyboard.press.call_count, 2)
+                            page.go_back.assert_called_once()
+                        else:
+                            with self.assertRaisesRegex(RuntimeError, 'Browser check failed:'):
+                                namespace['check_page'](page, root, 320)
+
 if __name__ == '__main__': unittest.main()
