@@ -19,9 +19,6 @@ JOBS = {
         "checks": "3.15",
         "build": "3.15"
     },
-    "real-chat-ui-smoke.yml": {
-        "openwebui-smoke": "3.15"
-    },
     "runtime-compatibility.yml": {
         "runtime": "${{ matrix.python }}"
     }
