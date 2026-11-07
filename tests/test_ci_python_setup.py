@@ -15,7 +15,7 @@ JOBS = {
         "frontend-smoke": "3.15",
         "test-locked": "${{ matrix.python-version }}"
     },
-    "real-world-pages.yml": {
+    "pages.yml": {
         "checks": "3.15",
         "build": "3.15"
     },
