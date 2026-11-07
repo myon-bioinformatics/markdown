@@ -310,14 +310,12 @@ states its contract.
 
 🚫 Not run here: `tests/real_chat_ui` (Docker), `experiments/check_catalog_browser.py` (pins an older `web_ui.py` hash). Firefox / WebKit not installed.
 
-🔁 Re-record (`$WEBUI` = PySaiyanWeBoo at `adb23d7`; start `demos/chat_ui_demo.py` on `127.0.0.1:7861` first):
+🔁 Re-record (start `demos/chat_ui_demo.py` on `127.0.0.1:7861` first; the diagnostics page is self-contained, nothing is fetched from a CDN):
 
 ```sh
 python scripts/real_world_pages_report.py --out /tmp/site
 python scripts/markdown_repository_diagnostics.py /tmp/site
-python ../BrowserTestKit/tools/evidence_gif.py docs/evidence/browser.gif --serve /tmp/site \
-  --map "https://cdn.jsdelivr.net/gh/myon-bioinformatics/web-ui@adb23d7ba6ea94672b76457573f6655a081ee054=$WEBUI" \
-  --plan docs/evidence/browser.json
+python ../BrowserTestKit/tools/evidence_gif.py docs/evidence/browser.gif --serve /tmp/site --plan docs/evidence/browser.json
 ```
 
 ## Test / demo
