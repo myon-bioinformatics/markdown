@@ -296,6 +296,30 @@ states its contract.
 - LLM output: `split_reasoning`, `compact_llm_output`, `llm_output_digest`,
   `extract_identifiers` (see the `llm io` section marker in `markdown.py`).
 
+## 🎞️ Browser evidence
+
+![Real-world report, diagnostics and the Gradio chat demo rendering a table, code and a list](docs/evidence/browser.gif)
+
+🗓️ 2026-11-07 · 🧭 Chromium 153 · 🐧 Linux · receipt [`docs/evidence/browser.json`](docs/evidence/browser.json)
+
+| 🧪 Suite | ✅ | 📝 |
+| --- | ---: | --- |
+| `pytest tests/frontend` (Gradio, Streamlit, chat UI screen, Playwright CLI) | 13 | |
+| `scripts/real_world_pages_report.py` + `check_report_screenshots.py` | ✅ | 3 corrupted bundles rejected as expected |
+| 🎞️ evidence GIF shots | 5 | |
+
+🚫 Not run here: `tests/real_chat_ui` (Docker), `experiments/check_catalog_browser.py` (pins an older `web_ui.py` hash). Firefox / WebKit not installed.
+
+🔁 Re-record (`$WEBUI` = PySaiyanWeBoo at `adb23d7`; start `demos/chat_ui_demo.py` on `127.0.0.1:7861` first):
+
+```sh
+python scripts/real_world_pages_report.py --out /tmp/site
+python scripts/markdown_repository_diagnostics.py /tmp/site
+python ../BrowserTestKit/tools/evidence_gif.py docs/evidence/browser.gif --serve /tmp/site \
+  --map "https://cdn.jsdelivr.net/gh/myon-bioinformatics/web-ui@adb23d7ba6ea94672b76457573f6655a081ee054=$WEBUI" \
+  --plan docs/evidence/browser.json
+```
+
 ## Test / demo
 
 ```bash
