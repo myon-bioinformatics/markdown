@@ -1,11 +1,6 @@
 """Consumer mapping regression tests use the real pinned shared checker."""
-import importlib.util
-import os
+import importlib.util, os, struct, subprocess, sys, zlib
 from pathlib import Path
-import struct
-import subprocess
-import sys
-import zlib
 
 import pytest
 

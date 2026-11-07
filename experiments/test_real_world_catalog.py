@@ -1,11 +1,6 @@
 """Synthetic edge cases; not measured report results."""
-import hashlib
-import json
-import os
-from pathlib import Path
-import tempfile
-import unittest
-from urllib.parse import unquote, urljoin
+import hashlib, json, os, tempfile, unittest
+from pathlib import Path; from urllib.parse import unquote, urljoin
 from real_world_catalog import catalog_spec, render
 
 RENDERER = Path(os.environ.get('CATALOG_WEB_UI', 'missing-experimental-renderer.py'))

@@ -1,11 +1,6 @@
 """Offline contracts for dependency slices and fail-closed frontend evidence."""
-import ast
-import importlib.util
+import ast, importlib.util, tempfile, tomllib, unittest, xml.etree.ElementTree as ET
 from pathlib import Path
-import tempfile
-import tomllib
-import unittest
-import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('check_frontend_slice', ROOT / 'scripts/check_frontend_slice.py')

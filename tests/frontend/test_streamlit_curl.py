@@ -10,12 +10,7 @@ endpoint and the initial page shell.
 
 from __future__ import annotations
 
-import shutil
-import subprocess
-import sys
-import time
-import urllib.error
-import urllib.request
+import shutil, subprocess, sys, time, urllib.error, urllib.request
 from pathlib import Path
 
 import pytest

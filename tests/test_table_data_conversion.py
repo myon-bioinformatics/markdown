@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import csv
-import io
-import sys
+import csv, io, sys
 from pathlib import Path
 
 import pytest

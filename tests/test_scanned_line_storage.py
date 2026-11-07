@@ -1,9 +1,5 @@
-from pathlib import Path
-import copy
-import pickle
-import sys
-import unittest
-from dataclasses import FrozenInstanceError
+import copy, pickle, sys, unittest
+from dataclasses import FrozenInstanceError; from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import markdown as md
 
