@@ -9,11 +9,11 @@ SETUP_UV = "astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2"
 JOBS = {
     "ci.yml": {
         "resolve-vendor": "3.15",
-        "pytest": "${{ matrix.python-version }}",
+        "test": "${{ matrix.python-version }}",
         "node-runtime": "3.15",
         "frontend-mock-pytest-latest": "3.15",
         "frontend-smoke": "3.15",
-        "test-locked": "${{ matrix.python-version }}"
+        "vendor-locked": "${{ matrix.python-version }}"
     },
     "pages.yml": {
         "checks": "3.15",
@@ -79,12 +79,12 @@ class CiPythonSetupTests(unittest.TestCase):
         self.assertEqual(json.loads(match.group(1)), EXPECTED_REPORTS)
 
     def test_locked_baseline_and_runtime_floor_are_preserved(self):
-        locked = job("ci.yml", "test-locked")
+        locked = job("ci.yml", "vendor-locked")
         self.assertRegex(locked, r"python-version:\s*\n\s*- '3\.12'")
         self.assertIn("name: locked-junit-py${{ matrix.python-version }}", locked)
         self.assertIn("uv sync --locked --group dev", locked)
         self.assertIn('python: ["3.11", "3.12", "3.13", "3.14"]', job("runtime-compatibility.yml", "runtime"))
-        self.assertIn("independent `test-locked` job on Python 3.12", (ROOT / "docs/vendor-automation.md").read_text(encoding="utf-8"))
+        self.assertIn("independent `vendor-locked` job on Python 3.12", (ROOT / "docs/vendor-automation.md").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

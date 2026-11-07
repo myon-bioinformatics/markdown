@@ -272,7 +272,7 @@ utilities, not a CommonMark parser or an LLM summarizer:
   the limit leaves enough room.
 
 Conversation-history compression and broader HTML conversion remain separate
-future design topics. See docs/context_helpers.md for the exact contracts.
+future design topics. See docs/context-helpers.md for the exact contracts.
 
 ## Dialects, system formats, directory trees, LLM output
 

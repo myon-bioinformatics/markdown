@@ -53,7 +53,7 @@ jobs:
         README.md
         fixtures
 
-  pytest:
+  test:
     permissions:
       contents: read
     needs: [changes, resolve-vendor]
@@ -382,7 +382,7 @@ jobs:
         run: uv run pytest -q tests/frontend
 
   failure-identity:
-    needs: [changes, pytest, node-runtime]
+    needs: [changes, test, node-runtime]
     if: always() && needs.changes.outputs.product_changed == 'true'
     permissions:
       contents: read
@@ -394,7 +394,7 @@ jobs:
       artifact-pattern: "junit-*"
       output-artifact: "failure-identity"
 
-  test-locked:
+  vendor-locked:
     permissions:
       contents: read
     needs: changes
@@ -487,5 +487,5 @@ jobs:
         path: build/controlled-failure/
         if-no-files-found: error
         retention-days: 14
-    name: Locked baseline
+    name: Vendor locked baseline
     timeout-minutes: 20
