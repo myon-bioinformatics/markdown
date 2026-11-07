@@ -44,7 +44,7 @@ ironmate などで使っていた `markdown.py` を、同じファイル名の�
 | `demos/chat_ui_demo.py` | Optional: generic mock chat screen — assistant replies built with `markdown.py`'s generation helpers, rendered by Gradio's `Chatbot` |
 | `demos/openai_compat_mock.py` | Optional: OpenAI-compatible chat completions server (stdlib only) so a real chat product can be pointed at `render_assistant_turn()`'s output instead of a real LLM — also issues one real OpenAI-style tool call for the MCP round-trip test below |
 | `docs/antipatterns.md` | Stable library/integration anti-pattern IDs plus concrete CI/Docker/Playwright incidents, root causes, fixes, and regression lessons |
-| `scripts/real_world_pages_report.py` | Builds the `real-world-pages` GitHub Actions workflow's Pages report: original vs. `html_to_markdown()`→`markdown_to_html()` round-trip, screenshotted via Playwright's own CLI, for every real HTML fixture in `fixtures/provenance.yaml` |
+| `scripts/real_world_pages_report.py` | Builds the `Pages` GitHub Actions workflow (`pages.yml`) report: original vs. `html_to_markdown()`→`markdown_to_html()` round-trip, screenshotted via Playwright's own CLI, for every real HTML fixture in `fixtures/provenance.yaml` |
 
 ## Optional Gradio-only nano environment
 
@@ -614,7 +614,7 @@ The Pages workflow checks out the PR head before generating diagnostics.
 
 ## Shared screenshot evidence
 
-`real-world-pages` checks out browser-test-kit at
+`pages.yml` checks out browser-test-kit at
 `6a2e32a4bbe49be5268e6b30040d665a89eecf66`. Every HTML entry in
 `fixtures/provenance.yaml` requires both `original.png` and `roundtrip.png`;
 missing or structurally invalid images fail the build. PNG validation uses the

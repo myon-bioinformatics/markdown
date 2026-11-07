@@ -1,4 +1,4 @@
-name: real-world-pages
+name: Pages
 
 # Publishes scripts/real_world_pages_report.py's output to GitHub Pages:
 # for every real, vendored HTML fixture in fixtures/provenance.yaml (see
@@ -36,7 +36,7 @@ on:
       - "tests/test_markdown_repository_diagnostics.py"
       - "fixtures/benchmark/**"
       - "fixtures/provenance.yaml"
-      - ".github/workflows/real-world-pages.yml"
+      - ".github/workflows/pages.yml"
   push:
     branches: [main]
     paths:
@@ -52,7 +52,7 @@ on:
       - "vendor.lock.json"
       - "fixtures/benchmark/**"
       - "fixtures/provenance.yaml"
-      - ".github/workflows/real-world-pages.yml"
+      - ".github/workflows/pages.yml"
 
 permissions:
   contents: read
