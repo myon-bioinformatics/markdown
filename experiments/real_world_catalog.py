@@ -106,11 +106,11 @@ def render(report: Path, renderer: Path) -> str:
     return module.catalog_document(spec)
 
 
-def main() -> int:
+def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--report', required=True, type=Path)
     parser.add_argument('--web-ui', required=True, type=Path)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     page = render(args.report, args.web_ui)
     output = args.report / 'catalog-experiment.html'
     if output.is_symlink():
