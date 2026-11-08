@@ -578,7 +578,7 @@ MIT
 
 `markdown_to_web_ui_v1()` wraps the existing conservative Markdown-to-HTML
 subset in the stable semantic surface defined by
-[`myon-bioinformatics/web-ui/contract/v1`](https://github.com/myon-bioinformatics/web-ui/tree/4f43617465a92c912efcd441208e1789b3508d32/contract/v1) (pinned reference: `4f436174`).
+[`myon-bioinformatics/PySaiyanWeBoo/contract/v1`](https://github.com/myon-bioinformatics/PySaiyanWeBoo/tree/4f43617465a92c912efcd441208e1789b3508d32/contract/v1) (pinned reference: `4f436174`).
 
 The helper emits semantic HTML only:
 
@@ -587,8 +587,8 @@ The helper emits semantic HTML only:
 - optional `ui-title`
 - `ui-panel`
 
-It does **not** fetch, vendor, or embed web-ui CSS. Consumers should pin the
-web-ui revision they load separately. Theme names are case-sensitive.
+It does **not** fetch, vendor, or embed PySaiyanWeBoo CSS. Consumers should pin the
+PySaiyanWeBoo revision they load separately. Theme names are case-sensitive.
 
 Future breaking contract support should use a separate versioned emitter such as
 `markdown_to_web_ui_v2()` rather than silently changing v1 output semantics.
@@ -602,7 +602,7 @@ GitHub Pages publishes the shared repository metadata contract as
 `repository-diagnostics.json`, a one-record `repository-diagnostics.jsonl`,
 and `repository-diagnostics.html`. The metadata contract is pinned from
 Ironmate, anonymous public GitHub observations are pinned from
-mcp-toolcall-lab, and the HTML renderer is pinned to web-ui commit
+mcp-toolcall-lab, and the HTML renderer is pinned to PySaiyanWeBoo commit
 `adb23d7`. Network failures remain `unverified`; no GitHub token is used
 by the public resolver.
 
@@ -614,7 +614,7 @@ The Pages workflow checks out the PR head before generating diagnostics.
 
 ## Shared screenshot evidence
 
-`real-world-pages` checks out browser-test-kit at
+`real-world-pages` checks out BrowserTestKit at
 `6a2e32a4bbe49be5268e6b30040d665a89eecf66`. Every HTML entry in
 `fixtures/provenance.yaml` requires both `original.png` and `roundtrip.png`;
 missing or structurally invalid images fail the build. PNG validation uses the
@@ -624,7 +624,7 @@ measured by this lane. Local report generation remains best-effort; CI is requir
 Each capture clears stale success PNGs, logs CLI failures and preserves failure
 images separately. The workflow uploads the available report/evidence even after
 failure (14 days), links it in the summary, and deploys only successful main builds.
-See the [shared guide](https://github.com/myon-bioinformatics/browser-test-kit/blob/6a2e32a4bbe49be5268e6b30040d665a89eecf66/docs/screenshot-evidence.md).
+See the [shared guide](https://github.com/myon-bioinformatics/BrowserTestKit/blob/6a2e32a4bbe49be5268e6b30040d665a89eecf66/docs/screenshot-evidence.md).
 
 HTML fixture screenshots now also have current-run receipts (one complete
 original/roundtrip set per Chromium fixture identity). CI requires image hashes,
