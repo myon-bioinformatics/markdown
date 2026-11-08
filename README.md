@@ -315,7 +315,7 @@ states its contract.
 ```sh
 python scripts/real_world_pages_report.py --out /tmp/site
 python scripts/markdown_repository_diagnostics.py /tmp/site
-python ../BrowserTestKit/tools/evidence_gif.py docs/evidence/browser.gif --serve /tmp/site --plan docs/evidence/browser.json
+uv run --project ../BrowserTestKit --group pages --group browser python ../BrowserTestKit/tools/evidence_gif.py docs/evidence/browser.gif --serve /tmp/site --plan docs/evidence/browser.json
 ```
 
 ## Test / demo
