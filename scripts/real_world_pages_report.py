@@ -163,7 +163,7 @@ def _revision_html(revision: Mapping[str, Any]) -> str:
     elif revision.get("dirty") is None:
         parts.append("(dirty unknown)")
 
-    return f'<p id="build-meta">{" · ".join(parts)}</p>'
+    return f'<p id="build-meta" class="ui-muted">{" · ".join(parts)}</p>'
 
 
 def build_report(out_dir: Path, revision: Mapping[str, Any] | None = None) -> None:
@@ -205,56 +205,61 @@ def build_report(out_dir: Path, revision: Mapping[str, Any] | None = None) -> No
 
 
 def _report_html(rows: list[dict[str, Any]], revision: Mapping[str, Any]) -> str:
-    # No authored CSS: a plain semantic page, same bet this project's own
-    # sibling report (mcp-toolcall-lab's GitHub Pages stub) already made --
-    # https://abehiroshi.la.coocan.jp/-tier minimalism, not a design pass.
+    # The page shell, stylesheet and table come from PySaiyanWeBoo's web_ui (pinned in the dev group);
+    # this script only assembles the content.
+    import web_ui
+
     sections = []
     for row in rows:
         fixture_id = row["id"]
         before, after = row["before"], row["after"]
-        table_rows = "".join(
-            f"<tr><td>{html_module.escape(tag)}</td><td>{before.get(tag, 0)}</td><td>{after.get(tag, 0)}</td></tr>"
-            for tag in ("h1", "h2", "a", "img")
+        table = web_ui.table(
+            ("tag", "original", "round-tripped"),
+            [(tag, before.get(tag, 0), after.get(tag, 0)) for tag in ("h1", "h2", "a", "img")],
         )
+        unavailable = '<p class="ui-muted">(screenshot unavailable -- Playwright/its browser wasn\'t installed for this run)</p>'
         original_img = (
             f'<img src="{fixture_id}/original.png" alt="original {html_module.escape(fixture_id)}" width="480">'
             if row["has_original_png"]
-            else "<p>(screenshot unavailable -- Playwright/its browser wasn't installed for this run)</p>"
+            else unavailable
         )
         roundtrip_img = (
             f'<img src="{fixture_id}/roundtrip.png" alt="round-tripped {html_module.escape(fixture_id)}" width="480">'
             if row["has_roundtrip_png"]
-            else "<p>(screenshot unavailable -- Playwright/its browser wasn't installed for this run)</p>"
+            else unavailable
         )
         sections.append(
-            f"<h2>{html_module.escape(fixture_id)}</h2>"
-            f"<p>Source: {html_module.escape(row['source'])}</p>"
-            f"<table><tr><th>tag</th><th>original</th><th>round-tripped</th></tr>{table_rows}</table>"
+            f'<section class="ui-card"><h2>{html_module.escape(fixture_id)}</h2>'
+            f'<p class="ui-muted">Source: {html_module.escape(row["source"])}</p>'
+            f"{table}"
             f"<h3>Original (vendored fixture)</h3>{original_img}"
             f"<h3>Round-tripped (html_to_markdown -&gt; markdown_to_html)</h3>{roundtrip_img}"
             f'<p><a href="{fixture_id}/converted.md">converted.md</a> · '
             f'<a href="{fixture_id}/original.html">original.html</a> · '
-            f'<a href="{fixture_id}/roundtrip.html">roundtrip.html</a></p>'
+            f'<a href="{fixture_id}/roundtrip.html">roundtrip.html</a></p></section>'
         )
     body = "".join(sections) or "<p>No .html benchmark fixtures found.</p>"
-    return (
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
-        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-        '<link rel="icon" type="image/png" href="./favicon.png">'
-        '<link rel="apple-touch-icon" href="./icon.png">'
-        "<title>markdown.py: real-world HTML benchmark</title></head><body>"
+    main = (
+        '<main class="ui-page">'
         '<img src="./icon.png" width="80" height="80" alt="markdown icon">'
-        "<h1>real-world HTML -&gt; html_to_markdown() -&gt; markdown_to_html()</h1>"
-        "<p><a href=\"repository-diagnostics.html\">Repository diagnostics</a> · "
-        "<a href=\"repository-diagnostics.json\">JSON</a> · "
-        "<a href=\"repository-diagnostics.jsonl\">JSONL</a></p>"
+        '<h1 class="ui-title">real-world HTML -&gt; html_to_markdown() -&gt; markdown_to_html()</h1>'
+        '<p><a href="repository-diagnostics.html">Repository diagnostics</a> · '
+        '<a href="repository-diagnostics.json">JSON</a> · '
+        '<a href="repository-diagnostics.jsonl">JSONL</a></p>'
         "<p>Every fixture here is a real, vendored page (see "
         "<code>fixtures/provenance.yaml</code>) run through both conversions, "
         "offline -- no live fetch of the real site happens in this report. "
         "See <code>tests/test_benchmark_html_roundtrip.py</code> for the exact "
         "construct-count assertions this data backs.</p>"
         f"{_revision_html(revision)}"
-        f"{body}</body></html>\n"
+        f"{body}</main>"
+    )
+    return web_ui.render_document(
+        trusted_html=main,
+        title="markdown.py: real-world HTML benchmark",
+        css=web_ui.core_css() + "img{max-width:100%;height:auto}",
+        favicon="./favicon.png",
+        touch_icon="./icon.png",
     )
 
 

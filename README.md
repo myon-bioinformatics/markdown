@@ -44,7 +44,7 @@ ironmate などで使っていた `markdown.py` を、同じファイル名の�
 | `demos/chat_ui_demo.py` | Optional: generic mock chat screen — assistant replies built with `markdown.py`'s generation helpers, rendered by Gradio's `Chatbot` |
 | `demos/openai_compat_mock.py` | Optional: OpenAI-compatible chat completions server (stdlib only) so a real chat product can be pointed at `render_assistant_turn()`'s output instead of a real LLM — also issues one real OpenAI-style tool call for the MCP round-trip test below |
 | `docs/antipatterns.md` | Stable library/integration anti-pattern IDs plus concrete CI/Docker/Playwright incidents, root causes, fixes, and regression lessons |
-| `scripts/real_world_pages_report.py` | Builds the `real-world-pages` GitHub Actions workflow's Pages report: original vs. `html_to_markdown()`→`markdown_to_html()` round-trip, screenshotted via Playwright's own CLI, for every real HTML fixture in `fixtures/provenance.yaml` |
+| `scripts/real_world_pages_report.py` | Builds the `real-world-pages` GitHub Actions workflow's Pages report: original vs. `html_to_markdown()`→`markdown_to_html()` round-trip, screenshotted via Playwright's own CLI, for every real HTML fixture in `fixtures/provenance.yaml`. The page shell, stylesheet and table come from PySaiyanWeBoo's `web_ui` (dev group, pinned to a commit) |
 
 ## Optional Gradio-only nano environment
 
@@ -310,7 +310,7 @@ states its contract.
 
 🚫 Not run here: `tests/real_chat_ui` (Docker), `experiments/check_catalog_browser.py` (pins an older `web_ui.py` hash). Firefox / WebKit not installed.
 
-🔁 Re-record (start `demos/chat_ui_demo.py` on `127.0.0.1:7861` first; the diagnostics page is self-contained, nothing is fetched from a CDN):
+🔁 Re-record (start `GRADIO_SERVER_PORT=7861 python demos/chat_ui_demo.py` first; the report and diagnostics pages are self-contained — built with PySaiyanWeBoo's `web_ui`, nothing is fetched from a CDN):
 
 ```sh
 python scripts/real_world_pages_report.py --out /tmp/site
