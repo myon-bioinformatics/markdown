@@ -1,8 +1,8 @@
 {
   "schema": "btk-evidence-gif/1",
   "gif": "browser.gif",
-  "bytes": 177290,
-  "sha256": "c4988441e6cc064bc61d91855931e66349920d270d56c71e1dd86d8c6e252f08",
+  "bytes": 172575,
+  "sha256": "2c9b11edb56edfec318624726c1c4cec9675dcc56ad87b9a1965c54eb40d17f6",
   "frames": 10,
   "canvas": "720x512",
   "browser": "chromium 153.0.8010.12",
@@ -24,7 +24,8 @@
       "status": "pass",
       "errors": [],
       "allowed": [],
-      "external": []
+      "external": [],
+      "generator": "web_ui 1854362d625279f4278f917cd18bacd151bc69b4"
     },
     {
       "label": "🩺 repository diagnostics",
@@ -34,7 +35,8 @@
       "status": "pass",
       "errors": [],
       "allowed": [],
-      "external": []
+      "external": [],
+      "generator": "web_ui 1854362d625279f4278f917cd18bacd151bc69b4"
     },
     {
       "label": "📱 real-world report",
@@ -44,7 +46,8 @@
       "status": "pass",
       "errors": [],
       "allowed": [],
-      "external": []
+      "external": [],
+      "generator": "web_ui 1854362d625279f4278f917cd18bacd151bc69b4"
     },
     {
       "label": "💬 chat UI demo (Gradio)",
@@ -59,7 +62,8 @@
       "status": "pass",
       "errors": [],
       "allowed": [],
-      "external": []
+      "external": [],
+      "generator": null
     },
     {
       "label": "📱 chat UI demo",
@@ -69,7 +73,8 @@
       "status": "pass",
       "errors": [],
       "allowed": [],
-      "external": []
+      "external": [],
+      "generator": null
     }
   ],
   "plan": [
