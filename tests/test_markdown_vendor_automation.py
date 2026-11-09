@@ -53,14 +53,7 @@ def test_ci_verifies_lock_without_promote_or_update():
     recreate = next(s for s in resolve if s.get("name") == "Recreate locked vendor files from GitHub")
     assert recreate["shell"] == "bash"
     assert recreate["run"].splitlines() == [
-        "python -S - <<'PY'",
-        "import json",
-        "from pathlib import Path",
-        "for entry in json.loads(Path('vendor.lock.json').read_text(encoding='utf-8'))['files']:",
-        "    Path(entry['destination']).unlink()",
-        "PY",
-        "python -S .vendor-sync-tools/vendor_sync.py materialize --manifest vendor.lock.json",
-        "python -S .vendor-sync-tools/vendor_sync.py check --manifest vendor.lock.json",
+        "python -S .vendor-sync-tools/vendor_sync.py recreate --manifest vendor.lock.json",
     ]
     needs = jobs["test"]["needs"]
     assert "resolve-vendor" in ([needs] if isinstance(needs, str) else needs)
