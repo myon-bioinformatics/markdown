@@ -76,9 +76,13 @@ imports/compiles the generator itself.
 
 # Observed real chat / CI incidents
 
-The following entries are the original live-failure log from
-`real-chat-ui-smoke` and related Docker/Playwright runs. They remain here
-because they are concrete evidence behind several stable IDs above.
+The following entries are the original live-failure log from the former
+`real-chat-ui-smoke` workflow and related Docker/Playwright runs. That
+workflow, its `tests/real_chat_ui/` suite, `docker/openwebui-smoke/` and
+`demos/openai_compat_mock.py` have since been removed (manual-only, never
+gated a PR), so file paths below refer to the repository history. The entries
+remain here because they are concrete evidence behind several stable IDs
+above.
 
 ## 1. Open WebUI's "What's New" changelog modal blocks `#chat-input`
 
