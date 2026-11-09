@@ -9,13 +9,7 @@ See ``test_gradio_ui.py`` for the gradio_client-based equivalent.
 
 from __future__ import annotations
 
-import json
-import shutil
-import subprocess
-import sys
-import time
-import urllib.error
-import urllib.request
+import json, shutil, subprocess, sys, time, urllib.error, urllib.request
 from pathlib import Path
 
 import pytest

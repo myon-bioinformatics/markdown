@@ -1,13 +1,8 @@
 """toml_to_markdown without tomllib: Node + smol-toml must give the same document."""
 from __future__ import annotations
 
-import os
-import shutil
-import subprocess
-import sys
-import threading
-from pathlib import Path
-from typing import NamedTuple, Union
+import os, shutil, subprocess, sys, threading
+from pathlib import Path; from typing import NamedTuple, Union
 
 import pytest
 
