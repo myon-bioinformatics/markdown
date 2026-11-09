@@ -4,7 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ".github/workflows/ci.yml"
-VENDOR_SYNC_PIN = "9e3da7ae1846e9604ebc24bb5178f7de094a4e77"
+VENDOR_SYNC_PIN = "26c442bc51b8a2837fe2556782b2937f396932af"
 GHI_LOAD_COMMAND = (
     'python -S -c "import importlib.util; '
     "s=importlib.util.spec_from_file_location('vendored_ghi','vendor/gh_identity.py'); "
@@ -48,21 +48,14 @@ def test_ci_verifies_lock_without_promote_or_update():
     assert "vendor-mode" not in (ROOT / WORKFLOW).read_text(encoding="utf-8")
     jobs = ci["jobs"]
     resolve = jobs["resolve-vendor"]["steps"]
-    test = jobs["pytest"]["steps"]
-    assert jobs["resolve-vendor"]["permissions"] == jobs["pytest"]["permissions"] == {"contents": "read"}
+    test = jobs["test"]["steps"]
+    assert jobs["resolve-vendor"]["permissions"] == jobs["test"]["permissions"] == {"contents": "read"}
     recreate = next(s for s in resolve if s.get("name") == "Recreate locked vendor files from GitHub")
     assert recreate["shell"] == "bash"
     assert recreate["run"].splitlines() == [
-        "python -S - <<'PY'",
-        "import json",
-        "from pathlib import Path",
-        "for entry in json.loads(Path('vendor.lock.json').read_text(encoding='utf-8'))['files']:",
-        "    Path(entry['destination']).unlink()",
-        "PY",
-        "python -S .vendor-sync-tools/vendor_sync.py materialize --manifest vendor.lock.json",
-        "python -S .vendor-sync-tools/vendor_sync.py check --manifest vendor.lock.json",
+        "python -S .vendor-sync-tools/vendor_sync.py recreate --manifest vendor.lock.json",
     ]
-    needs = jobs["pytest"]["needs"]
+    needs = jobs["test"]["needs"]
     assert "resolve-vendor" in ([needs] if isinstance(needs, str) else needs)
     assert not any(
         command in s.get("run", "")
@@ -95,7 +88,7 @@ def test_ci_verifies_lock_without_promote_or_update():
 
 def test_locked_baseline_runs_automatically_without_candidate_snapshot():
     ci = _workflow()
-    job = ci["jobs"]["test-locked"]
+    job = ci["jobs"]["vendor-locked"]
     assert job["permissions"] == {"contents": "read"}
     assert "continue-on-error" not in job
     assert job.get("needs") == ci["jobs"]["resolve-vendor"].get("needs")

@@ -43,7 +43,7 @@ ironmate などで使っていた `markdown.py` を、同じファイル名の�
 | `demos/streamlit_app.py` | Optional: sectioned headings/links/images/HTML/code view. `build_view()` has zero UI deps — call it directly |
 | `demos/chat_ui_demo.py` | Optional: generic mock chat screen — assistant replies built with `markdown.py`'s generation helpers, rendered by Gradio's `Chatbot` |
 | `docs/antipatterns.md` | Stable library/integration anti-pattern IDs plus concrete CI/Docker/Playwright incidents, root causes, fixes, and regression lessons |
-| `scripts/real_world_pages_report.py` | Builds the `real-world-pages` GitHub Actions workflow's Pages report: original vs. `html_to_markdown()`→`markdown_to_html()` round-trip, screenshotted via Playwright's own CLI, for every real HTML fixture in `fixtures/provenance.yaml` |
+| `scripts/real_world_pages_report.py` | Builds the `Pages` GitHub Actions workflow (`pages.yml`) report: original vs. `html_to_markdown()`→`markdown_to_html()` round-trip, screenshotted via Playwright's own CLI, for every real HTML fixture in `fixtures/provenance.yaml` |
 
 ## Optional Gradio-only nano environment
 
@@ -271,7 +271,7 @@ utilities, not a CommonMark parser or an LLM summarizer:
   the limit leaves enough room.
 
 Conversation-history compression and broader HTML conversion remain separate
-future design topics. See docs/context_helpers.md for the exact contracts.
+future design topics. See docs/context-helpers.md for the exact contracts.
 
 ## Dialects, system formats, directory trees, LLM output
 
@@ -520,7 +520,7 @@ The Pages workflow checks out the PR head before generating diagnostics.
 
 ## Shared screenshot evidence
 
-`real-world-pages` checks out BrowserTestKit at
+`pages.yml` checks out BrowserTestKit at
 `6a2e32a4bbe49be5268e6b30040d665a89eecf66`. Every HTML entry in
 `fixtures/provenance.yaml` requires both `original.png` and `roundtrip.png`;
 missing or structurally invalid images fail the build. PNG validation uses the
