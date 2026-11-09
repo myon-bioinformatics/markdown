@@ -4,11 +4,13 @@ from pathlib import Path
 
 PARENT = "myon-bioinformatics/myon-bioinformatics"
 PARENT_WORKFLOW_PIN = "9e3da7ae1846e9604ebc24bb5178f7de094a4e77"
+VENDOR_TOOL_PIN = "26c442bc51b8a2837fe2556782b2937f396932af"
 ROOT = next(p for p in Path(__file__).resolve().parents if (p / ".github/workflows").is_dir())
 
 
 def test_parent_workflow_references_use_reviewed_rollout_commit():
     pins = []
+    vendor_tool_pins = []
     for path in sorted((ROOT / ".github/workflows").glob("*")):
         if path.suffix not in (".yml", ".yaml"):
             continue
