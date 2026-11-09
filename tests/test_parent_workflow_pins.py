@@ -15,16 +15,15 @@ def test_parent_workflow_references_use_reviewed_rollout_commit():
         if path.suffix not in (".yml", ".yaml"):
             continue
         text = path.read_text(encoding="utf-8")
-        # Capture mutable and shortened reusable-workflow references too.
-        pins.extend(re.findall(r"uses:\\s*['\\"]?" + re.escape(PARENT) + r"/[^\\s@'\\"]+@([^\\s'\\"]+)", text))
+        pins.extend(re.findall(r"uses:\\s*" + re.escape(PARENT) + r"/[^\\s@]+@([^\\s]+)", text))
         lines = text.splitlines()
         for i, line in enumerate(lines):
-            if not re.fullmatch(r"\\s+repository:\\s*['\\"]?" + re.escape(PARENT) + r"['\\"]?\\s*", line):
+            if not re.fullmatch(r"\\s+repository:\\s*" + re.escape(PARENT) + r"\\s*", line):
                 continue
             block = lines[i + 1:i + 12]
-            refs = [re.fullmatch(r"\\s+ref:\\s*['\\"]?([^\\s'\\"]+)['\\"]?\\s*", item) for item in block]
+            refs = [re.fullmatch(r"\\s+ref:\\s*(\\S+)\\s*", item) for item in block]
             ref = next((m.group(1) for m in refs if m), None)
-            if any(re.fullmatch(r"\\s+path:\\s*['\\"]?\\.vendor-sync-tools['\\"]?\\s*", item) for item in block):
+            if any(re.fullmatch(r"\\s+path:\\s*\\.vendor-sync-tools\\s*", item) for item in block):
                 vendor_tool_pins.append(ref)
             else:
                 pins.append(ref)
