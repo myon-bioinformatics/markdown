@@ -12,8 +12,7 @@ fixture — one subprocess call against a ``file://`` path.
 
 from __future__ import annotations
 
-import subprocess
-import sys
+import subprocess, sys
 
 import pytest
 

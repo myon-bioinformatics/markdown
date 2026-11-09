@@ -19,7 +19,7 @@ def test_runtime_floor_runs_on_the_default_runner_without_skipping_behavior():
     assert behavior[0]['run'] == 'python -S -m unittest discover -s tests -p test_runtime_compatibility.py -v'
     assert 'if' not in behavior[0] and not behavior[0].get('continue-on-error', False)
     ci = yaml.safe_load((ROOT / '.github/workflows/ci.yml').read_text())
-    assert ci['jobs']['pytest']['strategy']['matrix']['python-version'] == ['3.11', '3.12', '3.13', '3.14']
+    assert ci['jobs']['test']['strategy']['matrix']['python-version'] == ['3.11', '3.12', '3.13', '3.14']
 
 
 def test_source_runtime_floor_matches_packaged_runtime_and_documentation():

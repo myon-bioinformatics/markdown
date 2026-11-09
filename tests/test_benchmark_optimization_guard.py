@@ -1,8 +1,6 @@
 """Fault-injection checks do not require a historical git checkout."""
+import subprocess, sys, unittest
 from pathlib import Path
-import subprocess
-import sys
-import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 

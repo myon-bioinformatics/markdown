@@ -145,34 +145,8 @@ __all__ = [
     "UNSUPPORTED",
 ]
 
-import argparse
-import ast
-import calendar as calendar_module
-import configparser
-import csv
-import doctest
-import email as email_module
-import email.message as email_message
-import email.policy as email_policy
-import email.utils as email_utils
-import graphlib
-import html as html_module
-import importlib.metadata as importlib_metadata
-import inspect
-import io
-import json
-import math
-import platform
-import re
-import statistics
-import sys
-import tokenize
-import unicodedata
-from dataclasses import dataclass
-from html.parser import HTMLParser
-from pathlib import Path
-from typing import Any, Literal
-from urllib.parse import urljoin, urlparse
+import argparse, ast, calendar as calendar_module, configparser, csv, doctest, email as email_module, email.message as email_message, email.policy as email_policy, email.utils as email_utils, graphlib, html as html_module, importlib.metadata as importlib_metadata, inspect, io, json, math, platform, re, statistics, sys, tokenize, unicodedata
+from dataclasses import dataclass; from html.parser import HTMLParser; from pathlib import Path; from typing import Any, Literal; from urllib.parse import urljoin, urlparse
 
 try:
     import tomllib

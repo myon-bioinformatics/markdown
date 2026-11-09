@@ -1,10 +1,8 @@
 """Map every HTML benchmark fixture to both required shared PNG checks."""
 from __future__ import annotations
 
-import argparse
+import argparse, subprocess, sys
 from pathlib import Path
-import subprocess
-import sys
 
 import yaml
 
