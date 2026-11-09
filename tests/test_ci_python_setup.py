@@ -19,9 +19,6 @@ JOBS = {
         "checks": "3.15",
         "build": "3.15"
     },
-    "real-chat-ui-smoke.yml": {
-        "openwebui-smoke": "3.15"
-    },
     "runtime-compatibility.yml": {
         "runtime": "${{ matrix.python }}"
     }
@@ -51,6 +48,19 @@ def job(workflow, name):
 
 
 class CiPythonSetupTests(unittest.TestCase):
+    def test_contract_inventory_matches_all_python_setup_jobs(self):
+        # Fail for stale workflow/job entries as well as newly untested jobs.
+        actual = set()
+        for path in sorted((ROOT / ".github/workflows").iterdir()):
+            if path.suffix not in {".yml", ".yaml"}:
+                continue
+            text = path.read_text(encoding="utf-8")
+            for name in re.findall(r"(?m)^  ([\w-]+):$", text):
+                if "uses: astral-sh/setup-uv@" in job(path.name, name):
+                    actual.add((path.name, name))
+        expected = {(workflow, name) for workflow, jobs in JOBS.items() for name in jobs}
+        self.assertEqual(actual, expected)
+
     def test_selected_python_is_ready_before_any_python_or_uv_command(self):
         for workflow, jobs in JOBS.items():
             for name, version in jobs.items():
