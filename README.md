@@ -43,7 +43,7 @@ ironmate などで使っていた `markdown.py` を、同じファイル名の�
 | `demos/streamlit_app.py` | Optional: sectioned headings/links/images/HTML/code view. `build_view()` has zero UI deps — call it directly |
 | `demos/chat_ui_demo.py` | Optional: generic mock chat screen — assistant replies built with `markdown.py`'s generation helpers, rendered by Gradio's `Chatbot` |
 | `docs/antipatterns.md` | Stable library/integration anti-pattern IDs plus concrete CI/Docker/Playwright incidents, root causes, fixes, and regression lessons |
-| `scripts/real_world_pages_report.py` | Builds the `Pages` GitHub Actions workflow (`pages.yml`) report: original vs. `html_to_markdown()`→`markdown_to_html()` round-trip, screenshotted via Playwright's own CLI, for every real HTML fixture in `fixtures/provenance.yaml` |
+| `scripts/real_world_pages_report.py` | Builds the `Pages` GitHub Actions workflow (`pages.yml`) report: original vs. `html_to_markdown()`→`markdown_to_html()` round-trip, screenshotted via Playwright's own CLI, for every real HTML fixture in `fixtures/provenance.yaml`. The page shell, stylesheet and table come from PySaiyanWeBoo's `web_ui` (dev group, pinned to a commit) |
 
 ## Optional Gradio-only nano environment
 
@@ -294,6 +294,30 @@ states its contract.
   Windows alike, and never outside the root or over an existing file.
 - LLM output: `split_reasoning`, `compact_llm_output`, `llm_output_digest`,
   `extract_identifiers` (see the `llm io` section marker in `markdown.py`).
+
+## 🎞️ Browser evidence
+
+![Real-world report, diagnostics and the Gradio chat demo rendering a table, code and a list](docs/evidence/browser.gif)
+
+Historical capture, recorded 2026-11-08 at Markdown commit `5b7c00c0d67b898be8e3d47a9dacc676284d178c`. This GIF is not evidence for the current branch.
+
+🗓️ 2026-11-08 · 🧭 Chromium 153 · 🐧 Linux · receipt [`docs/evidence/browser.json`](docs/evidence/browser.json)
+
+| 🧪 Suite | ✅ | 📝 |
+| --- | ---: | --- |
+| `pytest tests/frontend` (Gradio, Streamlit, chat UI screen, Playwright CLI) | 13 | |
+| `scripts/real_world_pages_report.py` + `check_report_screenshots.py` | ✅ | 3 corrupted bundles rejected as expected |
+| 🎞️ evidence GIF shots | 5 | |
+
+🚫 Not run for that historical capture: `tests/real_chat_ui` (Docker), `experiments/check_catalog_browser.py` (pins an older `web_ui.py` hash). Firefox / WebKit not installed.
+
+🔁 Re-record (start `GRADIO_SERVER_PORT=7861 python demos/chat_ui_demo.py` first; the report and diagnostics pages are self-contained — built with PySaiyanWeBoo's `web_ui`, nothing is fetched from a CDN):
+
+```sh
+python scripts/real_world_pages_report.py --out /tmp/site
+python scripts/markdown_repository_diagnostics.py /tmp/site
+uv run --project ../BrowserTestKit --group pages --group browser python ../BrowserTestKit/tools/evidence_gif.py docs/evidence/browser.gif --serve /tmp/site --plan docs/evidence/browser.json
+```
 
 ## Test / demo
 

@@ -1,0 +1,166 @@
+{
+  "schema": "btk-evidence-gif/2",
+  "gif": "browser.gif",
+  "bytes": 150129,
+  "sha256": "6dde31c77a67376bac307ec0877ae9886c83fe804decd81a38c917ad8b89fcac",
+  "frames": 10,
+  "canvas": "720x512",
+  "browser": "chromium 153.0.8010.12",
+  "recorded": "2026-11-08",
+  "commit": "5b7c00c0d67b898be8e3d47a9dacc676284d178c",
+  "encoder": {
+    "module": "PySaiyanWeBoo web_ui gif.js",
+    "web_ui": "d55e14fcf3f088522259295e4a8cf9564beb5721",
+    "bytes": 150129,
+    "frames": 10,
+    "colors": 255,
+    "thin": 0,
+    "attempts": 1,
+    "stored": 10,
+    "merged": 0,
+    "buckets": 2077,
+    "overBudget": false,
+    "encodeMs": 129,
+    "images": 10,
+    "reused": 0,
+    "patches": 0,
+    "synthesized": 0,
+    "capture_s": 6.7
+  },
+  "limits": {
+    "colors": 255,
+    "max_bytes": null,
+    "max_frames": 300,
+    "last_hold_ms": 2000
+  },
+  "transfer": {
+    "screenshots": 10,
+    "png_bytes": 593986,
+    "identical": 0,
+    "patches": 0,
+    "calls": 5,
+    "sent_bytes": 791996,
+    "gif_bytes": 150129
+  },
+  "mapped": [],
+  "summary": {
+    "pass": 5,
+    "fail": 0
+  },
+  "shots": [
+    {
+      "label": "📊 real-world report",
+      "url": "/index.html",
+      "viewport": "1280x800",
+      "steps": [
+        "scroll 700"
+      ],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": "web_ui 1854362d625279f4278f917cd18bacd151bc69b4"
+    },
+    {
+      "label": "🩺 repository diagnostics",
+      "url": "/repository-diagnostics.html",
+      "viewport": "1280x800",
+      "steps": [],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": "web_ui 1854362d625279f4278f917cd18bacd151bc69b4"
+    },
+    {
+      "label": "📱 real-world report",
+      "url": "/index.html",
+      "viewport": "392x848",
+      "steps": [],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": "web_ui 1854362d625279f4278f917cd18bacd151bc69b4"
+    },
+    {
+      "label": "💬 chat UI demo (Gradio)",
+      "url": "http://127.0.0.1:7861/",
+      "viewport": "1280x800",
+      "steps": [
+        "fill [data-testid=textbox]",
+        "click button:has-text('Send')",
+        "fill [data-testid=textbox]",
+        "click button:has-text('Send')"
+      ],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": null
+    },
+    {
+      "label": "📱 chat UI demo",
+      "url": "http://127.0.0.1:7861/",
+      "viewport": "392x848",
+      "steps": [],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": null
+    }
+  ],
+  "plan": [
+    {
+      "label": "📊 real-world report",
+      "url": "/index.html",
+      "viewport": "1280x800",
+      "steps": [
+        {
+          "scroll": 700
+        }
+      ]
+    },
+    {
+      "label": "🩺 repository diagnostics",
+      "url": "/repository-diagnostics.html",
+      "viewport": "1280x800"
+    },
+    {
+      "label": "📱 real-world report",
+      "url": "/index.html",
+      "viewport": "392x848"
+    },
+    {
+      "label": "💬 chat UI demo (Gradio)",
+      "url": "http://127.0.0.1:7861/",
+      "viewport": "1280x800",
+      "steps": [
+        {
+          "fill": [
+            "[data-testid=textbox]",
+            "show me some code"
+          ]
+        },
+        {
+          "click": "button:has-text('Send')"
+        },
+        {
+          "fill": [
+            "[data-testid=textbox]",
+            "give me a todo list"
+          ]
+        },
+        {
+          "click": "button:has-text('Send')"
+        }
+      ]
+    },
+    {
+      "label": "📱 chat UI demo",
+      "url": "http://127.0.0.1:7861/",
+      "viewport": "392x848"
+    }
+  ]
+}

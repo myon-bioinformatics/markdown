@@ -63,22 +63,20 @@ def test_payload_not_checked_roundtrip(tmp_path, monkeypatch):
     assert (tmp_path / "favicon.png").read_bytes() == source
 
 
-def test_page_uses_pinned_web_ui_renderer():
+def test_page_is_the_shared_self_contained_renderer():
     html = diagnostics.page_html()
-    assert diagnostics.WEB_UI_SHA in html
-    assert "RepositoryDiagnostics.render(payload.metadata)" in html
+    assert "<title>myon-bioinformatics/markdown repository diagnostics</title>" in html
+    assert "cdn.jsdelivr.net" not in html and '<link rel="stylesheet"' not in html
+    assert "/* css/repository-diagnostics.css */" in html and "global.RepositoryDiagnostics = api" in html
+    assert 'RepositoryDiagnostics.mount(document, "./repository-diagnostics.json");' in html
     assert "repository-diagnostics.jsonl" in html
-    assert "__REPO__" not in html
-    assert "__BASE__" not in html
 
 
-def test_page_escapes_template_constants(monkeypatch):
+def test_page_rejects_a_repository_name_that_is_not_owner_slash_name(monkeypatch):
+    import pytest
     monkeypatch.setattr(diagnostics, "REPOSITORY", '<repo & "quoted">')
-    monkeypatch.setattr(diagnostics, "WEB_UI_BASE", 'https://example.test/a?x=1&y="2"')
-    html = diagnostics.page_html()
-    assert '&lt;repo &amp; &quot;quoted&quot;&gt;' in html
-    assert 'https://example.test/a?x=1&amp;y=&quot;2&quot;' in html
-    assert '<repo & "quoted">' not in html
+    with pytest.raises(ValueError):
+        diagnostics.page_html()
 
 
 def test_tracked_bytes_uses_canonical_inspector_paths(tmp_path, monkeypatch):
