@@ -10,14 +10,14 @@ A function-focused Python Markdown utility that runs on the standard library onl
 
 ## GitHub About（推奨）
 
-> Stdlib-only Markdown helpers for Python: read/write, section extraction, and HTML↔Markdown utilities for URLs and images. Functions only—no CLI; verified by tests.
+> Stdlib-only Markdown helpers for Python: read/write, section extraction, and HTML↔Markdown utilities for URLs and images. Reusable functions with a small stdio CLI; verified by tests.
 
 ## Purpose
 
 This library grows the `markdown.py` module, used earlier in projects such as Ironmate, so it can be published on pip under the same file name.
 
 - **Standard library first** — avoid adding runtime dependencies, and extend features within that limit. Standalone users copy the file from GitHub; the copied `markdown.py` keeps working on its own.
-- **Function-focused** — there is no `main` or CLI entry point. Behavior is verified by tests. The processing in `demos/*.py` is checked directly as plain function calls that need no browser; optional Streamlit / Gradio front-end checks are also possible.
+- **Function-focused** — an optional `md-market` CLI delegates to the same library helpers. Behavior is verified by tests. The processing in `demos/*.py` is checked directly as plain function calls that need no browser; optional Streamlit / Gradio front-end checks are also possible.
 - **Planned API direction** — beyond the existing read / write / section extraction, expand the HTML↔Markdown helpers (URLs, image files, and so on).
 - **ascii_artist** — ASCII art utilities have moved to [`myon-bioinformatics/ascii_artist`](https://github.com/myon-bioinformatics/ascii_artist) and are not bundled here.
 
@@ -27,7 +27,7 @@ This library grows the `markdown.py` module, used earlier in projects such as Ir
 ironmate などで使っていた `markdown.py` を、同じファイル名のまま pip で配布できるように育てるライブラリです。
 
 - **標準ライブラリ前提**: 実行時の依存関係は増やさず、その範囲で機能を充実させます。スタンドアロンで使う場合は GitHub からファイルをコピーします。コピーした `markdown.py` 単体のまま動きます。
-- **関数提供に特化**: `main` や CLI のエントリポイントはありません。動作はテストで確認します。`demos/*.py` の処理も、ブラウザを使わない通常の関数呼び出しとして直接検証します。任意で Streamlit や Gradio の画面確認もできます。
+- **関数提供に特化**: `md-market` CLI は同じ関数を呼ぶ最小の入口です。動作はテストで確認します。`demos/*.py` の処理も、ブラウザを使わない通常の関数呼び出しとして直接検証します。任意で Streamlit や Gradio の画面確認もできます。
 - **API の方向性**: 既存の read / write / セクション抽出に加えて、HTML と Markdown の相互変換ヘルパ（URL や画像ファイルなど）を広げていきます。
 - **ascii_artist**: ASCII アート関連のユーティリティは [`myon-bioinformatics/ascii_artist`](https://github.com/myon-bioinformatics/ascii_artist) に分離しており、このリポジトリには含めていません。
 </details>
@@ -603,3 +603,18 @@ Validation: 25 focused tests passed; both entry points list cases with `python -
 See [standard-library discovery commands](docs/unittest-discovery.md) for
 validated `python -S -m unittest discover` recipes, filename/name filtering,
 and the boundary with the full pytest suite.
+
+
+## uv command
+
+```sh
+uv tool install .
+md-market --help
+printf '# Hello\n' | md-market to-html
+```
+
+`md-market` supports `inventory`, `to-html`, `to-markdown`, and `toc`. Input is
+UTF-8 from stdin or an optional filename; output goes to stdout.
+Use `uvx --from 'git+https://github.com/myon-bioinformatics/markdown.git@main' md-market --help`
+for one-time use, or `uv add /absolute/path/to/markdown` for Python imports.
+Replace main with a reviewed full SHA for reproducibility. No frontend dependencies are installed.
