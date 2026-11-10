@@ -3,8 +3,7 @@
 # interpreter with nothing installed. pytest is an external module, so it
 # cannot run here. All other tests run via `uv run pytest`.
 """Behavior checks runnable using python -S on the source runtime floor."""
-import tempfile
-import unittest
+import tempfile, unittest
 from pathlib import Path
 import markdown
 

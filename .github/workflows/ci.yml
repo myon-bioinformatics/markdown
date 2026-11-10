@@ -1,4 +1,4 @@
-name: ci
+name: CI
 
 on:
   push:
@@ -22,12 +22,15 @@ jobs:
           version: "latest"
           python-version: "3.15"
           activate-environment: true
-          enable-cache: false
+          enable-cache: true
+          # Pull requests restore the cache and never write it; only main saves it.
+          save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          prune-cache: true
       - name: Fetch pinned shared vendor tool
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: myon-bioinformatics/myon-bioinformatics
-          ref: 9e3da7ae1846e9604ebc24bb5178f7de094a4e77
+          ref: 26c442bc51b8a2837fe2556782b2937f396932af
           path: .vendor-sync-tools
           persist-credentials: false
       - name: Verify checked-in vendor copies
@@ -35,14 +38,7 @@ jobs:
       - name: Recreate locked vendor files from GitHub
         shell: bash
         run: |
-          python -S - <<'PY'
-          import json
-          from pathlib import Path
-          for entry in json.loads(Path('vendor.lock.json').read_text(encoding='utf-8'))['files']:
-              Path(entry['destination']).unlink()
-          PY
-          python -S .vendor-sync-tools/vendor_sync.py materialize --manifest vendor.lock.json
-          python -S .vendor-sync-tools/vendor_sync.py check --manifest vendor.lock.json
+          python -S .vendor-sync-tools/vendor_sync.py recreate --manifest vendor.lock.json
 
   changes:
     name: Change detection
@@ -53,7 +49,7 @@ jobs:
         README.md
         fixtures
 
-  pytest:
+  test:
     permissions:
       contents: read
     needs: [changes, resolve-vendor]
@@ -74,12 +70,15 @@ jobs:
           version: "latest"
           python-version: "${{ matrix.python-version }}"
           activate-environment: true
-          enable-cache: false
+          enable-cache: true
+          # Pull requests restore the cache and never write it; only main saves it.
+          save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          prune-cache: true
       - name: Fetch pinned shared vendor tool
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: myon-bioinformatics/myon-bioinformatics
-          ref: 9e3da7ae1846e9604ebc24bb5178f7de094a4e77
+          ref: 26c442bc51b8a2837fe2556782b2937f396932af
           path: .vendor-sync-tools
           persist-credentials: false
       - name: Verify checked-in vendor copies
@@ -166,12 +165,15 @@ jobs:
           version: "latest"
           python-version: "3.15"
           activate-environment: true
-          enable-cache: false
+          enable-cache: true
+          # Pull requests restore the cache and never write it; only main saves it.
+          save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          prune-cache: true
       - name: Fetch pinned shared vendor tool
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: myon-bioinformatics/myon-bioinformatics
-          ref: 9e3da7ae1846e9604ebc24bb5178f7de094a4e77
+          ref: 26c442bc51b8a2837fe2556782b2937f396932af
           path: .vendor-sync-tools
           persist-credentials: false
       - name: Verify checked-in vendor copies
@@ -319,7 +321,10 @@ jobs:
           version: "latest"
           python-version: "3.15"
           activate-environment: true
-          enable-cache: false
+          enable-cache: true
+          # Pull requests restore the cache and never write it; only main saves it.
+          save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          prune-cache: true
       - name: Sync locked frontend test environment
         shell: bash
         run: |
@@ -365,7 +370,10 @@ jobs:
           version: "latest"
           python-version: "3.15"
           activate-environment: true
-          enable-cache: false
+          enable-cache: true
+          # Pull requests restore the cache and never write it; only main saves it.
+          save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          prune-cache: true
       - name: Sync locked frontend test environment
         shell: bash
         run: |
@@ -382,7 +390,7 @@ jobs:
         run: uv run pytest -q tests/frontend
 
   failure-identity:
-    needs: [changes, pytest, node-runtime]
+    needs: [changes, test, node-runtime]
     if: always() && needs.changes.outputs.product_changed == 'true'
     permissions:
       contents: read
@@ -394,7 +402,7 @@ jobs:
       artifact-pattern: "junit-*"
       output-artifact: "failure-identity"
 
-  test-locked:
+  vendor-locked:
     permissions:
       contents: read
     needs: changes
@@ -415,27 +423,23 @@ jobs:
         version: "latest"
         python-version: "${{ matrix.python-version }}"
         activate-environment: true
-        enable-cache: false
+        enable-cache: true
+        # Pull requests restore the cache and never write it; only main saves it.
+        save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        prune-cache: true
     - name: Fetch pinned shared vendor tool
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         repository: myon-bioinformatics/myon-bioinformatics
         path: .vendor-sync-tools
-        ref: 9e3da7ae1846e9604ebc24bb5178f7de094a4e77
+        ref: 26c442bc51b8a2837fe2556782b2937f396932af
         persist-credentials: false
     - name: Verify checked-in vendor copies
       run: python -S .vendor-sync-tools/vendor_sync.py check --manifest vendor.lock.json
     - name: Recreate locked vendor files from GitHub
       shell: bash
       run: |
-        python -S - <<'PY'
-        import json
-        from pathlib import Path
-        for entry in json.loads(Path('vendor.lock.json').read_text(encoding='utf-8'))['files']:
-            Path(entry['destination']).unlink()
-        PY
-        python -S .vendor-sync-tools/vendor_sync.py materialize --manifest vendor.lock.json
-        python -S .vendor-sync-tools/vendor_sync.py check --manifest vendor.lock.json
+        python -S .vendor-sync-tools/vendor_sync.py recreate --manifest vendor.lock.json
     - name: Verify enrolled GHI is stdlib-loadable
       run: python -S -c "import importlib.util; s=importlib.util.spec_from_file_location('vendored_ghi','vendor/gh_identity.py'); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); assert hasattr(m,'capabilities')"
     - name: Sync locked development environment
@@ -487,5 +491,5 @@ jobs:
         path: build/controlled-failure/
         if-no-files-found: error
         retention-days: 14
-    name: Locked baseline
+    name: Vendor locked baseline
     timeout-minutes: 20

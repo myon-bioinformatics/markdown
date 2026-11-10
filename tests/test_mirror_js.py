@@ -10,11 +10,7 @@ Needs ``npm ci --prefix tests/mirror`` (CI does this); skipped without it.
 """
 from __future__ import annotations
 
-import collections
-import json
-import re
-import shutil
-import subprocess
+import collections, json, re, shutil, subprocess
 from pathlib import Path
 
 import pytest

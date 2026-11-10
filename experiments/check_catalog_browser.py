@@ -1,10 +1,6 @@
 """Explicit local browser check; never dispatched by Pages or default CI."""
-import argparse
-import functools
-import http.server
-from pathlib import Path
-import threading
-from urllib.parse import unquote, urlsplit
+import argparse, functools, http.server, threading
+from pathlib import Path; from urllib.parse import unquote, urlsplit
 
 
 def check_page(page, root, width):

@@ -1,26 +1,21 @@
 """Stdlib-only contracts for CI Python selection and preserved baselines."""
-import json
+import json, re, unittest
 from pathlib import Path
-import re
-import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SETUP_UV = "astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2"
 JOBS = {
     "ci.yml": {
         "resolve-vendor": "3.15",
-        "pytest": "${{ matrix.python-version }}",
+        "test": "${{ matrix.python-version }}",
         "node-runtime": "3.15",
         "frontend-mock-pytest-latest": "3.15",
         "frontend-smoke": "3.15",
-        "test-locked": "${{ matrix.python-version }}"
+        "vendor-locked": "${{ matrix.python-version }}"
     },
-    "real-world-pages.yml": {
+    "pages.yml": {
         "checks": "3.15",
         "build": "3.15"
-    },
-    "real-chat-ui-smoke.yml": {
-        "openwebui-smoke": "3.15"
     },
     "runtime-compatibility.yml": {
         "runtime": "${{ matrix.python }}"
@@ -51,6 +46,19 @@ def job(workflow, name):
 
 
 class CiPythonSetupTests(unittest.TestCase):
+    def test_contract_inventory_matches_all_python_setup_jobs(self):
+        # Fail for stale workflow/job entries as well as newly untested jobs.
+        actual = set()
+        for path in sorted((ROOT / ".github/workflows").iterdir()):
+            if path.suffix not in {".yml", ".yaml"}:
+                continue
+            text = path.read_text(encoding="utf-8")
+            for name in re.findall(r"(?m)^  ([\w-]+):$", text):
+                if "uses: astral-sh/setup-uv@" in job(path.name, name):
+                    actual.add((path.name, name))
+        expected = {(workflow, name) for workflow, jobs in JOBS.items() for name in jobs}
+        self.assertEqual(actual, expected)
+
     def test_selected_python_is_ready_before_any_python_or_uv_command(self):
         for workflow, jobs in JOBS.items():
             for name, version in jobs.items():
@@ -64,12 +72,14 @@ class CiPythonSetupTests(unittest.TestCase):
                     )
                     self.assertIsNotNone(command, "No interpreter consumer was checked")
                     self.assertLess(setup, command.start(), "Python ran before setup-uv")
-                    setup_inputs = block[setup:].split("\n", 7)[:6]
+                    setup_inputs = block[setup:].split("\n", 10)[:9]
                     inputs = "\n".join(setup_inputs)
                     self.assertIn('version: "latest"', inputs)
                     self.assertIn(f'python-version: "{version}"', inputs)
                     self.assertIn("activate-environment: true", inputs)
-                    self.assertIn("enable-cache: false", inputs)
+                    self.assertIn("enable-cache: true", inputs)
+                    self.assertIn("save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}", inputs)  # only main writes
+                    self.assertIn("prune-cache: true", inputs)
 
     def test_compatibility_matrix_and_required_report_identities_are_preserved(self):
         text = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
@@ -79,12 +89,12 @@ class CiPythonSetupTests(unittest.TestCase):
         self.assertEqual(json.loads(match.group(1)), EXPECTED_REPORTS)
 
     def test_locked_baseline_and_runtime_floor_are_preserved(self):
-        locked = job("ci.yml", "test-locked")
+        locked = job("ci.yml", "vendor-locked")
         self.assertRegex(locked, r"python-version:\s*\n\s*- '3\.12'")
         self.assertIn("name: locked-junit-py${{ matrix.python-version }}", locked)
         self.assertIn("uv sync --locked --group dev", locked)
         self.assertIn('python: ["3.11", "3.12", "3.13", "3.14"]', job("runtime-compatibility.yml", "runtime"))
-        self.assertIn("independent `test-locked` job on Python 3.12", (ROOT / "docs/vendor-automation.md").read_text(encoding="utf-8"))
+        self.assertIn("independent `vendor-locked` job on Python 3.12", (ROOT / "docs/vendor-automation.md").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

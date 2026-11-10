@@ -1,11 +1,8 @@
 """Fail closed unless the existing browser-free frontend slice is complete."""
 from __future__ import annotations
 
-import argparse
-from collections import Counter
-from pathlib import Path
-import xml.etree.ElementTree as ET
-import sys
+import argparse, sys, xml.etree.ElementTree as ET
+from collections import Counter; from pathlib import Path
 
 EXPECTED = {
     "gradio": {

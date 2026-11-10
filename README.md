@@ -10,14 +10,14 @@ A function-focused Python Markdown utility that runs on the standard library onl
 
 ## GitHub About（推奨）
 
-> Stdlib-only Markdown helpers for Python: read/write, section extraction, and HTML↔Markdown utilities for URLs and images. Functions only—no CLI; verified by tests.
+> Stdlib-only Markdown helpers for Python: read/write, section extraction, and HTML↔Markdown utilities for URLs and images. Reusable functions with a small stdio CLI; verified by tests.
 
 ## Purpose
 
 This library grows the `markdown.py` module, used earlier in projects such as Ironmate, so it can be published on pip under the same file name.
 
 - **Standard library first** — avoid adding runtime dependencies, and extend features within that limit. Standalone users copy the file from GitHub; the copied `markdown.py` keeps working on its own.
-- **Function-focused** — there is no `main` or CLI entry point. Behavior is verified by tests. The processing in `demos/*.py` is checked directly as plain function calls that need no browser; optional Streamlit / Gradio front-end checks are also possible.
+- **Function-focused** — an optional `md-market` CLI delegates to the same library helpers. Behavior is verified by tests. The processing in `demos/*.py` is checked directly as plain function calls that need no browser; optional Streamlit / Gradio front-end checks are also possible.
 - **Planned API direction** — beyond the existing read / write / section extraction, expand the HTML↔Markdown helpers (URLs, image files, and so on).
 - **ascii_artist** — ASCII art utilities have moved to [`myon-bioinformatics/ascii_artist`](https://github.com/myon-bioinformatics/ascii_artist) and are not bundled here.
 
@@ -27,7 +27,7 @@ This library grows the `markdown.py` module, used earlier in projects such as Ir
 ironmate などで使っていた `markdown.py` を、同じファイル名のまま pip で配布できるように育てるライブラリです。
 
 - **標準ライブラリ前提**: 実行時の依存関係は増やさず、その範囲で機能を充実させます。スタンドアロンで使う場合は GitHub からファイルをコピーします。コピーした `markdown.py` 単体のまま動きます。
-- **関数提供に特化**: `main` や CLI のエントリポイントはありません。動作はテストで確認します。`demos/*.py` の処理も、ブラウザを使わない通常の関数呼び出しとして直接検証します。任意で Streamlit や Gradio の画面確認もできます。
+- **関数提供に特化**: `md-market` CLI は同じ関数を呼ぶ最小の入口です。動作はテストで確認します。`demos/*.py` の処理も、ブラウザを使わない通常の関数呼び出しとして直接検証します。任意で Streamlit や Gradio の画面確認もできます。
 - **API の方向性**: 既存の read / write / セクション抽出に加えて、HTML と Markdown の相互変換ヘルパ（URL や画像ファイルなど）を広げていきます。
 - **ascii_artist**: ASCII アート関連のユーティリティは [`myon-bioinformatics/ascii_artist`](https://github.com/myon-bioinformatics/ascii_artist) に分離しており、このリポジトリには含めていません。
 </details>
@@ -42,9 +42,8 @@ ironmate などで使っていた `markdown.py` を、同じファイル名の�
 | `demos/gradio_app.py` | Optional: paste/upload → instant analysis. `analyze()` has zero UI deps — call it directly |
 | `demos/streamlit_app.py` | Optional: sectioned headings/links/images/HTML/code view. `build_view()` has zero UI deps — call it directly |
 | `demos/chat_ui_demo.py` | Optional: generic mock chat screen — assistant replies built with `markdown.py`'s generation helpers, rendered by Gradio's `Chatbot` |
-| `demos/openai_compat_mock.py` | Optional: OpenAI-compatible chat completions server (stdlib only) so a real chat product can be pointed at `render_assistant_turn()`'s output instead of a real LLM — also issues one real OpenAI-style tool call for the MCP round-trip test below |
 | `docs/antipatterns.md` | Stable library/integration anti-pattern IDs plus concrete CI/Docker/Playwright incidents, root causes, fixes, and regression lessons |
-| `scripts/real_world_pages_report.py` | Builds the `real-world-pages` GitHub Actions workflow's Pages report: original vs. `html_to_markdown()`→`markdown_to_html()` round-trip, screenshotted via Playwright's own CLI, for every real HTML fixture in `fixtures/provenance.yaml` |
+| `scripts/real_world_pages_report.py` | Builds the `Pages` GitHub Actions workflow (`pages.yml`) report: original vs. `html_to_markdown()`→`markdown_to_html()` round-trip, screenshotted via Playwright's own CLI, for every real HTML fixture in `fixtures/provenance.yaml` |
 
 ## Optional Gradio-only nano environment
 
@@ -272,7 +271,7 @@ utilities, not a CommonMark parser or an LLM summarizer:
   the limit leaves enough room.
 
 Conversation-history compression and broader HTML conversion remain separate
-future design topics. See docs/context_helpers.md for the exact contracts.
+future design topics. See docs/context-helpers.md for the exact contracts.
 
 ## Dialects, system formats, directory trees, LLM output
 
@@ -430,99 +429,6 @@ in `_HTMLToMarkdownParser`'s handled-tag list, so they contribute no Markdown sy
 the real text they wrap still survives (same "unsupported tag, text not data" fallback as unhandled wrapper tags; simple ``<table>`` is now converted to GFM pipes).
 `<script>` content is suppressed, not leaked, same as `<style>`.
 
-## Real chat product smoke test (Open WebUI, in Docker)
-
-Every other frontend test here either has nothing to click (`demos/gradio_app.py` /
-`demos/streamlit_app.py`) or clicks through a mock chat screen this repo itself built
-(`demos/chat_ui_demo.py`). `tests/real_chat_ui/test_markdown_openwebui_docker.py` goes one step further:
-it drives a **real, unmodified Open WebUI**, running from its own published Docker image, and
-verifies *that actual product* renders `markdown.py`-generated Markdown correctly — not a mock of
-it.
-
-`demos/openai_compat_mock.py` is a small stdlib-only OpenAI-compatible chat completions server
-(`GET /v1/models`, `POST /v1/chat/completions`, streaming and non-streaming) that reuses
-`chat_ui_demo.py`'s own `render_assistant_turn()` keyword logic, so Open WebUI's "model" reply is
-the exact same deterministic Markdown the generic mock demo already uses — no real LLM, no network
-call out. `docker/openwebui-smoke/docker-compose.yml` runs it (and mcp-toolcall-lab's mock MCP
-server — see below) as compose services on the stack's own Docker network, addressed by service
-name rather than routed back through the host — more reproducible than `host.docker.internal`
-(see `docs/antipatterns.md`) and self-contained: one `docker compose up` starts everything, in the
-right order, with no separate host-side mock processes to start yourself. Open WebUI itself runs
-with `WEBUI_AUTH=False` (skips the signup/login screen entirely) and `OPENAI_API_BASE_URLS`/
-`DEFAULT_MODELS` pre-pointed at the mock backend, so there's no interactive setup to automate.
-
-```bash
-git clone https://github.com/myon-bioinformatics/mcp-toolcall-lab mcp-toolcall-lab
-docker compose -f docker/openwebui-smoke/docker-compose.yml up -d
-# wait for http://127.0.0.1:3000/health
-OPEN_WEBUI_BASE_URL=http://127.0.0.1:3000 MOCK_MCP_SERVER_NAME="Mock MCP (mcp-toolcall-lab)" \
-  uv run pytest tests/real_chat_ui/ -v
-docker compose -f docker/openwebui-smoke/docker-compose.yml down -v
-```
-
-These tests skip cleanly (`OPEN_WEBUI_BASE_URL` unset) everywhere else, including the default
-`pytest` run — they only run in the `real-chat-ui-smoke` GitHub Actions workflow
-(`workflow_dispatch` only: a full container + browser run is too slow/heavy to gate every push or
-PR, the same policy `frontend-smoke` already uses) or a manual local run as above. On a failure,
-that workflow uploads a screenshot and the compose stack's container logs as artifacts.
-
-### Triggering `real-chat-ui-smoke` without the "Run workflow" form
-
-The workflow takes two optional `workflow_dispatch` inputs, so a chat message and a run label can
-be supplied programmatically instead of clicking through the Actions tab's form each time:
-
-- `message` — an extra chat message to send through the real UI; runs
-  `test_openwebui_renders_a_custom_message_from_the_mock_backend` alongside the three fixed-content
-  tests. Since the text is caller-supplied, that test only asserts *some* non-empty response
-  rendered (not specific Markdown content — see the code comment for why).
-- `run_label` — a free-text tag folded into the failure-artifact name, so results from several
-  manual runs are easy to tell apart.
-
-```bash
-# gh CLI
-gh workflow run real-chat-ui-smoke.yml -f message="show me a table" -f run_label="ad-hoc"
-gh run list --workflow=real-chat-ui-smoke.yml --limit=1   # latest run + its conclusion
-
-# REST API directly
-curl -X POST -H "Authorization: Bearer $TOKEN" \
-  https://api.github.com/repos/<owner>/<repo>/actions/workflows/real-chat-ui-smoke.yml/dispatches \
-  -d '{"ref": "main", "inputs": {"message": "show me a table", "run_label": "ad-hoc"}}'
-curl -H "Authorization: Bearer $TOKEN" \
-  "https://api.github.com/repos/<owner>/<repo>/actions/workflows/real-chat-ui-smoke.yml/runs?per_page=1"
-```
-
-LibreChat is a planned second target here (see `docs`-equivalent notes in
-[mcp-toolcall-lab](https://github.com/myon-bioinformatics/mcp-toolcall-lab)'s own LibreChat
-integration for the parallel on that side) — not yet wired up in this repo.
-
-### The real MCP tool-call round trip
-
-`tests/real_chat_ui/test_openwebui_mcp_tool_call.py` goes further still: it registers a real MCP
-tool server — [mcp-toolcall-lab](https://github.com/myon-bioinformatics/mcp-toolcall-lab)'s
-`openwebui_mcp_mock.py`, run as this compose stack's own `mcp-mock` service rather than vendored
-here, since that file is designed as a portable, drop-in single-file mock — as a
-`TOOL_SERVER_CONNECTIONS` entry, clicks through Open WebUI's real per-chat "Tools" picker to enable
-it (the same click path a real user takes, not a backend shortcut), sends a message that should
-trigger a tool call, and verifies the tool's *actual* result renders in the chat.
-`demos/openai_compat_mock.py`'s "model" recognizes one trigger phrase and issues a real
-OpenAI-style `tool_calls` response referencing whichever tool name the request actually offered
-(never hardcoded, since a tool-server-backed function name is prefixed by the caller); on the
-follow-up request it unwraps the MCP result (which nests a second layer of JSON — confirmed by
-probing the real `mcp` client SDK against the real mock server, not guessed) and renders it as a
-Markdown table. This is exactly the round trip `docs/antipatterns.md` exists for — see there for
-concrete failures a live run has actually produced.
-
-The local-repro command above already covers this: cloning `mcp-toolcall-lab` as a subdirectory of
-this repo's checkout and `docker compose up` are all that's needed — `mcp-mock` installs
-`fastmcp` itself at container start, and `MOCK_MCP_SERVER_NAME` must match `docker-compose.yml`'s
-`TOOL_SERVER_CONNECTIONS.info.name` exactly (already the case in the command above).
-
-**[`docs/antipatterns.md`](docs/antipatterns.md)** is a running log of concrete ways a real chat
-product has broken this setup in an actual `workflow_dispatch` run — not predicted failures, only
-ones a live run produced, with the root cause traced to the product's own source. When the MCP
-round trip above doesn't come back correctly, that's exactly the kind of failure the log exists to
-capture.
-
 ## Capability stance
 
 This is **not** a full CommonMark/GFM engine (see `SUPPORTED` / `UNSUPPORTED` in `markdown.py`, and
@@ -578,7 +484,7 @@ MIT
 
 `markdown_to_web_ui_v1()` wraps the existing conservative Markdown-to-HTML
 subset in the stable semantic surface defined by
-[`myon-bioinformatics/web-ui/contract/v1`](https://github.com/myon-bioinformatics/web-ui/tree/4f43617465a92c912efcd441208e1789b3508d32/contract/v1) (pinned reference: `4f436174`).
+[`myon-bioinformatics/PySaiyanWeBoo/contract/v1`](https://github.com/myon-bioinformatics/PySaiyanWeBoo/tree/4f43617465a92c912efcd441208e1789b3508d32/contract/v1) (pinned reference: `4f436174`).
 
 The helper emits semantic HTML only:
 
@@ -587,8 +493,8 @@ The helper emits semantic HTML only:
 - optional `ui-title`
 - `ui-panel`
 
-It does **not** fetch, vendor, or embed web-ui CSS. Consumers should pin the
-web-ui revision they load separately. Theme names are case-sensitive.
+It does **not** fetch, vendor, or embed PySaiyanWeBoo CSS. Consumers should pin the
+PySaiyanWeBoo revision they load separately. Theme names are case-sensitive.
 
 Future breaking contract support should use a separate versioned emitter such as
 `markdown_to_web_ui_v2()` rather than silently changing v1 output semantics.
@@ -602,7 +508,7 @@ GitHub Pages publishes the shared repository metadata contract as
 `repository-diagnostics.json`, a one-record `repository-diagnostics.jsonl`,
 and `repository-diagnostics.html`. The metadata contract is pinned from
 Ironmate, anonymous public GitHub observations are pinned from
-mcp-toolcall-lab, and the HTML renderer is pinned to web-ui commit
+mcp-toolcall-lab, and the HTML renderer is pinned to PySaiyanWeBoo commit
 `adb23d7`. Network failures remain `unverified`; no GitHub token is used
 by the public resolver.
 
@@ -614,7 +520,7 @@ The Pages workflow checks out the PR head before generating diagnostics.
 
 ## Shared screenshot evidence
 
-`real-world-pages` checks out browser-test-kit at
+`pages.yml` checks out BrowserTestKit at
 `6a2e32a4bbe49be5268e6b30040d665a89eecf66`. Every HTML entry in
 `fixtures/provenance.yaml` requires both `original.png` and `roundtrip.png`;
 missing or structurally invalid images fail the build. PNG validation uses the
@@ -624,7 +530,7 @@ measured by this lane. Local report generation remains best-effort; CI is requir
 Each capture clears stale success PNGs, logs CLI failures and preserves failure
 images separately. The workflow uploads the available report/evidence even after
 failure (14 days), links it in the summary, and deploys only successful main builds.
-See the [shared guide](https://github.com/myon-bioinformatics/browser-test-kit/blob/6a2e32a4bbe49be5268e6b30040d665a89eecf66/docs/screenshot-evidence.md).
+See the [shared guide](https://github.com/myon-bioinformatics/BrowserTestKit/blob/6a2e32a4bbe49be5268e6b30040d665a89eecf66/docs/screenshot-evidence.md).
 
 HTML fixture screenshots now also have current-run receipts (one complete
 original/roundtrip set per Chromium fixture identity). CI requires image hashes,
@@ -697,3 +603,18 @@ Validation: 25 focused tests passed; both entry points list cases with `python -
 See [standard-library discovery commands](docs/unittest-discovery.md) for
 validated `python -S -m unittest discover` recipes, filename/name filtering,
 and the boundary with the full pytest suite.
+
+
+## uv command
+
+```sh
+uv tool install .
+md-market --help
+printf '# Hello\n' | md-market to-html
+```
+
+`md-market` supports `inventory`, `to-html`, `to-markdown`, and `toc`. Input is
+UTF-8 from stdin or an optional filename; output goes to stdout.
+Use `uvx --from 'git+https://github.com/myon-bioinformatics/markdown.git@main' md-market --help`
+for one-time use, or `uv add /absolute/path/to/markdown` for Python imports.
+Replace main with a reviewed full SHA for reproducibility. No frontend dependencies are installed.

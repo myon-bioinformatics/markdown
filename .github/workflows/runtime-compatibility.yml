@@ -21,7 +21,10 @@ jobs:
           version: "latest"
           python-version: "${{ matrix.python }}"
           activate-environment: true
-          enable-cache: false
+          enable-cache: true
+          # Pull requests restore the cache and never write it; only main saves it.
+          save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          prune-cache: true
       # Stdlib unittest, not pytest: this step runs with `python -S` (no
       # site-packages) on Python 3.11-3.14 to prove markdown.py works on a bare
       # interpreter with nothing installed. pytest is an external module, so it

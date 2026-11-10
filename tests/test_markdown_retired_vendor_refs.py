@@ -1,6 +1,5 @@
 """Retired upstream paths keep immutable identities and verified bytes."""
-import hashlib
-import json
+import hashlib, json
 from pathlib import Path
 
 

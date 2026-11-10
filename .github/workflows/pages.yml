@@ -1,4 +1,4 @@
-name: real-world-pages
+name: Pages
 
 # Publishes scripts/real_world_pages_report.py's output to GitHub Pages:
 # for every real, vendored HTML fixture in fixtures/provenance.yaml (see
@@ -36,7 +36,7 @@ on:
       - "tests/test_markdown_repository_diagnostics.py"
       - "fixtures/benchmark/**"
       - "fixtures/provenance.yaml"
-      - ".github/workflows/real-world-pages.yml"
+      - ".github/workflows/pages.yml"
   push:
     branches: [main]
     paths:
@@ -52,7 +52,7 @@ on:
       - "vendor.lock.json"
       - "fixtures/benchmark/**"
       - "fixtures/provenance.yaml"
-      - ".github/workflows/real-world-pages.yml"
+      - ".github/workflows/pages.yml"
 
 permissions:
   contents: read
@@ -81,7 +81,10 @@ jobs:
           version: "latest"
           python-version: "3.15"
           activate-environment: true
-          enable-cache: false
+          enable-cache: true
+          # Pull requests restore the cache and never write it; only main saves it.
+          save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          prune-cache: true
       - name: Sync locked development environment
         shell: bash
         run: |
@@ -113,7 +116,10 @@ jobs:
           version: "latest"
           python-version: "3.15"
           activate-environment: true
-          enable-cache: false
+          enable-cache: true
+          # Pull requests restore the cache and never write it; only main saves it.
+          save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          prune-cache: true
       - name: Sync locked frontend environment
         shell: bash
         run: |
