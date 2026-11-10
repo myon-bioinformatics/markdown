@@ -47,3 +47,6 @@ only-include = ["markdown.py"]
 
 [tool.hatch.build.targets.sdist]
 only-include = ["markdown.py"]
+
+[project.scripts]
+md-market = "markdown:_main"

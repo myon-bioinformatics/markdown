@@ -1,10 +1,6 @@
 """Explicit local browser check; never dispatched by Pages or default CI."""
-import argparse
-import functools
-import http.server
-from pathlib import Path
-import threading
-from urllib.parse import unquote, urlsplit
+import argparse, functools, http.server, threading
+from pathlib import Path; from urllib.parse import unquote, urlsplit
 
 
 def check_page(page, root, width):
@@ -36,14 +32,14 @@ def check_page(page, root, width):
         raise RuntimeError('Browser check failed: \'"h2": 24\' in page.locator(\'body\').inner_text()')
 
 
-def main():
+def main(argv=None):
     from playwright.sync_api import sync_playwright
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--report', required=True, type=Path)
     parser.add_argument('--chromium', required=True)
     parser.add_argument('--screenshots', required=True, type=Path)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     args.screenshots.mkdir(parents=True, exist_ok=True)
     root = args.report.resolve()
     server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), functools.partial(http.server.SimpleHTTPRequestHandler, directory=root.parent))

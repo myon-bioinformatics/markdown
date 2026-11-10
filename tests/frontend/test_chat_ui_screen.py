@@ -11,8 +11,7 @@ rendered HTML in a real chat UI, not just correct strings.
 
 from __future__ import annotations
 
-import sys
-import time
+import sys, time
 from pathlib import Path
 
 import pytest

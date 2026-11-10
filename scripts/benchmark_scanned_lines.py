@@ -1,9 +1,5 @@
 """Run from repo root: python -S -m scripts.benchmark_scanned_lines."""
-import json
-import subprocess
-import sys
-import tracemalloc
-import types
+import json, subprocess, sys, tracemalloc, types
 import markdown
 
 

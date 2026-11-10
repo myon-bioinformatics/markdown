@@ -1,5 +1,4 @@
-import hashlib
-import json
+import hashlib, json
 from pathlib import Path
 
 from scripts import markdown_repository_diagnostics as diagnostics

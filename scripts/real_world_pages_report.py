@@ -21,16 +21,8 @@ dependency beyond Playwright's own browser download.
 
 from __future__ import annotations
 
-import argparse
-import html as html_module
-import json
-import os
-import re
-import subprocess
-import sys
-from collections.abc import Mapping
-from pathlib import Path
-from typing import Any
+import argparse, html as html_module, json, os, re, subprocess, sys
+from collections.abc import Mapping; from pathlib import Path; from typing import Any
 
 import yaml
 

@@ -9,10 +9,7 @@ so this exercises the actual ``btn.click(...)`` wiring in
 
 from __future__ import annotations
 
-import sys
-import time
-import urllib.error
-import urllib.request
+import sys, time, urllib.error, urllib.request
 from pathlib import Path
 
 import pytest

@@ -4,15 +4,8 @@ No adoption/vendor pin or deployment change. Pass the exact web-ui #111 file.
 """
 from __future__ import annotations
 
-import argparse
-import hashlib
-from html.parser import HTMLParser
-import importlib.util
-import json
-import os
-import tempfile
-from pathlib import Path
-from urllib.parse import quote, unquote, urlsplit
+import argparse, hashlib, importlib.util, json, os, tempfile
+from html.parser import HTMLParser; from pathlib import Path; from urllib.parse import quote, unquote, urlsplit
 
 WEB_UI_COMMIT = '96079aba4084e11834c4d9c70d40eea3f5b326bd'
 WEB_UI_SHA256 = '75531bd58c523a6e5ecc92580f78d012e6747e927dcfd4887c9314b10c8e8a0b'
@@ -106,11 +99,11 @@ def render(report: Path, renderer: Path) -> str:
     return module.catalog_document(spec)
 
 
-def main() -> int:
+def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--report', required=True, type=Path)
     parser.add_argument('--web-ui', required=True, type=Path)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     page = render(args.report, args.web_ui)
     output = args.report / 'catalog-experiment.html'
     if output.is_symlink():

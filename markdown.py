@@ -2,7 +2,7 @@
 # metadata: __all__=128 | base_sha=99b6a174a883f60a9c3ed01164a81fd7bd26ff76 | updated_at=2026-09-27T09:40:47Z
 """Stdlib-only Markdown utility functions.
 
-This module is intentionally a single file with no CLI / ``main`` entry point.
+This module is a single standard-library file; its optional CLI delegates to the same helpers.
 It focuses on reusable helpers for Markdown I/O, structure extraction, and
 conservative HTML <-> Markdown conversions (links, images, common tags).
 
@@ -145,34 +145,8 @@ __all__ = [
     "UNSUPPORTED",
 ]
 
-import argparse
-import ast
-import calendar as calendar_module
-import configparser
-import csv
-import doctest
-import email as email_module
-import email.message as email_message
-import email.policy as email_policy
-import email.utils as email_utils
-import graphlib
-import html as html_module
-import importlib.metadata as importlib_metadata
-import inspect
-import io
-import json
-import math
-import platform
-import re
-import statistics
-import sys
-import tokenize
-import unicodedata
-from dataclasses import dataclass
-from html.parser import HTMLParser
-from pathlib import Path
-from typing import Any, Literal
-from urllib.parse import urljoin, urlparse
+import argparse, ast, calendar as calendar_module, configparser, csv, doctest, email as email_module, email.message as email_message, email.policy as email_policy, email.utils as email_utils, graphlib, html as html_module, importlib.metadata as importlib_metadata, inspect, io, json, math, platform, re, statistics, sys, tokenize, unicodedata
+from dataclasses import dataclass; from html.parser import HTMLParser; from pathlib import Path; from typing import Any, Literal; from urllib.parse import urljoin, urlparse
 
 try:
     import tomllib
@@ -7126,3 +7100,28 @@ def extract_identifiers(text: str) -> dict[str, Any]:
     shas = _dedupe_in_order(sha_hits)
 
     return {"uuids": uuids, "urls": urls, "github_refs": github_refs, "shas": shas}
+
+
+def _main(argv=None) -> int:
+    """Small stdio entry point for uv tools; library functions remain reusable."""
+    parser = argparse.ArgumentParser(description="Stdlib-only Markdown helpers")
+    parser.add_argument("operation", nargs="?", default="inventory",
+                        choices=("inventory", "to-html", "to-markdown", "toc"))
+    parser.add_argument("path", nargs="?", default="-", help="UTF-8 input file, or - for stdin")
+    args = parser.parse_args(argv)
+    try:
+        content = sys.stdin.read() if args.path == "-" else Path(args.path).read_text(encoding="utf-8")
+        if args.operation == "inventory":
+            output = json.dumps(inventory(content), ensure_ascii=False, indent=2)
+        else:
+            transform = {"to-html": markdown_to_html, "to-markdown": html_to_markdown, "toc": table_of_contents}[args.operation]
+            output = transform(content)
+        print(output, end="" if output.endswith("\n") else "\n")
+    except (OSError, UnicodeError, ValueError) as error:
+        print(str(error), file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_main())

@@ -1,10 +1,8 @@
 """Fail closed unless the existing browser-free frontend slice is complete."""
 from __future__ import annotations
 
-import argparse
-from collections import Counter
-from pathlib import Path
-import xml.etree.ElementTree as ET
+import argparse, sys, xml.etree.ElementTree as ET
+from collections import Counter; from pathlib import Path
 
 EXPECTED = {
     "gradio": {
@@ -34,9 +32,14 @@ def check(frontend: str, path: Path) -> None:
     print(f"{frontend}: {len(cases)} expected tests passed, zero skips")
 
 
-if __name__ == "__main__":
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else list(argv)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("frontend", choices=(*EXPECTED, "all"))
     parser.add_argument("junit", type=Path)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     check(args.frontend, args.junit)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
