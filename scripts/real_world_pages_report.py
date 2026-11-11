@@ -235,7 +235,8 @@ def _report_html(rows: list[dict[str, Any]], revision: Mapping[str, Any]) -> str
         '<main class="ui-page">'
         '<img src="./icon.png" width="80" height="80" alt="markdown icon">'
         '<h1 class="ui-title">real-world HTML -&gt; html_to_markdown() -&gt; markdown_to_html()</h1>'
-        '<p><a href="repository-diagnostics.html">Repository diagnostics</a> · '
+        '<p><a href="guide.html">📘 利用ガイド</a> · '
+        '<a href="repository-diagnostics.html">Repository diagnostics</a> · '
         '<a href="repository-diagnostics.json">JSON</a> · '
         '<a href="repository-diagnostics.jsonl">JSONL</a></p>'
         "<p>Every fixture here is a real, vendored page (see "

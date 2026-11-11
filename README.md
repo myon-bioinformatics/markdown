@@ -8,6 +8,8 @@
 
 A function-focused Python Markdown utility that runs on the standard library only.
 
+📘 [利用ガイド / Usage guide](https://myon-bioinformatics.github.io/markdown/guide.html) (GitHub Pages)
+
 ## GitHub About（推奨）
 
 > Stdlib-only Markdown helpers for Python: read/write, section extraction, and HTML↔Markdown utilities for URLs and images. Reusable functions with a small stdio CLI; verified by tests.
