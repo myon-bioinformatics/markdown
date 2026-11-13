@@ -2898,21 +2898,21 @@ process.stdin.on('data', (c) => (text += c)).on('end', () => {
 });
 """
 _TOML_READER: list[str | None] = []
-_NODE_LAUNCH: Any = None
+_NJS_LAUNCH: Any = None
 
 
-def _node_launch_module() -> Any:
-    global _NODE_LAUNCH
-    if _NODE_LAUNCH is None:
+def _njs_launch_module() -> Any:
+    global _NJS_LAUNCH
+    if _NJS_LAUNCH is None:
         import importlib.util
         from pathlib import Path
 
-        path = Path(__file__).resolve().parent / "vendor" / "node_launch.py"
-        spec = importlib.util.spec_from_file_location("_vendored_node_launch", path)
+        path = Path(__file__).resolve().parent / "vendor" / "njs_launch.py"
+        spec = importlib.util.spec_from_file_location("_vendored_njs_launch", path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        _NODE_LAUNCH = module
-    return _NODE_LAUNCH
+        _NJS_LAUNCH = module
+    return _NJS_LAUNCH
 
 
 def _decode_node_process_bytes(data: Any) -> str:
@@ -2929,20 +2929,20 @@ def _toml_node_run(
     timeout: float = 30,
     **kwargs: Any,
 ) -> Any:
-    """Run vendored ``node_launch`` for TOML helpers with ``subprocess``-compatible errors."""
+    """Run vendored ``njs_launch`` for TOML helpers with ``subprocess``-compatible errors."""
     import subprocess
 
-    node_launch = _node_launch_module()
+    njs_launch = _njs_launch_module()
     run_kwargs = dict(kwargs)
     node = run_kwargs.pop("node", None)
-    env_var = run_kwargs.pop("env_var", node_launch.DEFAULT_ENV_VAR)
+    env_var = run_kwargs.pop("env_var", njs_launch.DEFAULT_ENV_VAR)
     run_kwargs.pop("probe", None)
-    executable = node_launch.resolve_node(node=node, env_var=env_var)
-    command = node_launch.node_command(
+    executable = njs_launch.resolve_node(node=node, env_var=env_var)
+    command = njs_launch.node_command(
         target, *args, node=executable, probe=False, env_var=env_var
     )
     try:
-        return node_launch.run(
+        return njs_launch.run(
             target,
             *args,
             timeout=timeout,
@@ -2950,7 +2950,7 @@ def _toml_node_run(
             probe=False,
             **run_kwargs,
         )
-    except node_launch.LaunchError as exc:
+    except njs_launch.LaunchError as exc:
         if exc.code == "ELAUNCHSTDINCLOSED":
             status = exc.status if exc.status is not None else -1
             if status != 0:
@@ -2976,12 +2976,12 @@ def toml_reader() -> str | None:
     if tomllib is not None:
         return "tomllib"
     if not _TOML_READER:
-        node_launch = _node_launch_module()
+        njs_launch = _njs_launch_module()
         ok = False
         try:
             probe = _toml_node_run("-e", "require('smol-toml')", timeout=30, check=False)
             ok = probe.returncode == 0
-        except node_launch.NodeNotFoundError:
+        except njs_launch.NodeNotFoundError:
             ok = False
         _TOML_READER.append("node" if ok else None)
     return _TOML_READER[0]

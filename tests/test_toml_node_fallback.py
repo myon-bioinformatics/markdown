@@ -9,7 +9,7 @@ import pytest
 import markdown as md
 
 # Registered fake NODE paths: vendored ``_probe_node_once`` / ``Popen`` see these via
-# stubbed ``subprocess.run`` (--version) and ``subprocess.Popen`` (-e) in node_launch.
+# stubbed ``subprocess.run`` (--version) and ``subprocess.Popen`` (-e) in njs_launch.
 class _FakeNodeSpec(NamedTuple):
     version: str
     on_eval: str
@@ -113,7 +113,7 @@ class _FakeNodePopen:
                 return
 
             # Drain stdin in the background so ``wait()`` is not blocked on EOF
-            # before ``node_launch``'s stdin writer thread runs.
+            # before ``njs_launch``'s stdin writer thread runs.
             def drain_stdin() -> None:
                 try:
                     with os.fdopen(self._stdin_r, "rb") as stream:
@@ -148,11 +148,11 @@ class _FakeNodePopen:
 
 
 @pytest.fixture(autouse=True)
-def _node_launch_process_layer_stub(monkeypatch):
-    """Stub ``node_launch``'s ``subprocess`` calls for registered fake node paths only."""
-    node_launch = md._node_launch_module()
-    real_run = node_launch.subprocess.run
-    real_popen = node_launch.subprocess.Popen
+def _njs_launch_process_layer_stub(monkeypatch):
+    """Stub ``njs_launch``'s ``subprocess`` calls for registered fake node paths only."""
+    njs_launch = md._njs_launch_module()
+    real_run = njs_launch.subprocess.run
+    real_popen = njs_launch.subprocess.Popen
 
     def fake_run(args, *pargs, **kwargs):
         if args and not isinstance(args, (str, bytes)):
@@ -178,8 +178,8 @@ def _node_launch_process_layer_stub(monkeypatch):
             **kwargs,
         )
 
-    monkeypatch.setattr(node_launch.subprocess, "run", fake_run)
-    monkeypatch.setattr(node_launch.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(njs_launch.subprocess, "run", fake_run)
+    monkeypatch.setattr(njs_launch.subprocess, "Popen", fake_popen)
     yield
     _FAKE_NODE_SPECS.clear()
 
@@ -197,7 +197,7 @@ def node_only(monkeypatch):
     monkeypatch.setenv("NODE_PATH", str(MODULES))
     monkeypatch.setattr(md, "tomllib", None)
     monkeypatch.setattr(md, "_TOML_READER", [])
-    md._node_launch_module().clear_probe_cache()
+    md._njs_launch_module().clear_probe_cache()
     yield
 
 
@@ -222,7 +222,7 @@ def _use_fake_node(monkeypatch, script: Union[Path, str]) -> None:
     monkeypatch.setattr(md, "tomllib", None)
     monkeypatch.setattr(md, "_TOML_READER", [])
     monkeypatch.setenv("NODE", str(script))
-    md._node_launch_module().clear_probe_cache()
+    md._njs_launch_module().clear_probe_cache()
 
 
 @needs_node
@@ -272,7 +272,7 @@ def test_no_reader_names_both_options(monkeypatch):
     monkeypatch.setattr(md, "tomllib", None)
     monkeypatch.setattr(md, "_TOML_READER", [])
     monkeypatch.setattr(shutil, "which", lambda name, **kw: None)
-    md._node_launch_module().clear_probe_cache()
+    md._njs_launch_module().clear_probe_cache()
     assert md.toml_reader() is None
     with pytest.raises(RuntimeError, match=r"tomllib.*Node 26\+.*smol-toml"):
         md.toml_to_markdown("a = 1\n")
@@ -281,9 +281,9 @@ def test_no_reader_names_both_options(monkeypatch):
 def test_node_20_is_rejected_as_reader(tmp_path, monkeypatch):
     script = _write_fake_node(tmp_path, version="v20.0.0", on_eval="pass")
     _use_fake_node(monkeypatch, script)
-    node_launch = md._node_launch_module()
-    with pytest.raises(node_launch.NodeNotFoundError, match=r"must be 26.*found 20"):
-        node_launch.resolve_node(env_var="NODE")
+    njs_launch = md._njs_launch_module()
+    with pytest.raises(njs_launch.NodeNotFoundError, match=r"must be 26.*found 20"):
+        njs_launch.resolve_node(env_var="NODE")
     assert md.toml_reader() is None
     with pytest.raises(RuntimeError, match=r"Node 26\+.*smol-toml"):
         md.toml_to_markdown("a = 1\n")
@@ -292,18 +292,18 @@ def test_node_20_is_rejected_as_reader(tmp_path, monkeypatch):
 def test_toml_reader_probe_timeout_reraises_timeout_expired(monkeypatch):
     monkeypatch.setattr(md, "tomllib", None)
     monkeypatch.setattr(md, "_TOML_READER", [])
-    node_launch = md._node_launch_module()
-    monkeypatch.setattr(node_launch, "resolve_node", lambda **kwargs: "/fake/node")
+    njs_launch = md._njs_launch_module()
+    monkeypatch.setattr(njs_launch, "resolve_node", lambda **kwargs: "/fake/node")
 
     def timed_out(*args, **kwargs):
-        raise node_launch.LaunchError(
-            "node_launch: Node process timed out",
+        raise njs_launch.LaunchError(
+            "njs_launch: Node process timed out",
             code="ELAUNCHFAILURE",
             stdout=b"",
             stderr=b"",
         )
 
-    monkeypatch.setattr(node_launch, "run", timed_out)
+    monkeypatch.setattr(njs_launch, "run", timed_out)
     with pytest.raises(subprocess.TimeoutExpired) as info:
         md.toml_reader()
     assert info.value.timeout == 30
@@ -311,19 +311,19 @@ def test_toml_reader_probe_timeout_reraises_timeout_expired(monkeypatch):
 
 
 def test_toml_node_run_timeout_cmd_includes_resolved_node(monkeypatch):
-    node_launch = md._node_launch_module()
+    njs_launch = md._njs_launch_module()
     fake = "/opt/node24/bin/node"
-    monkeypatch.setattr(node_launch, "resolve_node", lambda **kwargs: fake)
+    monkeypatch.setattr(njs_launch, "resolve_node", lambda **kwargs: fake)
 
     def timed_out(*args, **kwargs):
-        raise node_launch.LaunchError(
-            "node_launch: Node process timed out",
+        raise njs_launch.LaunchError(
+            "njs_launch: Node process timed out",
             code="ELAUNCHFAILURE",
             stdout=b"",
             stderr=b"",
         )
 
-    monkeypatch.setattr(node_launch, "run", timed_out)
+    monkeypatch.setattr(njs_launch, "run", timed_out)
     with pytest.raises(subprocess.TimeoutExpired) as info:
         md._toml_node_run("-e", "1+1", timeout=12, check=False)
     assert info.value.timeout == 12
@@ -331,16 +331,16 @@ def test_toml_node_run_timeout_cmd_includes_resolved_node(monkeypatch):
 
 
 def test_toml_node_run_pops_node_and_probe_before_calling_run(monkeypatch):
-    node_launch = md._node_launch_module()
+    njs_launch = md._njs_launch_module()
     resolved = "/resolved/node"
-    monkeypatch.setattr(node_launch, "resolve_node", lambda **kwargs: resolved)
+    monkeypatch.setattr(njs_launch, "resolve_node", lambda **kwargs: resolved)
     seen: dict[str, object] = {}
 
     def record_run(*args, **kwargs):
         seen["kwargs"] = dict(kwargs)
         return subprocess.CompletedProcess([resolved, "-e", "x"], 0, b"", b"")
 
-    monkeypatch.setattr(node_launch, "run", record_run)
+    monkeypatch.setattr(njs_launch, "run", record_run)
     md._toml_node_run("-e", "x", node="/explicit", probe=True, check=False)
     assert seen["kwargs"]["node"] == resolved
     assert seen["kwargs"]["probe"] is False
@@ -349,18 +349,18 @@ def test_toml_node_run_pops_node_and_probe_before_calling_run(monkeypatch):
 def test_toml_loads_timeout_reraises_timeout_expired(monkeypatch):
     monkeypatch.setattr(md, "tomllib", None)
     monkeypatch.setattr(md, "_TOML_READER", ["node"])
-    node_launch = md._node_launch_module()
-    monkeypatch.setattr(node_launch, "resolve_node", lambda **kwargs: "/fake/node")
+    njs_launch = md._njs_launch_module()
+    monkeypatch.setattr(njs_launch, "resolve_node", lambda **kwargs: "/fake/node")
 
     def timed_out(*args, **kwargs):
-        raise node_launch.LaunchError(
-            "node_launch: Node process timed out",
+        raise njs_launch.LaunchError(
+            "njs_launch: Node process timed out",
             code="ELAUNCHFAILURE",
             stdout=b"",
             stderr=b"",
         )
 
-    monkeypatch.setattr(node_launch, "run", timed_out)
+    monkeypatch.setattr(njs_launch, "run", timed_out)
     with pytest.raises(subprocess.TimeoutExpired) as info:
         md.toml_to_markdown("a = 1\n")
     assert info.value.timeout == 30
@@ -369,25 +369,25 @@ def test_toml_loads_timeout_reraises_timeout_expired(monkeypatch):
 
 def test_toml_node_run_stdin_closed_launch_error_maps_stderr(monkeypatch):
     """``_toml_node_run`` maps ``ELAUNCHSTDINCLOSED`` with non-zero status to ``RuntimeError``."""
-    node_launch = md._node_launch_module()
-    monkeypatch.setattr(node_launch, "resolve_node", lambda **kwargs: "/fake/node")
+    njs_launch = md._njs_launch_module()
+    monkeypatch.setattr(njs_launch, "resolve_node", lambda **kwargs: "/fake/node")
 
     def stdin_closed(*args, **kwargs):
-        raise node_launch.LaunchError(
-            "node_launch: Node stdin pipe closed unexpectedly",
+        raise njs_launch.LaunchError(
+            "njs_launch: Node stdin pipe closed unexpectedly",
             code="ELAUNCHSTDINCLOSED",
             status=3,
             stdout=b"",
             stderr=b"boom\n",
         )
 
-    monkeypatch.setattr(node_launch, "run", stdin_closed)
+    monkeypatch.setattr(njs_launch, "run", stdin_closed)
     with pytest.raises(RuntimeError, match=r"Node TOML reader failed: boom"):
         md._toml_node_run("-e", "x", input="tiny\n", check=False)
 
 
 def test_toml_loads_stdin_closed_nonzero_surfaces_stderr(tmp_path, monkeypatch):
-    """``node_launch`` ``ELAUNCHSTDINCLOSED`` (unread stdin close + large payload) → ``RuntimeError``."""
+    """``njs_launch`` ``ELAUNCHSTDINCLOSED`` (unread stdin close + large payload) → ``RuntimeError``."""
     script = _write_fake_node(tmp_path, version="v26.0.0", close_stdin_unread=True)
     _use_fake_node(monkeypatch, script)
     monkeypatch.setattr(md, "_TOML_READER", ["node"])

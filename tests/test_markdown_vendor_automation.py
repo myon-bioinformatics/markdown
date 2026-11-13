@@ -24,8 +24,8 @@ EXPECTED = {
     ),
     (
         "myon-bioinformatics/myon-bioinformatics",
-        "node_launch.py",
-        "vendor/node_launch.py",
+        "njs_launch.py",
+        "vendor/njs_launch.py",
     ),
 }
 
