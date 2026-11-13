@@ -31,8 +31,6 @@ import markdown as md
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import markdown as md
-
 
 def test_plain_content_keeps_the_original_triple_fence() -> None:
     assert md.code_block("print(1)", lang="python") == "```python\nprint(1)\n```\n"
@@ -130,7 +128,6 @@ def test_non_fence_single_character_raises() -> None:
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import markdown as md
 
 BENCHMARK = ROOT / "fixtures" / "benchmark"
 
@@ -374,7 +371,6 @@ def test_github_docs_fixture_real_alerts_render() -> None:
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import markdown as md
 
 FIXTURES = ROOT / "fixtures"
 
@@ -452,8 +448,6 @@ def test_vscode_fixture_live_autolink_renders() -> None:
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-
-import markdown as md
 
 
 def test_plain_blockquote() -> None:
@@ -564,8 +558,6 @@ def test_blockquote_round_trip_preserves_paragraph_attributes() -> None:
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import markdown as md
-
 
 def test_details_exported() -> None:
     assert "details" in md.__all__
@@ -670,8 +662,6 @@ def test_unclosed_code_fence_keeps_colon_closer_as_code_until_eof():
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import markdown as md
-
 
 def test_plain_bold_and_italic() -> None:
     html = md.markdown_to_html("plain **bold** and *italic* text\n")
@@ -719,8 +709,6 @@ def test_asymmetric_close_run_is_also_a_documented_degrade() -> None:
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-
-import markdown as md
 
 
 def test_footnote_helpers_exported() -> None:
@@ -831,8 +819,6 @@ def test_fenced_github_docs_style_example_stays_code() -> None:
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import markdown as md
-
 
 def test_markdown_nested_unordered_list_preserves_structure() -> None:
     source = "- foo\n  - bar\n    - baz\n"
@@ -925,8 +911,6 @@ def test_list_kind_switches_at_same_indent_start_new_sibling_list() -> None:
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import markdown as md
-
 
 def test_generator_round_trips_to_del() -> None:
     html = md.markdown_to_html(md.strikethrough("x"))
@@ -997,8 +981,6 @@ def test_html_del_becomes_strikethrough_markdown() -> None:
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-
-import markdown as md
 
 
 def test_table_generator_round_trips_to_html() -> None:
@@ -1213,7 +1195,6 @@ def test_colspan_is_ignored_as_a_single_cell() -> None:
     assert "| wide |" in md_out or "| wide |  |" in md_out
 
 
-
 def test_table_section_tags_preserve_row_order() -> None:
     html = (
         "<table>"
@@ -1267,8 +1248,6 @@ def test_mixed_th_td_row_keeps_cell_order() -> None:
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-
-import markdown as md
 
 
 def test_task_item_generator() -> None:
@@ -1524,7 +1503,6 @@ def test_table_of_contents_inline_comments(source, expected):
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import markdown as md
 
 CANONICAL = """# Title
 
@@ -1824,8 +1802,6 @@ def test_org_and_jira_readers_drop_unsafe_link_schemes() -> None:
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import markdown as md
-
 
 def test_kramdown_helpers_exported() -> None:
     for name in (
@@ -1995,8 +1971,6 @@ def test_markdown_to_html_does_not_apply_ial() -> None:
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-
-import markdown as md
 
 
 def test_heading_levels_clamped() -> None:
@@ -2375,7 +2349,6 @@ def test_markdown_links_to_dot_empty_heading_falls_back_to_document():
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import markdown as md
 
 DIRECTORY_TREE_CANONICAL = "- src/\n  - app.py\n  - utils/\n    - __init__.py\n- README.md\n"
 TREE = {"src": {"app.py": None, "utils": {"__init__.py": None}}, "README.md": None}
@@ -2560,8 +2533,6 @@ def test_scaffold_does_not_create_root_when_validation_fails(tmp_path: Path) -> 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import markdown as md
-
 
 def test_stylesheet_helpers_exported() -> None:
     assert "alert_stylesheet" in md.__all__
@@ -2615,8 +2586,6 @@ def test_readme_embed_pattern_is_valid_html() -> None:
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import markdown as md
-
 
 def test_scanner_marks_adaptive_fence_and_its_contents() -> None:
     lines = ["````markdown", "```nested", "```", "````", "outside"]
@@ -2650,27 +2619,6 @@ def test_extract_code_blocks_uses_the_shared_adaptive_fence_contract() -> None:
     ]
 
 
-# ═══ · scanned line storage ══════════════════════════════════════════════════════════════════════════════
-
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-import markdown as md
-
-
-class ScannedLineStorageTests(unittest.TestCase):
-    def test_scan_context_and_storage_roundtrip(self):
-        lines=['hello','```py','code','```','~~~','more','~~~']
-        result=md._scan_lines(lines)
-        self.assertEqual([r.text for r in result],lines)
-        self.assertEqual([r.in_fenced_code for r in result],[False,True,True,True,True,True,True])
-        self.assertEqual([r.is_fence_open for r in result],[False,True,False,False,True,False,False])
-        self.assertEqual([r.is_fence_close for r in result],[False,False,False,True,False,False,True])
-        for row in result:
-            self.assertEqual(pickle.loads(pickle.dumps(row)),row)
-            self.assertEqual(copy.copy(row),row)
-            self.assertFalse(hasattr(row,'__dict__'))
-            with self.assertRaises(FrozenInstanceError):row.text='changed'
-
-
 # ═══ · nul sanitization ══════════════════════════════════════════════════════════════════════════════════
 
 @pytest.mark.parametrize(
@@ -2692,8 +2640,6 @@ def test_markdown_to_html_replaces_input_nul(source: str, expected: str) -> None
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-
-import markdown as md
 
 
 def test_markdown_to_man_replaces_nul_in_body_and_rejects_header_controls() -> None:

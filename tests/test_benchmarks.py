@@ -137,7 +137,6 @@ def test_classification_summary_is_printable() -> None:
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import markdown as md
 
 FIXTURES = ROOT / "fixtures"
 BENCHMARK = FIXTURES / "benchmark"
@@ -324,8 +323,6 @@ ns['main']()
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-
-import markdown as md
 
 
 def _provenance() -> dict:

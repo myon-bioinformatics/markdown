@@ -258,7 +258,6 @@ def test_standalone_copy_imports_under_python_s(tmp_path):
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import markdown as md
 
 FIXTURES = ROOT / "fixtures"
 
@@ -941,7 +940,6 @@ for path in (str(ROOT), str(ROOT / "demos")):
         sys.path.insert(0, path)
 
 import chat_ui_demo as chat_ui  # noqa: E402
-import markdown as md  # noqa: E402
 
 
 def test_table_reply_renders_a_real_markdown_table() -> None:

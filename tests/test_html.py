@@ -309,7 +309,6 @@ def test_find_html_text_reports_unsupported_input_attribute_first():
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import markdown as md
 
 AUDIT_SCRIPT = ROOT / "scripts" / "converter_contract_audit.py"
 
@@ -567,7 +566,6 @@ def test_data_uri_uses_text_plain_for_an_omitted_media_type():
 # ═══ · data uris ═════════════════════════════════════════════════════════════════════════════════════════
 
 if str(ROOT) not in sys.path: sys.path.insert(0, str(ROOT))
-import markdown as md
 
 def test_data_uri_is_observed_without_decoding_or_network() -> None:
     uri = "data:image/png;base64,iVBORw0KGgo="
@@ -683,7 +681,6 @@ def test_visible_tail_does_not_reactivate_a_commented_heading_marker():
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import markdown as md
 
 TOHOHO = ROOT / "fixtures" / "benchmark" / "tohoho_web_home.html"
 
@@ -754,8 +751,6 @@ def test_blockquote_continuation_prefix_survives_empty_paragraph_before_list() -
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-
-import markdown as md
 
 
 SAMPLE = (
@@ -891,7 +886,6 @@ def test_ini_and_dotenv_are_not_forced_into_same_shape():
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import markdown as md
 
 FIXTURES = ROOT / "fixtures"
 

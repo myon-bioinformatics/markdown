@@ -202,7 +202,6 @@ def test_footnote_is_classified_as_expected_lossy():
     assert "[^id]" in footnote["expected_loss_reason"]
 
 
-
 def test_conversion_graph_distinguishes_prose_and_structured_markdown():
     audit = _load_module()
     graph = audit.collect_report()["conversion_graph"]
@@ -843,7 +842,6 @@ def test_toml_reader_requires_python_311_when_tomllib_unavailable(monkeypatch):
         md.toml_to_markdown('x = 1\n')
 
 
-
 @pytest.mark.parametrize(
     "value",
     [
@@ -949,7 +947,6 @@ def test_sql_snapshot_normalizes_lone_cr_to_lf():
     )
 
 
-
 def test_structured_markdown_round_trip_nested_json_compatible_values():
     value = {
         "user": {"name": "妙本", "active": True, "score": 1.5},
@@ -1015,7 +1012,6 @@ def test_markdown_to_structured_rejects_bad_parent_reference():
     )
     with pytest.raises(ValueError, match="earlier node"):
         md.markdown_to_structured(source)
-
 
 
 def test_markdown_to_structured_requires_format_marker():
@@ -1089,7 +1085,6 @@ def test_markdown_to_structured_rejects_unknown_type_tag():
         md.markdown_to_structured(source)
 
 
-
 def test_markdown_to_structured_rejects_marker_only_as_substring():
     source = (
         "prose <!-- markdown.py:structured-v1 --> prose\n"
@@ -1130,8 +1125,6 @@ def test_markdown_to_structured_requires_table_paired_with_marker():
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-
-import markdown as md
 
 
 def test_exports() -> None:
@@ -1332,8 +1325,6 @@ def test_markdown_to_man_rejects_control_characters_in_th_fields(field: str, bad
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import markdown as md
-
 
 def test_csv_table_csv_round_trip_handles_quotes_and_pipes() -> None:
     source = 'name,note\n妙本,"a, b | c"\n'
@@ -1379,8 +1370,6 @@ def test_malformed_or_missing_table_degrades_to_empty_data() -> None:
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-
-import markdown as md
 
 
 def test_exports_llm_io() -> None:
