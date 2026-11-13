@@ -321,7 +321,7 @@ above.
 - **Fix**: escape-doubling. Every input `` first becomes `E`;
   placeholders are `P<n>;` and sentinels `B`/`I`/`S`, so no input can
   spell a marker, and restore is iterative. Regression:
-  `test_placeholder_like_input_is_left_alone` in `tests/test_dialects.py`.
+  `test_placeholder_like_input_is_left_alone` in `tests/test_syntax.py`.
 - **Generalizable lesson**: an in-band marker needs either escaping of the
   same code points in the input or a code point that sanitized input cannot
   contain (browser-test-kit's `page_text.py` maps noncharacters U+FDD0-U+FDD2

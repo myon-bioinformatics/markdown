@@ -1,7 +1,7 @@
 """Build a static GitHub Pages report for the real-world HTML benchmark.
 
 For every ``.html`` entry under ``fixtures/provenance.yaml``'s
-``benchmark_fixtures`` list (see ``tests/test_benchmark_html_roundtrip.py``
+``benchmark_fixtures`` list (see ``tests/test_benchmarks.py``
 for the assertions this data backs), this writes a small offline report
 tree: the vendored original, its ``html_to_markdown()`` conversion, the
 round-tripped HTML, and a before/after construct count -- plus, when
@@ -242,7 +242,7 @@ def _report_html(rows: list[dict[str, Any]], revision: Mapping[str, Any]) -> str
         "<p>Every fixture here is a real, vendored page (see "
         "<code>fixtures/provenance.yaml</code>) run through both conversions, "
         "offline -- no live fetch of the real site happens in this report. "
-        "See <code>tests/test_benchmark_html_roundtrip.py</code> for the exact "
+        "See <code>tests/test_benchmarks.py</code> for the exact "
         "construct-count assertions this data backs.</p>"
         f"{_revision_html(revision)}"
         f"{body}</main>"
