@@ -197,15 +197,15 @@ def build_report(out_dir: Path, revision: Mapping[str, Any] | None = None) -> No
 
 
 def _report_html(rows: list[dict[str, Any]], revision: Mapping[str, Any]) -> str:
-    # The page shell, stylesheet and table come from PySaiyanWeBoo's web_ui (pinned in the dev group);
+    # The page shell, stylesheet and table come from PySaiyanWeBoo's pysaiyanweboo (pinned in the dev group);
     # this script only assembles the content.
-    import web_ui
+    import pysaiyanweboo
 
     sections = []
     for row in rows:
         fixture_id = row["id"]
         before, after = row["before"], row["after"]
-        table = web_ui.table(
+        table = pysaiyanweboo.table(
             ("tag", "original", "round-tripped"),
             [(tag, before.get(tag, 0), after.get(tag, 0)) for tag in ("h1", "h2", "a", "img")],
         )
@@ -247,10 +247,10 @@ def _report_html(rows: list[dict[str, Any]], revision: Mapping[str, Any]) -> str
         f"{_revision_html(revision)}"
         f"{body}</main>"
     )
-    return web_ui.render_document(
+    return pysaiyanweboo.render_document(
         trusted_html=main,
         title="markdown.py: real-world HTML benchmark",
-        css=web_ui.core_css() + "img{max-width:100%;height:auto}",
+        css=pysaiyanweboo.core_css() + "img{max-width:100%;height:auto}",
         favicon="./favicon.png",
         touch_icon="./icon.png",
     )
