@@ -313,7 +313,7 @@ Historical capture, recorded 2026-11-08 at Markdown commit `5b7c00c0d67b898be8e3
 
 🚫 Not run for that historical capture: `tests/real_chat_ui` (Docker), `experiments/check_catalog_browser.py` (pins an older `web_ui.py` hash). Firefox / WebKit not installed.
 
-🔁 Re-record (start `GRADIO_SERVER_PORT=7861 python demos/chat_ui_demo.py` first; the report and diagnostics pages are self-contained — built with PySaiyanWeBoo's `web_ui`, nothing is fetched from a CDN):
+🔁 Re-record (start `GRADIO_SERVER_PORT=7861 python demos/chat_ui_demo.py` first; the report and diagnostics pages are self-contained — built with PySaiyanWeBoo's `pysaiyanweboo`, nothing is fetched from a CDN):
 
 ```sh
 python scripts/real_world_pages_report.py --out /tmp/site

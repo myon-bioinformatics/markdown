@@ -137,7 +137,7 @@ jobs:
           python scripts/real_world_pages_report.py --out _site
           python scripts/markdown_repository_diagnostics.py _site
           # The usage guide: a web-ui-page/1 spec (data only) rendered by the pinned PySaiyanWeBoo.
-          python -m web_ui --page docs/guide.page.json > _site/guide.html
+          python -m pysaiyanweboo --page docs/guide.page.json > _site/guide.html
       - name: Require fixture receipts and prove corruption rejection
         if: always()
         env:
