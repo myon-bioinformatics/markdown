@@ -349,11 +349,11 @@ nothing but `curl` (POST to start a job, GET an SSE stream for the result) — n
 library needed, just what's already on any Ubuntu box. Streamlit's interactive reruns are a
 stateful websocket protocol rather than a request/response API, so `AppTest` (not curl) is what
 actually exercises its widgets; `test_streamlit_curl.py` uses `curl` for what *is* plain HTTP
-there — the health endpoint and initial page. `tests/test_demo_logic.py` covers `analyze()` /
+there — the health endpoint and initial page. `tests/test_tooling.py` covers `analyze()` /
 `build_view()` directly, with no frontend dependency installed at all.
 
 CI runs **pytest + PyYAML** (and stdlib `tomllib` / `json`), which already covers `demos/*.py`'s
-real logic via `tests/test_demo_logic.py` — no extra dependency installs needed. Gradio / Streamlit
+real logic via `tests/test_tooling.py` — no extra dependency installs needed. Gradio / Streamlit
 themselves are optional for library users. For API-only checks, select `frontend-gradio` (four tests) or
 `frontend-streamlit` (three tests). Normal CI runs all seven browser-free wiring checks
 in one shared `frontend` environment, avoiding duplicate shared dependency installs.
@@ -368,13 +368,13 @@ the one demo whose frontend tests click through the real rendered page.
 Gradio's own `Chatbot` component that renders that text to HTML in the
 browser. This repo's own `markdown_to_html()` now also renders simple GFM
 pipe tables to `<table>` (see "Capability stance" below); the chat-screen
-test still checks Gradio's DOM, while `tests/test_chat_ui_demo_logic.py`
+test still checks Gradio's DOM, while `tests/test_tooling.py`
 checks the library HTML path. `tests/frontend/test_chat_ui_screen.py`
 types a message, clicks Send, and asserts on the resulting DOM
 (a real `<table>` with `<th>`/`<td>` rows, `<pre><code>`, `<li>`, `<strong>`/`<em>`)
 via Playwright (`uv sync --locked --group dev --group frontend && uv run playwright install chromium`).
 Its pure rendering logic (`render_assistant_turn` / `respond`, no gradio import
-needed) is covered separately in `tests/test_chat_ui_demo_logic.py`.
+needed) is covered separately in `tests/test_tooling.py`.
 
 Viewing rendered Markdown doesn't actually require a chat UI (or any app) at
 all, though — `markdown_to_html()`'s output is just an HTML file, and
@@ -388,9 +388,8 @@ output.
 
 ## Benchmark: how far does this get on real Markdown?
 
-`tests/test_benchmark_commonmark.py`, `tests/test_benchmark_realworld.py`, and
-`tests/test_benchmark_html_roundtrip.py` run real, published Markdown — not just this repo's own
-README — through `markdown.py` and record, reproducibly, what works and what doesn't. The goal
+`tests/test_benchmarks.py` runs real, published Markdown — not just this repo's own
+README — through `markdown.py` and records, reproducibly, what works and what doesn't. The goal
 isn't "pass everything" (this is explicitly not a full CommonMark/GFM engine — see Capability
 stance below); it's knowing exactly where the edges are, and pinning that down so a real change
 is a deliberate decision, not a silent regression.
@@ -413,7 +412,7 @@ Sources (full provenance — commit SHA, license, exact excerpted line ranges �
   repo, so provenance is `fetched_at` + sha256 instead of a commit SHA): 1 `<h1>`, 24 `<h2>`, 263
   `<a href>`, `<header>`/`<aside>`/`<main>`/`<footer>` semantic wrappers, a `<form>`, and inline
   `<script>` ad blocks — a real, dense page for `html_to_markdown()` (the *other* direction), not
-  just the small synthetic snippet `test_benchmark_html_roundtrip.py` used to rely on alone
+  just the small synthetic snippet `test_benchmarks.py` used to rely on alone
 
 Results, CommonMark spec examples:
 
@@ -441,10 +440,10 @@ Results, GitHub-flavored constructs found inside the real GitHub Docs excerpt:
 | inline HTML | UNSUPPORTED — escaped, not passed through |
 
 ```bash
-uv run pytest tests/test_benchmark_commonmark.py tests/test_benchmark_realworld.py tests/test_benchmark_html_roundtrip.py -v
+uv run pytest tests/test_benchmarks.py -v
 ```
 
-All three run in the default `pytest` — no extra dependency installs. `test_benchmark_html_roundtrip.py`
+All three run in the default `pytest` — no extra dependency installs. `test_benchmarks.py`
 is a separate, exploratory HTML → Markdown → HTML round trip; it's deliberately not part of the
 PASS/DEGRADED/UNSUPPORTED/FAIL grading above.
 
@@ -499,7 +498,7 @@ full CommonMark/GFM.
 content that itself contains a run of backticks (e.g. Markdown-about-Markdown, like a fenced example
 inside a doc — see the GitHub Docs benchmark fixture above for a real one) gets a longer fence, just
 enough to stay unambiguous, matching what CommonMark itself requires. Pass `fence_char="~"` for a
-tilde fence instead. See `tests/test_adaptive_fence.py`.
+tilde fence instead. See `tests/test_syntax.py`.
 
 ## License
 

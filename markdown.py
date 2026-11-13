@@ -2139,7 +2139,7 @@ def _display_width(value: Any) -> int:
     is stable across common Western and Japanese terminals. Emoji sequences
     count once: a skin-tone modifier or a ZWJ-joined part adds nothing, and
     VS16 (emoji presentation) widens a narrow base to two. Cross-checked
-    against the npm ``string-width`` package in ``tests/test_mirror_js.py``.
+    against the npm ``string-width`` package in ``tests/test_html.py``.
     """
     width = 0
     previous = 0

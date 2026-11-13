@@ -2,7 +2,7 @@ name: Pages
 
 # Publishes scripts/real_world_pages_report.py's output to GitHub Pages:
 # for every real, vendored HTML fixture in fixtures/provenance.yaml (see
-# tests/test_benchmark_html_roundtrip.py), a screenshot of the original
+# tests/test_benchmarks.py), a screenshot of the original
 # next to a screenshot of the html_to_markdown() -> markdown_to_html()
 # round trip, plus a before/after construct-count table and a
 # build_meta.json revision identity (sha / shortSha / commitUrl) sourced
@@ -31,10 +31,9 @@ on:
       - "markdown.py"
       - "scripts/markdown_repository_diagnostics.py"
       - "vendor/gh_identity.py"
-      - "tests/test_repository_metadata_producer.py"
+      - "tests/test_tooling.py"
       - "vendor/github_public_resolver.py"
       - "vendor.lock.json"
-      - "tests/test_markdown_repository_diagnostics.py"
       - "fixtures/benchmark/**"
       - "fixtures/provenance.yaml"
       - ".github/workflows/pages.yml"
@@ -49,7 +48,7 @@ on:
       - "markdown.py"
       - "scripts/markdown_repository_diagnostics.py"
       - "vendor/gh_identity.py"
-      - "tests/test_repository_metadata_producer.py"
+      - "tests/test_tooling.py"
       - "vendor/github_public_resolver.py"
       - "vendor.lock.json"
       - "fixtures/benchmark/**"
