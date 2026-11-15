@@ -32,8 +32,9 @@ def test_vendor_lock_matches_checked_in_bytes():
 
 
 def test_vendor_lock_has_explicit_sources():
-    rows = fleet.check_lock(ROOT)
-    assert {(row["repository"], row["source"], where) for where, row in rows.items()} == LOCKED
+    rows = json.loads((ROOT / "vendor.lock.json").read_text(encoding="utf-8"))["files"]
+    assert {(row["repository"], row["source"], row["destination"]) for row in rows} == LOCKED
+    assert len({row["destination"] for row in rows}) == len(rows), "duplicate vendor lock destination"
 
 
 # ═══ · parent workflow pins ══════════════════════════════════════════════════════════════════════════════
