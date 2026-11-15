@@ -192,11 +192,11 @@ export GRADIO_ANALYTICS_ENABLED=False HF_HUB_DISABLE_TELEMETRY=1 GRADIO_SHARE=Fa
 export GRADIO_ROOT_PATH='' GRADIO_SSR_MODE=False GRADIO_VIBE_MODE=''
 export STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
 uv sync --locked --group dev --group frontend-gradio
-uv run --no-sync pytest -q tests/frontend/test_gradio_curl.py tests/frontend/test_gradio_ui.py --junitxml=gradio.xml
+uv run --no-sync pytest -q tests/frontend/test_gradio.py --junitxml=gradio.xml
 python -S scripts/check_frontend_slice.py gradio gradio.xml
 
 uv sync --locked --group dev --group frontend-streamlit
-uv run --no-sync pytest -q tests/frontend/test_streamlit_curl.py tests/frontend/test_streamlit_ui.py --junitxml=streamlit.xml
+uv run --no-sync pytest -q tests/frontend/test_streamlit.py --junitxml=streamlit.xml
 python -S scripts/check_frontend_slice.py streamlit streamlit.xml
 ```
 
@@ -207,7 +207,7 @@ union, always requiring zero skips, failures or errors. The existing tests are u
 With the environment opt-outs above, servers bind to loopback and telemetry, public
 sharing and SSR are disabled.
 
-Normal CI uses `uv sync --locked --group dev --group frontend`, runs the four listed
+Normal CI uses `uv sync --locked --group dev --group frontend`, runs the two listed
 test files together, and validates `check_frontend_slice.py all`. It requires all three
 framework packages and curl, but does not install browser binaries or launch a browser.
 Actual browser UI checks remain in the unchanged opt-in manual lane. This adjustment

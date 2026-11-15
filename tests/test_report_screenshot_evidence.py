@@ -1,13 +1,12 @@
 """Consumer mapping regression tests use the real pinned shared checker."""
-import importlib.util, os, struct, subprocess, sys, zlib
+import os, struct, subprocess, sys, zlib
 from pathlib import Path
 
 import pytest
 
+from scripts import check_report_screenshots
+
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location("report_screenshots", ROOT / "scripts/check_report_screenshots.py")
-module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(module)
 
 
 def png():
@@ -24,7 +23,7 @@ def test_every_fixture_requires_both_real_pngs(tmp_path, broken):
         pytest.skip("integration requires the pinned browser-test-kit checkout")
     provenance = tmp_path / "provenance.yaml"
     provenance.write_text("benchmark_fixtures:\n  - {id: first, path: first.html}\n  - {id: second, path: second.html}\n  - {id: ignored, path: readme.md}\n")
-    images = module.required_images(tmp_path / "site", provenance)
+    images = check_report_screenshots.required_images(tmp_path / "site", provenance)
     assert len(images) == 4
     for image in images:
         image.parent.mkdir(parents=True, exist_ok=True)
@@ -44,4 +43,4 @@ def test_empty_duplicate_or_unsafe_fixture_set_fails(tmp_path, entries):
     path = tmp_path / "provenance.yaml"
     path.write_text("benchmark_fixtures: " + entries)
     with pytest.raises(ValueError):
-        module.required_images(tmp_path, path)
+        check_report_screenshots.required_images(tmp_path, path)

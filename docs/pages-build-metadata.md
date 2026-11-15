@@ -14,7 +14,7 @@ Normal clean/dirty JSON and Pages labels remain compatible.
 
 ## Deliberate differences from the legacy collector
 
-`tests/fixtures/pages_revision_migration.json` records before/after flat payloads.
+`fixtures/pages_revision_migration.json` records before/after flat payloads.
 
 - SHA, timestamp and subject all refer to checkout HEAD. `GITHUB_SHA` no longer
   overrides that identity (notably when a PR checks out its head while Actions
