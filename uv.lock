@@ -918,6 +918,10 @@ frontend-gradio = [
 frontend-streamlit = [
     { name = "streamlit" },
 ]
+stdlib-test = [
+    { name = "pytest" },
+    { name = "pyyaml" },
+]
 
 [package.group-requires-python]
 dev = ">=3.11"
@@ -942,6 +946,10 @@ frontend = [
 frontend-browser = [{ name = "playwright", marker = "python_full_version >= '3.11'", specifier = ">=1.64.0" }]
 frontend-gradio = [{ name = "gradio", marker = "python_full_version >= '3.11'", specifier = ">=6.30.0" }]
 frontend-streamlit = [{ name = "streamlit", marker = "python_full_version >= '3.11'", specifier = ">=1.66.0" }]
+stdlib-test = [
+    { name = "pytest", specifier = ">=8" },
+    { name = "pyyaml", specifier = ">=6" },
+]
 
 [[package]]
 name = "mdurl"
