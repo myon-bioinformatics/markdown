@@ -92,7 +92,6 @@ JOBS = {
         "test": "${{ matrix.python-version }}",
         "node-runtime": "3.15",
         "frontend-mock-pytest-latest": "3.15",
-        "frontend-smoke": "3.15",
         "vendor-locked": "${{ matrix.python-version }}"
     },
     "pages.yml": {

@@ -63,7 +63,7 @@ class FrontendNanoTests(unittest.TestCase):
 
     def test_workflow_uses_one_combined_environment_without_browser_execution(self):
         workflow = (ROOT / '.github/workflows/ci.yml').read_text()
-        block = workflow.split('  frontend-mock-pytest-latest:', 1)[1].split('  frontend-smoke:', 1)[0]
+        block = workflow.split('  frontend-mock-pytest-latest:', 1)[1].split('  failure-identity:', 1)[0]
         self.assertNotIn('matrix:', block)
         self.assertIn('--group frontend ', block)
         self.assertIn('uv run --no-sync pytest -q', block)
@@ -73,10 +73,8 @@ class FrontendNanoTests(unittest.TestCase):
         self.assertIn('for framework in ("gradio", "streamlit", "playwright"):', block)
         for frontend in checker.EXPECTED:
             self.assertIn(f'tests/frontend/test_{frontend}.py', block)
-        smoke = workflow.split('  frontend-smoke:', 1)[1].split('  failure-identity:', 1)[0]
-        self.assertIn("github.event_name == 'workflow_dispatch'", smoke)
-        self.assertIn('--group frontend ', smoke)
-        self.assertIn('playwright install --with-deps --only-shell chromium', smoke)
+        self.assertNotIn('workflow_dispatch:', workflow)
+        self.assertNotIn('frontend-smoke:', workflow)
 
     def test_complete_reports_and_rejection_probes(self):
         with tempfile.TemporaryDirectory() as tmp:
