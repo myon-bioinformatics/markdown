@@ -344,11 +344,11 @@ print(gradio_app.analyze('# Hi\n\n[x](https://example.com)\n'))"
 uv run pytest tests/frontend
 ```
 
-Gradio's backend is a plain FastAPI app, so `tests/frontend/test_gradio_curl.py` drives it with
+Gradio's backend is a plain FastAPI app, so `tests/frontend/test_gradio.py` drives it with
 nothing but `curl` (POST to start a job, GET an SSE stream for the result) — no Python client
 library needed, just what's already on any Ubuntu box. Streamlit's interactive reruns are a
 stateful websocket protocol rather than a request/response API, so `AppTest` (not curl) is what
-actually exercises its widgets; `test_streamlit_curl.py` uses `curl` for what *is* plain HTTP
+actually exercises its widgets; `test_streamlit.py` also uses `curl` for what *is* plain HTTP
 there — the health endpoint and initial page. `tests/test_tooling.py` covers `analyze()` /
 `build_view()` directly, with no frontend dependency installed at all.
 
@@ -584,8 +584,8 @@ uv sync --locked --group dev --group frontend --python 3.11  # Gradio/Streamlit/
 python -S -m unittest discover -s tests -p test_runtime_compatibility.py -v
 ```
 
-`pyproject.toml` is the canonical development dependency definition; legacy
-requirements files remain for downstream callers. The unittest lane does not
+`pyproject.toml` is the only development dependency definition (no
+requirements files). The unittest lane does not
 install that uv environment, so the Python 3.11-3.14 runtime checks stay
 independent of the development dependencies.
 

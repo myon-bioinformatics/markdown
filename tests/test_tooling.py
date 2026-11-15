@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import ast
 import hashlib
-import importlib.util
 import json
 import os
 import platform
@@ -125,9 +124,7 @@ class CiPythonSetupTests(unittest.TestCase):
 # ═══ · frontend nano ci ══════════════════════════════════════════════════════════════════════════════════
 # Offline contracts for dependency slices and fail-closed frontend evidence.
 
-spec = importlib.util.spec_from_file_location('check_frontend_slice', ROOT / 'scripts/check_frontend_slice.py')
-checker = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(checker)
+from scripts import check_frontend_slice as checker
 
 
 class FrontendNanoTests(unittest.TestCase):
@@ -153,12 +150,11 @@ class FrontendNanoTests(unittest.TestCase):
     def test_expected_identities_cover_every_existing_slice_test(self):
         actual = set()
         for frontend in checker.EXPECTED:
-            for suffix in ('curl', 'ui'):
-                path = ROOT / f'tests/frontend/test_{frontend}_{suffix}.py'
-                tree = ast.parse(path.read_text())
-                actual.update((f'tests.frontend.{path.stem}', node.name)
-                              for node in tree.body
-                              if isinstance(node, ast.FunctionDef) and node.name.startswith('test_'))
+            path = ROOT / f'tests/frontend/test_{frontend}.py'
+            tree = ast.parse(path.read_text())
+            actual.update((f'tests.frontend.{path.stem}', node.name)
+                          for node in tree.body
+                          if isinstance(node, ast.FunctionDef) and node.name.startswith('test_'))
         expected = set.union(*checker.EXPECTED.values())
         self.assertEqual(actual, expected)
         self.assertEqual(len(expected), 7)
@@ -174,8 +170,9 @@ class FrontendNanoTests(unittest.TestCase):
         self.assertNotIn('playwright install', block)
         self.assertIn('for framework in ("gradio", "streamlit", "playwright"):', block)
         for frontend in checker.EXPECTED:
-            for suffix in ('curl', 'ui'):
-                self.assertIn(f'tests/frontend/test_{frontend}_{suffix}.py', block)
+            self.assertIn(f'tests/frontend/test_{frontend}.py', block)
+        self.assertNotIn('workflow_dispatch:', workflow)
+        self.assertNotIn('frontend-smoke:', workflow)
 
     def test_complete_reports_and_rejection_probes(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -250,10 +247,6 @@ def test_standalone_copy_imports_under_python_s(tmp_path):
 
 # ═══ · markdown api ══════════════════════════════════════════════════════════════════════════════════════
 
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-import markdown as md
 
 FIXTURES = ROOT / "fixtures"
 
@@ -368,21 +361,20 @@ def test_markdown_to_web_ui_v1_theme_is_case_sensitive() -> None:
 # ═══ · markdown repository diagnostics ═══════════════════════════════════════════════════════════════════
 
 def _locked(destination):
-    root = Path(__file__).resolve().parents[1]
-    lock = json.loads((root / "vendor.lock.json").read_text(encoding="utf-8"))
+    lock = json.loads((ROOT / "vendor.lock.json").read_text(encoding="utf-8"))
     return next(e for e in lock["files"] if e["destination"] == destination)
 
 
-def _git_blob_sha(path: Path) -> str:
-    data = path.read_bytes()
+def _git_blob_sha(data: bytes) -> str:
+    """Git's blob id for these bytes (what vendor.lock.json records as blob_sha)."""
     return hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
 
 
 def test_vendor_provenance_matches_bytes():
     resolver = _locked("vendor/github_public_resolver.py")
     ghi = _locked("vendor/gh_identity.py")
-    assert _git_blob_sha(ROOT / "vendor/github_public_resolver.py") == resolver["blob_sha"]
-    assert _git_blob_sha(ROOT / "vendor/gh_identity.py") == ghi["blob_sha"]
+    assert _git_blob_sha((ROOT / "vendor/github_public_resolver.py").read_bytes()) == resolver["blob_sha"]
+    assert _git_blob_sha((ROOT / "vendor/gh_identity.py").read_bytes()) == ghi["blob_sha"]
     assert ghi["repository"] == "myon-bioinformatics/gh_identity"
     assert hashlib.sha256((ROOT / "vendor/gh_identity.py").read_bytes()).hexdigest() == ghi["sha256"]
 
@@ -470,15 +462,14 @@ def test_tracked_bytes_rejects_incomplete_inventory(monkeypatch):
 # Retired upstream paths keep immutable identities and verified bytes.
 
 def test_ironmate_legacy_sources_keep_exact_refs_and_bytes():
-    root = Path(__file__).resolve().parents[1]
-    entries = [entry for entry in json.loads((root / 'vendor.lock.json').read_text())['files']
+    entries = [entry for entry in json.loads((ROOT / 'vendor.lock.json').read_text())['files']
                if entry['repository'] == 'myon-bioinformatics/Ironmate']
     assert {e['source'] for e in entries} == {'LICENSE'}
     for entry in entries:
         assert entry['ref'] == entry['commit']
-        data = (root / entry['destination']).read_bytes()
+        data = (ROOT / entry['destination']).read_bytes()
         assert hashlib.sha256(data).hexdigest() == entry['sha256']
-        assert hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest() == entry['blob_sha']
+        assert _git_blob_sha(data) == entry['blob_sha']
 
 
 # ═══ · markdown vendor automation ════════════════════════════════════════════════════════════════════════
@@ -613,8 +604,7 @@ def test_vendor_lock_matches_checked_in_bytes() -> None:
         assert re.fullmatch(r"[0-9a-f]{40}", entry["ref"]), entry["destination"]
         assert entry["ref"] == entry["commit"], entry["destination"]
         data = (ROOT / entry["destination"]).read_bytes()
-        blob = hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
-        assert blob == entry["blob_sha"], entry["destination"]
+        assert _git_blob_sha(data) == entry["blob_sha"], entry["destination"]
         assert hashlib.sha256(data).hexdigest() == entry["sha256"], entry["destination"]
 
 
@@ -784,8 +774,7 @@ class RepositoryMetadataProducerTests(unittest.TestCase):
         entry = _locked("vendor/gh_identity.py")
         path = ROOT / "vendor/gh_identity.py"
         data = path.read_bytes()
-        blob = hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
-        self.assertEqual(blob, entry["blob_sha"])
+        self.assertEqual(_git_blob_sha(data), entry["blob_sha"])
         self.assertEqual(hashlib.sha256(data).hexdigest(), entry["sha256"])
 
     def test_checkout_identity_equivalence_refs_and_detached_head(self):
@@ -936,7 +925,6 @@ for path in (str(ROOT), str(ROOT / "demos")):
         sys.path.insert(0, path)
 
 import chat_ui_demo as chat_ui  # noqa: E402
-import markdown as md  # noqa: E402
 
 
 def test_table_reply_renders_a_real_markdown_table() -> None:
@@ -997,10 +985,6 @@ def test_sample_conversation_is_well_formed() -> None:
 # each UI is a normal Python library call — testable (and runnable as a
 # one-liner) without installing a frontend framework, launching a server, or
 # driving a browser.
-
-for path in (str(ROOT), str(ROOT / "demos")):
-    if path not in sys.path:
-        sys.path.insert(0, path)
 
 import gradio_app  # noqa: E402
 import streamlit_app  # noqa: E402

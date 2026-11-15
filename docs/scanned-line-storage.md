@@ -10,7 +10,7 @@ project. Python 3.9 and 3.10 are no longer supported; the dependency-free CI lan
 continues to run the same behavior tests on Python 3.11-3.14.
 
 ```sh
-python -S -m unittest discover -s tests -p test_syntax.py
+uv run pytest -q tests/test_syntax.py -k ScannedLineStorageTests
 python -S -m scripts.benchmark_scanned_lines
 ```
 

@@ -3,12 +3,10 @@ from __future__ import annotations
 
 import collections
 import html
-import importlib.util
 import json
 import re
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -16,6 +14,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 import markdown as md
+from scripts import converter_contract_audit
 
 
 # ═══ · lightweight dom ═══════════════════════════════════════════════════════════════════════════════════
@@ -306,22 +305,6 @@ def test_find_html_text_reports_unsupported_input_attribute_first():
 
 # ═══ · malformed html recovery ═══════════════════════════════════════════════════════════════════════════
 
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-import markdown as md
-
-AUDIT_SCRIPT = ROOT / "scripts" / "converter_contract_audit.py"
-
-
-def _load_audit():
-    spec = importlib.util.spec_from_file_location("converter_contract_audit", AUDIT_SCRIPT)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
 def test_malformed_ancestor_close_balances_strong_like_dom_path() -> None:
     html = "<div><p>hello<strong> world</div>"
 
@@ -357,7 +340,7 @@ def test_orphan_endtag_does_not_invent_markup() -> None:
 
 
 def test_malformed_case_is_no_longer_a_converter_audit_divergence() -> None:
-    audit = _load_audit()
+    audit = converter_contract_audit
     report = audit.collect_report()
 
     assert "html:malformed" not in report["divergent_case_ids"]
@@ -566,8 +549,6 @@ def test_data_uri_uses_text_plain_for_an_omitted_media_type():
 
 # ═══ · data uris ═════════════════════════════════════════════════════════════════════════════════════════
 
-if str(ROOT) not in sys.path: sys.path.insert(0, str(ROOT))
-import markdown as md
 
 def test_data_uri_is_observed_without_decoding_or_network() -> None:
     uri = "data:image/png;base64,iVBORw0KGgo="
@@ -680,10 +661,6 @@ def test_visible_tail_does_not_reactivate_a_commented_heading_marker():
 
 # ═══ · tohoho whitespace stability ═══════════════════════════════════════════════════════════════════════
 
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-import markdown as md
 
 TOHOHO = ROOT / "fixtures" / "benchmark" / "tohoho_web_home.html"
 
@@ -751,11 +728,6 @@ def test_blockquote_continuation_prefix_survives_empty_paragraph_before_list() -
 
 
 # ═══ · context helpers ═══════════════════════════════════════════════════════════════════════════════════
-
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-import markdown as md
 
 
 SAMPLE = (
@@ -858,8 +830,8 @@ def test_context_helpers_are_public() -> None:
 # Negative-space tests for explicit reversible converter composition.
 #
 # Positive F/G/H identity cycles are already covered by
-# scripts/converter_contract_audit.py and test_converter_contract_audit.py.
-# This file intentionally keeps only composition boundaries that should fail or
+# scripts/converter_contract_audit.py and its section in tests/test_converters.py.
+# This section intentionally keeps only composition boundaries that should fail or
 # remain structurally distinct, avoiding duplicated positive fixtures.
 
 def test_cross_domain_composition_fails_instead_of_coercing():
@@ -888,10 +860,6 @@ def test_ini_and_dotenv_are_not_forced_into_same_shape():
 
 # ═══ · fixtures and serialize ════════════════════════════════════════════════════════════════════════════
 
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-import markdown as md
 
 FIXTURES = ROOT / "fixtures"
 
@@ -1098,6 +1066,47 @@ def normalized(key: str, items: list) -> collections.Counter:
     return collections.Counter(items)
 
 
+def js_facts(texts: list, widths: list = ()) -> dict:
+    """Facts per JS reader, from Node with the readers in tests/mirror/node_modules.
+
+    Adapted from BrowserTestKit's mirror_facts.mjs and built here instead of a .mjs file:
+    markdown-it (CommonMark) and marked (GFM) render, linkedom reads the HTML and
+    string-width measures display width. Run with cwd=MIRROR so the imports resolve.
+    """
+    source = r"""
+import MarkdownIt from 'markdown-it';
+import {marked} from 'marked';
+import {parseHTML} from 'linkedom';
+import stringWidth from 'string-width';
+
+const input = JSON.parse(await new Promise((done) => {
+  let data = '';
+  process.stdin.on('data', (chunk) => (data += chunk)).on('end', () => done(data));
+}));
+const flat = (s) => s.replace(/\s+/g, ' ').trim();
+function facts(html) {
+  const {document} = parseHTML('<!doctype html><html><body>' + html + '</body></html>');
+  return {
+    headings: [...document.querySelectorAll('h1,h2,h3,h4,h5,h6')].map((h) => [Number(h.tagName[1]), flat(h.textContent)]),
+    links: [...document.querySelectorAll('a[href]')].map((a) => a.getAttribute('href')),
+    images: [...document.querySelectorAll('img')].map((i) => [i.getAttribute('src'), i.getAttribute('alt') || '']),
+    code: [...document.querySelectorAll('pre > code')].map((c) => [
+      ((c.getAttribute('class') || '').match(/language-(\S+)/) || [, ''])[1], c.textContent.replace(/\n$/, '')]),
+  };
+}
+const it = new MarkdownIt({html: true});
+process.stdout.write(JSON.stringify({
+  'markdown-it': input.markdown.map((text) => facts(it.render(text))),
+  marked: input.markdown.map((text) => facts(marked.parse(text, {async: false}))),
+  'string-width': input.width.map((text) => stringWidth(text)),
+}));
+"""
+    done = subprocess.run(["node", "--input-type=module", "-e", source], cwd=MIRROR,
+                          input=json.dumps({"markdown": list(texts), "width": list(widths)}),
+                          capture_output=True, text=True, check=True, timeout=120)
+    return json.loads(done.stdout)
+
+
 @pytest.fixture(scope="module")
 def readers():
     # This repository's own documents only: CI checks out helper repos (.vendor-sync-tools) inside it.
@@ -1105,9 +1114,7 @@ def readers():
     files = sorted(p for p in ROOT.rglob("*.md")
                    if not any(part.startswith(".") or part in skip for part in p.relative_to(ROOT).parts))
     texts = [p.read_text(encoding="utf-8") for p in files]
-    done = subprocess.run(["node", str(MIRROR / "facts.mjs")], input=json.dumps({"markdown": texts, "width": WIDTHS}),
-                          capture_output=True, text=True, check=True, timeout=120)
-    return files, texts, json.loads(done.stdout)
+    return files, texts, js_facts(texts, WIDTHS)
 
 
 @MIRROR_JS_MARK
@@ -1148,12 +1155,7 @@ UNTERMINATED_COMMENT = """# Visible
 
 @MIRROR_JS_MARK
 def test_unterminated_html_comment_agrees_with_js_renderers():
-    done = subprocess.run(
-        ["node", str(MIRROR / "facts.mjs")],
-        input=json.dumps({"markdown": [UNTERMINATED_COMMENT], "width": []}),
-        capture_output=True, text=True, check=True, timeout=120,
-    )
-    facts = json.loads(done.stdout)
+    facts = js_facts([UNTERMINATED_COMMENT])
     py = ours(UNTERMINATED_COMMENT)
     assert py["headings"] == [[1, "Visible"]]
     assert py["links"] == ["https://keep.example"]
@@ -1172,12 +1174,7 @@ def test_comment_code_boundaries_agree_with_js_renderers():
     comments = ["<!--\n```\n-->\n", "<!--\n~~~\n-->\n", "<!-- ` --> `\n",
                 "<!--\n`-->`\n", "`<!--`\n", "```\n<!--\n```\n", "<!--\n# hidden --> tail\n"]
     texts = [comment + "# After\n[a](https://after.example)\n![a](after.png)\n" for comment in comments]
-    done = subprocess.run(
-        ["node", str(MIRROR / "facts.mjs")],
-        input=json.dumps({"markdown": texts, "width": []}),
-        capture_output=True, text=True, check=True, timeout=120,
-    )
-    facts = json.loads(done.stdout)
+    facts = js_facts(texts)
     for reader in ("markdown-it", "marked"):
         for text, theirs in zip(texts, facts[reader]):
             py = ours(text)

@@ -6,15 +6,15 @@ from collections import Counter; from pathlib import Path
 
 EXPECTED = {
     "gradio": {
-        ("tests.frontend.test_gradio_curl", "test_gradio_curl_matches_direct_call"),
-        ("tests.frontend.test_gradio_curl", "test_gradio_curl_empty_input_matches_direct_call"),
-        ("tests.frontend.test_gradio_ui", "test_gradio_api_matches_direct_call"),
-        ("tests.frontend.test_gradio_ui", "test_gradio_api_empty_input_matches_direct_call"),
+        ("tests.frontend.test_gradio", "test_gradio_curl_matches_direct_call"),
+        ("tests.frontend.test_gradio", "test_gradio_curl_empty_input_matches_direct_call"),
+        ("tests.frontend.test_gradio", "test_gradio_api_matches_direct_call"),
+        ("tests.frontend.test_gradio", "test_gradio_api_empty_input_matches_direct_call"),
     },
     "streamlit": {
-        ("tests.frontend.test_streamlit_curl", "test_streamlit_curl_health_and_index"),
-        ("tests.frontend.test_streamlit_ui", "test_streamlit_default_fixture_metrics"),
-        ("tests.frontend.test_streamlit_ui", "test_streamlit_editing_source_updates_metrics"),
+        ("tests.frontend.test_streamlit", "test_streamlit_curl_health_and_index"),
+        ("tests.frontend.test_streamlit", "test_streamlit_default_fixture_metrics"),
+        ("tests.frontend.test_streamlit", "test_streamlit_editing_source_updates_metrics"),
     },
 }
 

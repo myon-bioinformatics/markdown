@@ -1,6 +1,6 @@
 """Gradio front-end for manual Markdown helper checks.
 
-Optional dependency: ``pip install -r requirements-frontend.txt``
+Optional dependency: ``uv sync --locked --group frontend-gradio``
 """
 
 from __future__ import annotations

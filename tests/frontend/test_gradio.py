@@ -1,46 +1,33 @@
-"""Hit the real Gradio HTTP API with plain ``curl`` — no Python client library.
+"""Verify the real Gradio app's wiring (Blocks -> event handler -> outputs) over HTTP.
 
-Gradio's backend is a FastAPI app: calling a component's wired function is a
-plain HTTP job-submission protocol (POST to start, GET an SSE stream for the
-result). Driving it with ``curl`` (any Ubuntu box has it) proves the app is
-genuinely loosely coupled over HTTP, not just callable through gradio_client.
-See ``test_gradio_ui.py`` for the gradio_client-based equivalent.
+No browser, no clicking. Two clients talk to the launched ``demos/gradio_app.py``
+and must agree with a plain ``analyze()`` call (whose own coverage is the demo
+logic section of ``tests/test_tooling.py``):
+
+- plain ``curl``: Gradio's backend is a FastAPI app, so calling a component's
+  wired function is a plain HTTP job-submission protocol (POST to start, GET an
+  SSE stream for the result). This proves the app is genuinely loosely coupled
+  over HTTP, not just callable through gradio_client.
+- ``gradio_client``: the app's own HTTP/websocket API, the same interface a real
+  browser session would use, so this exercises the actual ``btn.click(...)`` wiring.
 """
 
 from __future__ import annotations
 
-import json, shutil, subprocess, sys, time, urllib.error, urllib.request
-from pathlib import Path
+import json, shutil, subprocess
 
 import pytest
 
 pytest.importorskip("gradio")
-
-ROOT = Path(__file__).resolve().parents[2]
-for path in (str(ROOT), str(ROOT / "demos")):
-    if path not in sys.path:
-        sys.path.insert(0, path)
+gradio_client = pytest.importorskip("gradio_client")
 
 import gradio_app  # noqa: E402
 
 CURL = shutil.which("curl")
 
 
-def _wait_until_up(url: str, timeout: float = 30.0) -> None:
-    deadline = time.monotonic() + timeout
-    last_error: Exception | None = None
-    while time.monotonic() < deadline:
-        try:
-            urllib.request.urlopen(url, timeout=1)
-            return
-        except (urllib.error.URLError, ConnectionError) as exc:
-            last_error = exc
-            time.sleep(0.2)
-    raise RuntimeError(f"gradio app did not start in time: {last_error}")
-
-
 @pytest.fixture()
-def gradio_base_url(free_port):
+def gradio_base_url(free_port, wait_until_up):
     demo = gradio_app.build_app()
     demo.queue()
     demo.launch(
@@ -53,10 +40,15 @@ def gradio_base_url(free_port):
     )
     base_url = f"http://127.0.0.1:{free_port}"
     try:
-        _wait_until_up(base_url)
+        wait_until_up(base_url, "gradio")
         yield base_url
     finally:
         demo.close()
+
+
+@pytest.fixture()
+def gradio_client_(gradio_base_url):
+    return gradio_client.Client(gradio_base_url + "/")
 
 
 def _curl_call(base_url: str, text: str, timeout: float = 15.0) -> tuple:
@@ -90,3 +82,14 @@ def test_gradio_curl_matches_direct_call(gradio_base_url) -> None:
 @pytest.mark.skipif(CURL is None, reason="curl is not available on this system")
 def test_gradio_curl_empty_input_matches_direct_call(gradio_base_url) -> None:
     assert _curl_call(gradio_base_url, "") == gradio_app.analyze("")
+
+
+def test_gradio_api_matches_direct_call(gradio_client_) -> None:
+    text = "# Title\n\n[docs](https://example.com)\n\n![alt text](img.png)\n"
+    api_result = gradio_client_.predict(text, None, api_name="/analyze")
+    assert tuple(api_result) == gradio_app.analyze(text)
+
+
+def test_gradio_api_empty_input_matches_direct_call(gradio_client_) -> None:
+    api_result = gradio_client_.predict("", None, api_name="/analyze")
+    assert tuple(api_result) == gradio_app.analyze("")

@@ -1,6 +1,6 @@
 """Streamlit front-end for sectioned Markdown inspection.
 
-Optional dependency: ``pip install -r requirements-frontend.txt``
+Optional dependency: ``uv sync --locked --group frontend-streamlit``
 
 Run: ``streamlit run demos/streamlit_app.py``
 """
