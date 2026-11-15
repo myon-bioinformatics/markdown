@@ -11,20 +11,14 @@ rendered HTML in a real chat UI, not just correct strings.
 
 from __future__ import annotations
 
-import sys, time
-from pathlib import Path
+import time
 
 import pytest
 
 pytest.importorskip("gradio")
 pytest.importorskip("playwright.sync_api")
 
-ROOT = Path(__file__).resolve().parents[2]
-for path in (str(ROOT), str(ROOT / "demos")):
-    if path not in sys.path:
-        sys.path.insert(0, path)
-
-import chat_ui_demo  # noqa: E402
+import chat_ui_demo  # noqa: E402  (conftest.py puts demos/ on sys.path)
 
 
 @pytest.fixture()
@@ -53,7 +47,8 @@ def test_initial_conversation_renders_a_real_table(chat_ui_url, browser) -> None
 
         # Assert actual <table> DOM structure, not just visible text. Gradio's
         # Chatbot renders the generated Markdown; markdown_to_html() now emits
-        # <table> too (see tests/test_tables.py / test_chat_ui_demo_logic.py).
+        # <table> too (see the "tables" section of tests/test_syntax.py and the
+        # "chat ui demo logic" section of tests/test_tooling.py).
         table = page.locator("table").first
         assert table.locator("th").all_inner_texts() == ["metric", "value"]
         assert table.locator("tbody tr").count() == 3

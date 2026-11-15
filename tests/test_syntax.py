@@ -4,7 +4,6 @@ from __future__ import annotations
 import copy
 import pickle
 import re
-import sys
 import unittest
 from dataclasses import FrozenInstanceError
 from pathlib import Path
@@ -27,11 +26,6 @@ import markdown as md
 # / ``markdown_to_html``) unchanged -- no changes were needed there, since a
 # fence longer than anything nested inside it was already enough for the
 # existing ``line.startswith(fence)`` closing scan to find the real close.
-
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-import markdown as md
 
 
 def test_plain_content_keeps_the_original_triple_fence() -> None:
@@ -127,10 +121,6 @@ def test_non_fence_single_character_raises() -> None:
 
 # ═══ · alerts ════════════════════════════════════════════════════════════════════════════════════════════
 
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-import markdown as md
 
 BENCHMARK = ROOT / "fixtures" / "benchmark"
 
@@ -371,10 +361,6 @@ def test_github_docs_fixture_real_alerts_render() -> None:
 
 # ═══ · autolinks ═════════════════════════════════════════════════════════════════════════════════════════
 
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-import markdown as md
 
 FIXTURES = ROOT / "fixtures"
 
@@ -449,11 +435,6 @@ def test_vscode_fixture_live_autolink_renders() -> None:
 
 
 # ═══ · blockquotes ═══════════════════════════════════════════════════════════════════════════════════════
-
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-import markdown as md
 
 
 def test_plain_blockquote() -> None:
@@ -561,11 +542,6 @@ def test_blockquote_round_trip_preserves_paragraph_attributes() -> None:
 
 # ═══ · details ═══════════════════════════════════════════════════════════════════════════════════════════
 
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-import markdown as md
-
 
 def test_details_exported() -> None:
     assert "details" in md.__all__
@@ -667,11 +643,6 @@ def test_unclosed_code_fence_keeps_colon_closer_as_code_until_eof():
 
 # ═══ · emphasis ══════════════════════════════════════════════════════════════════════════════════════════
 
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-import markdown as md
-
 
 def test_plain_bold_and_italic() -> None:
     html = md.markdown_to_html("plain **bold** and *italic* text\n")
@@ -716,11 +687,6 @@ def test_asymmetric_close_run_is_also_a_documented_degrade() -> None:
 
 
 # ═══ · footnotes ═════════════════════════════════════════════════════════════════════════════════════════
-
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-import markdown as md
 
 
 def test_footnote_helpers_exported() -> None:
@@ -828,11 +794,6 @@ def test_fenced_github_docs_style_example_stays_code() -> None:
 
 # ═══ · nested lists ══════════════════════════════════════════════════════════════════════════════════════
 
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-import markdown as md
-
 
 def test_markdown_nested_unordered_list_preserves_structure() -> None:
     source = "- foo\n  - bar\n    - baz\n"
@@ -922,11 +883,6 @@ def test_list_kind_switches_at_same_indent_start_new_sibling_list() -> None:
 
 # ═══ · strikethrough ═════════════════════════════════════════════════════════════════════════════════════
 
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-import markdown as md
-
 
 def test_generator_round_trips_to_del() -> None:
     html = md.markdown_to_html(md.strikethrough("x"))
@@ -994,11 +950,6 @@ def test_html_del_becomes_strikethrough_markdown() -> None:
 
 
 # ═══ · tables ════════════════════════════════════════════════════════════════════════════════════════════
-
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-import markdown as md
 
 
 def test_table_generator_round_trips_to_html() -> None:
@@ -1265,11 +1216,6 @@ def test_mixed_th_td_row_keeps_cell_order() -> None:
 
 # ═══ · task lists ════════════════════════════════════════════════════════════════════════════════════════
 
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-import markdown as md
-
 
 def test_task_item_generator() -> None:
     assert md.task_item("todo") == "- [ ] todo\n"
@@ -1521,10 +1467,6 @@ def test_table_of_contents_inline_comments(source, expected):
 
 # ═══ · dialects ══════════════════════════════════════════════════════════════════════════════════════════
 
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-import markdown as md
 
 CANONICAL = """# Title
 
@@ -1821,11 +1763,6 @@ def test_org_and_jira_readers_drop_unsafe_link_schemes() -> None:
 
 # ═══ · kramdown ══════════════════════════════════════════════════════════════════════════════════════════
 
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-import markdown as md
-
 
 def test_kramdown_helpers_exported() -> None:
     for name in (
@@ -1992,11 +1929,6 @@ def test_markdown_to_html_does_not_apply_ial() -> None:
 
 
 # ═══ · generation ════════════════════════════════════════════════════════════════════════════════════════
-
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-import markdown as md
 
 
 def test_heading_levels_clamped() -> None:
@@ -2372,10 +2304,6 @@ def test_markdown_links_to_dot_empty_heading_falls_back_to_document():
 
 # ═══ · directory tree ════════════════════════════════════════════════════════════════════════════════════
 
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-import markdown as md
 
 DIRECTORY_TREE_CANONICAL = "- src/\n  - app.py\n  - utils/\n    - __init__.py\n- README.md\n"
 TREE = {"src": {"app.py": None, "utils": {"__init__.py": None}}, "README.md": None}
@@ -2557,11 +2485,6 @@ def test_scaffold_does_not_create_root_when_validation_fails(tmp_path: Path) -> 
 
 # ═══ · stylesheets ═══════════════════════════════════════════════════════════════════════════════════════
 
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-import markdown as md
-
 
 def test_stylesheet_helpers_exported() -> None:
     assert "alert_stylesheet" in md.__all__
@@ -2612,11 +2535,6 @@ def test_readme_embed_pattern_is_valid_html() -> None:
 # ═══ · scanner contract ══════════════════════════════════════════════════════════════════════════════════
 # Contracts for the shared Markdown line scanner (Hub-P0).
 
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-import markdown as md
-
 
 def test_scanner_marks_adaptive_fence_and_its_contents() -> None:
     lines = ["````markdown", "```nested", "```", "````", "outside"]
@@ -2652,9 +2570,6 @@ def test_extract_code_blocks_uses_the_shared_adaptive_fence_contract() -> None:
 
 # ═══ · scanned line storage ══════════════════════════════════════════════════════════════════════════════
 
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-import markdown as md
-
 
 class ScannedLineStorageTests(unittest.TestCase):
     def test_scan_context_and_storage_roundtrip(self):
@@ -2689,11 +2604,6 @@ def test_markdown_to_html_replaces_input_nul(source: str, expected: str) -> None
 
 # ═══ · issue 63 followups ════════════════════════════════════════════════════════════════════════════════
 # Regression tests for the follow-up issues in #63.
-
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-import markdown as md
 
 
 def test_markdown_to_man_replaces_nul_in_body_and_rejects_header_controls() -> None:

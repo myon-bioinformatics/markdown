@@ -343,10 +343,8 @@ jobs:
       - name: Run all existing browser-free wiring tests together
         run: |
           uv run --no-sync pytest -q \
-            tests/frontend/test_gradio_curl.py \
-            tests/frontend/test_gradio_ui.py \
-            tests/frontend/test_streamlit_curl.py \
-            tests/frontend/test_streamlit_ui.py \
+            tests/frontend/test_gradio.py \
+            tests/frontend/test_streamlit.py \
             --junitxml=build/junit/frontend-all.xml
       - name: Require all seven tests with zero skips
         run: python -S scripts/check_frontend_slice.py all build/junit/frontend-all.xml

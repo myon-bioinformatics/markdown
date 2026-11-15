@@ -157,7 +157,7 @@ benchmark_fixtures:
       rule / links / edge cases. Each entry in the YAML records its
       spec_example number, CommonMark's own expected HTML, this module's
       actual HTML, and a PASS/DEGRADED/UNSUPPORTED/FAIL classification --
-      see tests/test_benchmark_commonmark.py.
+      see the benchmark commonmark section of tests/test_benchmarks.py.
 
   - id: contributing_example
     path: benchmark/contributing_example.md
@@ -181,7 +181,7 @@ benchmark_fixtures:
   #
   # Every fixture above feeds markdown_to_html() (Markdown source). These
   # feed the other direction: real HTML from actual sites, not the small
-  # synthetic snippet in test_benchmark_html_roundtrip.py (whose own
+  # synthetic snippet in tests/test_benchmarks.py's html roundtrip section (whose own
   # docstring flags that gap -- "not vendored from any specific real page").
   # No git commit exists for a plain website, so provenance is fetched_at +
   # sha256 of the exact vendored bytes instead of a commit SHA.
@@ -197,4 +197,4 @@ benchmark_fixtures:
       A real, dense Japanese HTML index page (1 <h1>, 24 <h2>, 263 <a href>,
       <header>/<aside>/<main>/<footer> semantic tags, an inline <form>, and
       inline <script> ad-loading blocks) -- see
-      tests/test_benchmark_html_roundtrip.py for what survives.
+      the html roundtrip section of tests/test_benchmarks.py for what survives.

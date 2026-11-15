@@ -9,7 +9,7 @@ exercises exactly that path using this repo's own generation helpers
 instead of a real LLM — deterministic and offline, matching every other demo
 in this repo.
 
-Optional dependency: ``pip install -r requirements-frontend.txt``
+Optional dependency: ``uv sync --locked --group frontend-gradio``
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ def render_assistant_turn(user_text: str) -> str:
 
     No LLM involved: a few keyword rules stand in for "the model decided to
     reply with a table/code/list," which lets this stay a pure, dependency-free
-    function testable with a one-liner (see ``tests/test_demo_logic.py``) — the
+    function testable with a one-liner (see ``tests/test_tooling.py``) — the
     same pattern ``demos/gradio_app.py``'s ``analyze()`` already uses.
     """
     lowered = user_text.lower()

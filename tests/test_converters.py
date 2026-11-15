@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime
-import importlib.util
+import importlib
 import io
 import json
 import subprocess
@@ -16,21 +16,15 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 import markdown as md
+from scripts import converter_contract_audit, converter_parity_report
 
 
 # ═══ · converter case selection ══════════════════════════════════════════════════════════════════════════
 # Case selection happens before conversion and preserves evaluation scope.
 
-def load(name):
-    spec = importlib.util.spec_from_file_location(name, ROOT / 'scripts' / (name + '.py'))
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
 @pytest.mark.parametrize('name', ['converter_parity_report', 'converter_contract_audit'])
 def test_list_never_reads_fixtures_or_converts(name, monkeypatch, capsys):
-    module = load(name)
+    module = importlib.import_module(f'scripts.{name}')
     def forbidden(*args, **kwargs):
         raise AssertionError('list must not read or convert')
     monkeypatch.setattr(Path, 'read_text', forbidden)
@@ -41,7 +35,7 @@ def test_list_never_reads_fixtures_or_converts(name, monkeypatch, capsys):
 
 @pytest.mark.parametrize('name', ['converter_parity_report', 'converter_contract_audit'])
 def test_subset_is_explicit_and_preserves_per_case_results(name):
-    module = load(name)
+    module = importlib.import_module(f'scripts.{name}')
     whole = module.collect_report()
     subset = module.collect_report(patterns=('html:basic*', 'html:basic*', 'html:table'), exclude=('table',))
     expected = [c for c in whole['cases'] if c['id'] == 'basic_blocks']
@@ -56,7 +50,7 @@ def test_subset_is_explicit_and_preserves_per_case_results(name):
 
 
 def test_excluded_markdown_and_cycles_are_not_converted(monkeypatch):
-    module = load('converter_contract_audit')
+    module = converter_contract_audit
     def forbidden(*args, **kwargs):
         raise AssertionError('excluded converters must not run')
     monkeypatch.setattr(module, '_markdown_record', forbidden)
@@ -82,24 +76,13 @@ def test_invalid_empty_or_mixed_modes_never_write(tmp_path, name):
 
 # ═══ · converter contract audit ══════════════════════════════════════════════════════════════════════════
 
-SCRIPT = ROOT / "scripts" / "converter_contract_audit.py"
-
-
-def _load_module():
-    spec = importlib.util.spec_from_file_location("converter_contract_audit", SCRIPT)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
 def test_converter_contract_audit_is_deterministic():
-    audit = _load_module()
+    audit = converter_contract_audit
     assert audit.collect_report() == audit.collect_report()
 
 
 def test_converter_contract_audit_covers_core_html_categories():
-    audit = _load_module()
+    audit = converter_contract_audit
     expected = {
         "basic_blocks",
         "links_images",
@@ -117,7 +100,7 @@ def test_converter_contract_audit_covers_core_html_categories():
 
 
 def test_converter_contract_audit_covers_core_markdown_categories():
-    audit = _load_module()
+    audit = converter_contract_audit
     expected = {
         "basic_blocks",
         "links_images",
@@ -135,7 +118,7 @@ def test_converter_contract_audit_covers_core_markdown_categories():
 
 
 def test_converter_contract_audit_reports_real_world_html():
-    audit = _load_module()
+    audit = converter_contract_audit
     report = audit.collect_report()
 
     assert report["schema_version"] == 3
@@ -161,7 +144,7 @@ def test_converter_contract_audit_reports_real_world_html():
 
 
 def test_converter_contract_audit_keeps_divergence_observational():
-    audit = _load_module()
+    audit = converter_contract_audit
     report = audit.collect_report()
 
     assert "not automatically a bug" in report["note"].lower()
@@ -172,14 +155,14 @@ def test_converter_contract_audit_keeps_divergence_observational():
 
 
 def test_blockquote_is_no_longer_a_converter_audit_divergence():
-    audit = _load_module()
+    audit = converter_contract_audit
     report = audit.collect_report()
 
     assert "markdown:blockquote" not in report["divergent_case_ids"]
 
 
 def test_mixed_lists_are_no_longer_converter_audit_divergences():
-    audit = _load_module()
+    audit = converter_contract_audit
     report = audit.collect_report()
 
     assert "html:mixed_lists" not in report["divergent_case_ids"]
@@ -187,7 +170,7 @@ def test_mixed_lists_are_no_longer_converter_audit_divergences():
 
 
 def test_footnote_is_classified_as_expected_lossy():
-    audit = _load_module()
+    audit = converter_contract_audit
     report = audit.collect_report()
 
     assert "markdown:footnote" in report["raw_divergent_case_ids"]
@@ -204,7 +187,7 @@ def test_footnote_is_classified_as_expected_lossy():
 
 
 def test_conversion_graph_distinguishes_prose_and_structured_markdown():
-    audit = _load_module()
+    audit = converter_contract_audit
     graph = audit.collect_report()["conversion_graph"]
 
     assert "markdown_prose" in graph["nodes"]
@@ -226,7 +209,7 @@ def test_conversion_graph_distinguishes_prose_and_structured_markdown():
 
 
 def test_conversion_graph_reports_reachability_without_crossing_carriers():
-    audit = _load_module()
+    audit = converter_contract_audit
     graph = audit.collect_report()["conversion_graph"]
     pairs = {(route["source"], route["target"]) for route in graph["routes"]}
 
@@ -243,7 +226,7 @@ def test_conversion_graph_reports_reachability_without_crossing_carriers():
 
 
 def test_structured_cycles_are_stable_on_supported_python():
-    audit = _load_module()
+    audit = converter_contract_audit
     report = audit.collect_report()
     expected_ids = {case["id"] for case in audit.STRUCTURED_CYCLE_CASES}
 
@@ -266,7 +249,7 @@ def test_structured_cycles_are_stable_on_supported_python():
 
 
 def test_structured_cycles_cover_cross_format_paths():
-    audit = _load_module()
+    audit = converter_contract_audit
     pairs = {
         (case["source_format"], case["via_format"])
         for case in audit.STRUCTURED_CYCLE_CASES
@@ -474,19 +457,8 @@ def test_details_inside_table_cell_stays_flat_and_keeps_table_shape():
 
 # ═══ · converter parity report ═══════════════════════════════════════════════════════════════════════════
 
-CONVERTER_PARITY_REPORT_SCRIPT = ROOT / "scripts" / "converter_parity_report.py"
-
-
-def _load_report_module():
-    spec = importlib.util.spec_from_file_location("converter_parity_report", CONVERTER_PARITY_REPORT_SCRIPT)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
 def test_converter_parity_report_is_deterministic_and_covers_real_html():
-    report_module = _load_report_module()
+    report_module = converter_parity_report
     first = report_module.collect_report()
     second = report_module.collect_report()
 
@@ -506,7 +478,7 @@ def test_converter_parity_report_is_deterministic_and_covers_real_html():
 
 
 def test_converter_parity_report_hashes_both_outputs():
-    report_module = _load_report_module()
+    report_module = converter_parity_report
     report = report_module.collect_report()
 
     for case in report["cases"]:
@@ -519,7 +491,7 @@ def test_converter_parity_report_hashes_both_outputs():
 
 
 def test_converter_parity_report_does_not_force_dom_first():
-    report_module = _load_report_module()
+    report_module = converter_parity_report
     report = report_module.collect_report()
 
     if report["mismatch_count"]:
@@ -532,7 +504,7 @@ def test_converter_parity_report_does_not_force_dom_first():
 
 
 def test_converter_parity_report_covers_requested_synthetic_categories():
-    report_module = _load_report_module()
+    report_module = converter_parity_report
     expected = {
         "blockquote",
         "inline_code",
@@ -549,7 +521,7 @@ def test_converter_parity_report_covers_requested_synthetic_categories():
 
 
 def test_converter_parity_report_flags_thin_real_world_corpus():
-    report_module = _load_report_module()
+    report_module = converter_parity_report
     report = report_module.collect_report()
 
     assert "real-world html coverage" in report["corpus_note"].lower()
@@ -558,7 +530,7 @@ def test_converter_parity_report_flags_thin_real_world_corpus():
 
 
 def test_tohoho_real_world_fixture_matches_dom_path():
-    report_module = _load_report_module()
+    report_module = converter_parity_report
     report = report_module.collect_report()
     tohoho = next(case for case in report["cases"] if case["id"] == "tohoho_web_home")
     if not tohoho["equal"]:
@@ -1128,11 +1100,6 @@ def test_markdown_to_structured_requires_table_paired_with_marker():
 
 # ═══ · system formats ════════════════════════════════════════════════════════════════════════════════════
 
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-import markdown as md
-
 
 def test_exports() -> None:
     for name in (
@@ -1329,11 +1296,6 @@ def test_markdown_to_man_rejects_control_characters_in_th_fields(field: str, bad
 # ═══ · table data conversion ═════════════════════════════════════════════════════════════════════════════
 # P2 table data conversions and CJK display-width contracts.
 
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-import markdown as md
-
 
 def test_csv_table_csv_round_trip_handles_quotes_and_pipes() -> None:
     source = 'name,note\n妙本,"a, b | c"\n'
@@ -1376,11 +1338,6 @@ def test_malformed_or_missing_table_degrades_to_empty_data() -> None:
 
 
 # ═══ · llm io ════════════════════════════════════════════════════════════════════════════════════════════
-
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-import markdown as md
 
 
 def test_exports_llm_io() -> None:

@@ -50,3 +50,7 @@ only-include = ["markdown.py"]
 
 [project.scripts]
 md-market = "markdown:_main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

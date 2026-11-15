@@ -1,7 +1,6 @@
 """📊 Benchmarks and real-world documents: CommonMark, the HTML round trip, the optimization guard, published Markdown and the real-world pages report."""
 from __future__ import annotations
 
-import importlib.util
 import json
 import subprocess
 import sys
@@ -13,6 +12,8 @@ import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
+import markdown as md
+from scripts import real_world_pages_report
 
 
 # ═══ · benchmark commonmark ══════════════════════════════════════════════════════════════════════════════
@@ -30,10 +31,6 @@ ROOT = Path(__file__).resolve().parents[1]
 # update the matching ``our_html`` / ``classification`` in the YAML deliberately
 # -- a diff there is a design decision, not something to silence.
 
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-import markdown as md
 
 BENCHMARK_COMMONMARK_FIXTURES = ROOT / "fixtures" / "benchmark"
 VALID_CLASSIFICATIONS = {"PASS", "DEGRADED", "UNSUPPORTED", "FAIL"}
@@ -115,7 +112,7 @@ def test_classification_summary_is_printable() -> None:
 # Exploratory: HTML -> html_to_markdown() -> markdown_to_html() -> HTML.
 #
 # This is deliberately kept separate from the PASS/DEGRADED/UNSUPPORTED/FAIL
-# grading in test_benchmark_commonmark.py and test_benchmark_realworld.py --
+# grading in the benchmark commonmark and real-world sections of this file --
 # round-tripping through two conservative, independent conversions (a
 # different code path from markdown_to_html() alone) is a different kind of
 # question ("does structure survive two hops?"), not a parser conformance
@@ -134,10 +131,6 @@ def test_classification_summary_is_printable() -> None:
 # html_to_markdown() gets on an actual, dense, real site rather than a
 # hand-picked tag inventory.
 
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-import markdown as md
 
 FIXTURES = ROOT / "fixtures"
 BENCHMARK = FIXTURES / "benchmark"
@@ -312,20 +305,14 @@ ns['main']()
 # The goal here (per the benchmark's own brief) is not "make everything
 # pass" -- it's proving these don't crash, and pinning down exactly which
 # known-unsupported constructs (bare URL autolinks,
-# backslash escaping -- see test_benchmark_commonmark.py and
+# backslash escaping -- see the benchmark commonmark section above and
 # markdown.py's UNSUPPORTED) show up, unmangled, inside a real document
 # rather than only in an isolated one-liner. GitHub-style alerts, simple
 # GFM pipe tables, ordinary > blockquotes, ~~strikethrough~~, GFM task
 # lists, <http(s)://...> autolinks, GFM/Pandoc-like footnotes, and
 # :::details collapsible sections are now supported subsets (see
-# test_alerts.py, test_tables.py, test_blockquotes.py,
-# test_strikethrough.py, test_task_lists.py, test_autolinks.py,
-# test_footnotes.py, test_details.py).
-
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-import markdown as md
+# the alerts, tables, blockquotes, strikethrough, task lists, autolinks,
+# footnotes and details sections of tests/test_syntax.py).
 
 
 def _provenance() -> dict:
@@ -505,8 +492,6 @@ def test_changelog_structural_generators_are_deterministic_on_long_input() -> No
 # git checkout or GitHub Actions env (same idea as flutter_navigation_basic
 # overriding BuildMetadata.load in widget tests).
 
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 _FAKE_REVISION = {
     "version": "0.1.0",
@@ -518,15 +503,6 @@ _FAKE_REVISION = {
     "commitUrl": "https://github.com/myon-bioinformatics/markdown/commit/abcdef1234567890abcdef1234567890abcdef12",
     "dirty": False,
 }
-
-
-def _load_report_module():
-    path = ROOT / "scripts" / "real_world_pages_report.py"
-    spec = importlib.util.spec_from_file_location("real_world_pages_report", path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
 
 
 def _stub_screenshot(report, monkeypatch) -> list[str]:
@@ -545,7 +521,7 @@ def _stub_screenshot(report, monkeypatch) -> list[str]:
 
 
 def test_build_report_with_relative_out_does_not_raise_on_as_uri(tmp_path, monkeypatch) -> None:
-    report = _load_report_module()
+    report = real_world_pages_report
     monkeypatch.chdir(tmp_path)
     seen_uris = _stub_screenshot(report, monkeypatch)
 
@@ -557,7 +533,7 @@ def test_build_report_with_relative_out_does_not_raise_on_as_uri(tmp_path, monke
 
 
 def test_pages_favicon_is_local_and_benchmark_outputs_remain_unbranded(tmp_path, monkeypatch):
-    report = _load_report_module()
+    report = real_world_pages_report
     _stub_screenshot(report, monkeypatch)
     site = tmp_path / "nested" / "_site"
     report.build_report(site, revision=_FAKE_REVISION)
@@ -582,7 +558,7 @@ def test_pages_favicon_is_local_and_benchmark_outputs_remain_unbranded(tmp_path,
 
 
 def test_build_report_embeds_injected_revision_and_writes_build_meta(tmp_path, monkeypatch) -> None:
-    report = _load_report_module()
+    report = real_world_pages_report
     monkeypatch.chdir(tmp_path)
     seen_uris = _stub_screenshot(report, monkeypatch)
 
@@ -609,7 +585,7 @@ def test_build_report_embeds_injected_revision_and_writes_build_meta(tmp_path, m
 
 
 def test_build_report_omits_version_label_when_absent(tmp_path, monkeypatch) -> None:
-    report = _load_report_module()
+    report = real_world_pages_report
     monkeypatch.chdir(tmp_path)
     _stub_screenshot(report, monkeypatch)
 
@@ -623,10 +599,10 @@ def test_build_report_omits_version_label_when_absent(tmp_path, monkeypatch) -> 
 
 
 @pytest.mark.parametrize('case', json.loads(
-    (ROOT / 'tests/fixtures/pages_revision_migration.json').read_text()
+    (ROOT / 'fixtures/pages_revision_migration.json').read_text()
 ), ids=lambda case: case['name'])
 def test_revision_before_after_fixture(case, monkeypatch):
-    report = _load_report_module()
+    report = real_world_pages_report
     expected = case['after']
 
     def canonical(root, *, repository, env):
@@ -672,7 +648,7 @@ def _checkout(tmp_path):
 
 
 def test_real_checkout_clean_dirty_detached_and_actions(tmp_path, monkeypatch):
-    report = _load_report_module()
+    report = real_world_pages_report
     git = _checkout(tmp_path)
     monkeypatch.setattr(report, 'ROOT', tmp_path)
     sha = git('rev-parse', 'HEAD')
@@ -707,7 +683,7 @@ def test_real_checkout_clean_dirty_detached_and_actions(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize('failure', ['missing_git', 'not_worktree', 'unborn'])
 def test_unmeasurable_checkout(tmp_path, monkeypatch, failure):
-    report = _load_report_module()
+    report = real_world_pages_report
     monkeypatch.setattr(report, 'ROOT', tmp_path)
     if failure == 'missing_git':
         monkeypatch.setenv('PATH', str(tmp_path))
@@ -723,7 +699,7 @@ def test_unmeasurable_checkout(tmp_path, monkeypatch, failure):
 
 @pytest.mark.parametrize('failure', ['error', 'truncated'])
 def test_status_failure_does_not_erase_identity(tmp_path, monkeypatch, failure):
-    report = _load_report_module()
+    report = real_world_pages_report
     git = _checkout(tmp_path)
     monkeypatch.setattr(report, 'ROOT', tmp_path)
 
@@ -741,7 +717,7 @@ def test_status_failure_does_not_erase_identity(tmp_path, monkeypatch, failure):
 
 @pytest.mark.parametrize("failure", ["validation", "git"] )
 def test_canonical_validation_failure_keeps_dirty_observation(tmp_path, monkeypatch, failure):
-    report = _load_report_module()
+    report = real_world_pages_report
     _checkout(tmp_path)
     monkeypatch.setattr(report, 'ROOT', tmp_path)
     (tmp_path / 'tracked.txt').write_text('modified')
