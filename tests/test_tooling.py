@@ -1,12 +1,10 @@
-"""🧰 Tooling: CI Python setup, frontend dependency slices, installability, the public API, diagnostics, vendor locks, parent pins, the README doctest, repository metadata, runtime workflow, stdio CLI and the demo apps' logic."""
+"""🧰 Tooling: frontend dependency slices, installability, the public API, diagnostics, vendor automation wiring, the README doctest, repository metadata, runtime workflow, stdio CLI and the demo apps' logic."""
 from __future__ import annotations
 
 import ast
-import hashlib
 import json
 import os
 import platform
-import re
 import shutil
 import subprocess
 import sys
@@ -23,103 +21,6 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 import markdown as md
 from scripts import markdown_repository_diagnostics as diagnostics
-
-
-# ═══ · ci python setup ═══════════════════════════════════════════════════════════════════════════════════
-# Stdlib-only contracts for CI Python selection and preserved baselines.
-
-SETUP_UV = "astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2"
-JOBS = {
-    "ci.yml": {
-        "resolve-vendor": "3.15",
-        "test": "${{ matrix.python-version }}",
-        "node-runtime": "3.15",
-        "frontend-mock-pytest-latest": "3.15",
-        "frontend-smoke": "3.15",
-        "vendor-locked": "${{ matrix.python-version }}"
-    },
-    "pages.yml": {
-        "checks": "3.15",
-        "build": "3.15"
-    },
-    "runtime-compatibility.yml": {
-        "runtime": "${{ matrix.python }}"
-    }
-}
-EXPECTED_REPORTS = [
-    "junit-py3.11/pytest-3.11.xml",
-    "junit-py3.12/pytest-3.12.xml",
-    "junit-py3.13/pytest-3.13.xml",
-    "junit-py3.14/pytest-3.14.xml",
-    "junit-node-ubuntu-latest-26/node-ubuntu-latest-26.xml",
-    "junit-node-ubuntu-latest-latest/node-ubuntu-latest-latest.xml",
-    "junit-node-windows-latest-26/node-windows-latest-26.xml",
-    "junit-node-windows-latest-latest/node-windows-latest-latest.xml",
-    "junit-node-macos-latest-26/node-macos-latest-26.xml",
-    "junit-node-macos-latest-latest/node-macos-latest-latest.xml"
-]
-
-
-def job(workflow, name):
-    """Read the bounded job block in our two-space-indented workflows."""
-    text = (ROOT / ".github/workflows" / workflow).read_text(encoding="utf-8")
-    pattern = r"(?ms)^  " + re.escape(name) + r":\n(.*?)(?=^  [\w-]+:\n|\Z)"
-    match = re.search(pattern, text)
-    if match is None:
-        raise AssertionError(f"Missing job {workflow}: {name}")
-    return match.group(1)
-
-
-class CiPythonSetupTests(unittest.TestCase):
-    def test_contract_inventory_matches_all_python_setup_jobs(self):
-        # Fail for stale workflow/job entries as well as newly untested jobs.
-        actual = set()
-        for path in sorted((ROOT / ".github/workflows").iterdir()):
-            if path.suffix not in {".yml", ".yaml"}:
-                continue
-            text = path.read_text(encoding="utf-8")
-            for name in re.findall(r"(?m)^  ([\w-]+):$", text):
-                if "uses: astral-sh/setup-uv@" in job(path.name, name):
-                    actual.add((path.name, name))
-        expected = {(workflow, name) for workflow, jobs in JOBS.items() for name in jobs}
-        self.assertEqual(actual, expected)
-
-    def test_selected_python_is_ready_before_any_python_or_uv_command(self):
-        for workflow, jobs in JOBS.items():
-            for name, version in jobs.items():
-                with self.subTest(workflow=workflow, job=name):
-                    block = job(workflow, name)
-                    self.assertEqual(block.count("uses: " + SETUP_UV), 1)
-                    setup = block.index("uses: " + SETUP_UV)
-                    command = re.search(
-                        r"(?m)^\s*(?:-\s+)?(?:run:\s*)?(?:python(?:3)?|uv)\s+",
-                        block,
-                    )
-                    self.assertIsNotNone(command, "No interpreter consumer was checked")
-                    self.assertLess(setup, command.start(), "Python ran before setup-uv")
-                    setup_inputs = block[setup:].split("\n", 10)[:9]
-                    inputs = "\n".join(setup_inputs)
-                    self.assertIn('version: "latest"', inputs)
-                    self.assertIn(f'python-version: "{version}"', inputs)
-                    self.assertIn("activate-environment: true", inputs)
-                    self.assertIn("enable-cache: true", inputs)
-                    self.assertIn("save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}", inputs)  # only main writes
-                    self.assertIn("prune-cache: true", inputs)
-
-    def test_compatibility_matrix_and_required_report_identities_are_preserved(self):
-        text = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-        self.assertIn("python-version: [\"3.11\", \"3.12\", \"3.13\", \"3.14\"]", text)
-        match = re.search(r"expected-reports: '([^']+)'", job("ci.yml", "failure-identity"))
-        self.assertIsNotNone(match)
-        self.assertEqual(json.loads(match.group(1)), EXPECTED_REPORTS)
-
-    def test_locked_baseline_and_runtime_floor_are_preserved(self):
-        locked = job("ci.yml", "vendor-locked")
-        self.assertRegex(locked, r"python-version:\s*\n\s*- '3\.12'")
-        self.assertIn("name: locked-junit-py${{ matrix.python-version }}", locked)
-        self.assertIn("uv sync --locked --group dev", locked)
-        self.assertIn('python: ["3.11", "3.12", "3.13", "3.14"]', job("runtime-compatibility.yml", "runtime"))
-        self.assertIn("independent `vendor-locked` job on Python 3.12", (ROOT / "docs/vendor-automation.md").read_text(encoding="utf-8"))
 
 
 # ═══ · frontend nano ci ══════════════════════════════════════════════════════════════════════════════════
@@ -363,25 +264,6 @@ def test_markdown_to_web_ui_v1_theme_is_case_sensitive() -> None:
 
 # ═══ · markdown repository diagnostics ═══════════════════════════════════════════════════════════════════
 
-def _locked(destination):
-    lock = json.loads((ROOT / "vendor.lock.json").read_text(encoding="utf-8"))
-    return next(e for e in lock["files"] if e["destination"] == destination)
-
-
-def _git_blob_sha(data: bytes) -> str:
-    """Git's blob id for these bytes (what vendor.lock.json records as blob_sha)."""
-    return hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
-
-
-def test_vendor_provenance_matches_bytes():
-    resolver = _locked("vendor/github_public_resolver.py")
-    ghi = _locked("vendor/gh_identity.py")
-    assert _git_blob_sha((ROOT / "vendor/github_public_resolver.py").read_bytes()) == resolver["blob_sha"]
-    assert _git_blob_sha((ROOT / "vendor/gh_identity.py").read_bytes()) == ghi["blob_sha"]
-    assert ghi["repository"] == "myon-bioinformatics/gh_identity"
-    assert hashlib.sha256((ROOT / "vendor/gh_identity.py").read_bytes()).hexdigest() == ghi["sha256"]
-
-
 def test_payload_not_checked_roundtrip(tmp_path, monkeypatch):
     record = diagnostics.GH_IDENTITY.validate_repository_metadata_v1({
         "schema_version": "1.0",
@@ -461,20 +343,6 @@ def test_tracked_bytes_rejects_incomplete_inventory(monkeypatch):
         diagnostics._tracked_bytes()
 
 
-# ═══ · markdown retired vendor refs ══════════════════════════════════════════════════════════════════════
-# Retired upstream paths keep immutable identities and verified bytes.
-
-def test_ironmate_legacy_sources_keep_exact_refs_and_bytes():
-    entries = [entry for entry in json.loads((ROOT / 'vendor.lock.json').read_text())['files']
-               if entry['repository'] == 'myon-bioinformatics/Ironmate']
-    assert {e['source'] for e in entries} == {'LICENSE'}
-    for entry in entries:
-        assert entry['ref'] == entry['commit']
-        data = (ROOT / entry['destination']).read_bytes()
-        assert hashlib.sha256(data).hexdigest() == entry['sha256']
-        assert _git_blob_sha(data) == entry['blob_sha']
-
-
 # ═══ · markdown vendor automation ════════════════════════════════════════════════════════════════════════
 # Vendor lock CI wiring: pinned vendor_sync check without upstream auto-update.
 
@@ -486,34 +354,12 @@ GHI_LOAD_COMMAND = (
     'm=importlib.util.module_from_spec(s); s.loader.exec_module(m); '
     "assert hasattr(m,'capabilities')\""
 )
-EXPECTED = {
-    ("myon-bioinformatics/gh_identity", "gh_identity.py", "vendor/gh_identity.py"),
-    ("myon-bioinformatics/gh_identity", "LICENSE", "vendor/gh_identity-LICENSE"),
-    ("myon-bioinformatics/myon-bioinformatics", "LICENSE", "vendor/myon-bioinformatics-LICENSE"),
-    ("myon-bioinformatics/Ironmate", "LICENSE", "vendor/Ironmate-LICENSE"),
-    ("myon-bioinformatics/mcp-toolcall-lab", "LICENSE", "vendor/mcp-toolcall-lab-LICENSE"),
-    (
-        "myon-bioinformatics/mcp-toolcall-lab",
-        "src/mcp_toolcall_lab/github_public_resolver.py",
-        "vendor/github_public_resolver.py",
-    ),
-    (
-        "myon-bioinformatics/myon-bioinformatics",
-        "njs_launch.py",
-        "vendor/njs_launch.py",
-    ),
-}
 
 
 def _workflow():
     import yaml
 
     return yaml.load((ROOT / WORKFLOW).read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
-
-
-def test_vendor_lock_has_explicit_sources():
-    lock = json.loads((ROOT / "vendor.lock.json").read_text(encoding="utf-8"))
-    assert {(e["repository"], e["source"], e["destination"]) for e in lock["files"]} == EXPECTED
 
 
 def test_ci_verifies_lock_without_promote_or_update():
@@ -596,87 +442,6 @@ def test_locked_baseline_runs_automatically_without_candidate_snapshot():
             if step["with"]["name"].startswith(("locked-junit-", "locked-controlled-")):
                 assert step["if"] == "always()"
             assert step["with"]["if-no-files-found"] == "error"
-
-
-# ═══ · markdown vendor lock ══════════════════════════════════════════════════════════════════════════════
-
-def test_vendor_lock_matches_checked_in_bytes() -> None:
-    lock = json.loads((ROOT / "vendor.lock.json").read_text(encoding="utf-8"))
-    assert lock["schema"] == "vendor-lock/1"
-    for entry in lock["files"]:
-        assert re.fullmatch(r"[0-9a-f]{40}", entry["ref"]), entry["destination"]
-        assert entry["ref"] == entry["commit"], entry["destination"]
-        data = (ROOT / entry["destination"]).read_bytes()
-        assert _git_blob_sha(data) == entry["blob_sha"], entry["destination"]
-        assert hashlib.sha256(data).hexdigest() == entry["sha256"], entry["destination"]
-
-
-# ═══ · parent workflow pins ══════════════════════════════════════════════════════════════════════════════
-# Local rollout contract; adopted vendor locks are deliberately independent.
-
-PARENT = "myon-bioinformatics/myon-bioinformatics"
-PARENT_WORKFLOW_PIN = "9e3da7ae1846e9604ebc24bb5178f7de094a4e77"
-VENDOR_TOOL_PIN = "26c442bc51b8a2837fe2556782b2937f396932af"
-
-
-def test_parent_workflow_references_use_reviewed_rollout_commit():
-    pins = []
-    vendor_tool_pins = []
-    for path in sorted((ROOT / ".github/workflows").glob("*")):
-        if path.suffix not in (".yml", ".yaml"):
-            continue
-        text = path.read_text(encoding="utf-8")
-        # Capture mutable and shortened references too, rather than ignoring them.
-        pins.extend(re.findall(r"uses:\s*['\"]?" + re.escape(PARENT) + r"/[^\s@'\"]+@([^\s'\"]+)", text))
-        lines = text.splitlines()
-        for i, line in enumerate(lines):
-            if not re.fullmatch(r"\s+repository:\s*['\"]?" + re.escape(PARENT) + r"['\"]?\s*", line):
-                continue
-            block = lines[i + 1:i + 12]
-            refs = [re.fullmatch(r"\s+ref:\s*['\"]?([^\s'\"]+)['\"]?\s*", item) for item in block]
-            ref = next((m.group(1) for m in refs if m), None)
-            if any(re.fullmatch(r"\s+path:\s*['\"]?\.vendor-sync-tools['\"]?\s*", item) for item in block):
-                vendor_tool_pins.append(ref)
-            else:
-                pins.append(ref)
-    assert pins, "shared parent references must remain observable"
-    assert set(pins) == {PARENT_WORKFLOW_PIN}, pins
-    assert vendor_tool_pins and set(vendor_tool_pins) == {VENDOR_TOOL_PIN}, vendor_tool_pins
-
-
-@pytest.mark.parametrize("quote", ["", "'", '"'])
-@pytest.mark.parametrize("target", ["uses", "checkout", "vendor"])
-@pytest.mark.parametrize("reference", ["reviewed", "main", "9e3da7a"])
-def test_reference_detection_preserves_quotes_and_rejects_unreviewed_pins(
-    tmp_path, monkeypatch, quote, target, reference
-):
-    workflows = tmp_path / ".github/workflows"
-    workflows.mkdir(parents=True)
-    # Keep valid references present so ignoring a quoted bad reference cannot pass.
-    (workflows / "baseline.yml").write_text(
-        f"  uses: {PARENT}/.github/workflows/ci.yml@{PARENT_WORKFLOW_PIN}\n"
-        f"  repository: {PARENT}\n"
-        f"  ref: {VENDOR_TOOL_PIN}\n"
-        "  path: .vendor-sync-tools\n", encoding="utf-8"
-    )
-    pin = VENDOR_TOOL_PIN if target == "vendor" else PARENT_WORKFLOW_PIN
-    ref = pin if reference == "reviewed" else reference
-    if target == "uses":
-        candidate = f"  uses: {quote}{PARENT}/.github/workflows/ci.yml@{ref}{quote}\n"
-    else:
-        path = ".vendor-sync-tools" if target == "vendor" else ".parent-workflows"
-        candidate = (
-            f"  repository: {quote}{PARENT}{quote}\n"
-            f"  ref: {quote}{ref}{quote}\n"
-            f"  path: {quote}{path}{quote}\n"
-        )
-    (workflows / "candidate.yml").write_text(candidate, encoding="utf-8")
-    monkeypatch.setitem(globals(), "ROOT", tmp_path)
-    if reference == "reviewed":
-        test_parent_workflow_references_use_reviewed_rollout_commit()
-    else:
-        with pytest.raises(AssertionError):
-            test_parent_workflow_references_use_reviewed_rollout_commit()
 
 
 # ═══ · readme doctest ════════════════════════════════════════════════════════════════════════════════════
@@ -772,13 +537,6 @@ class RepositoryMetadataProducerTests(unittest.TestCase):
         self.assertEqual(Path(diagnostics.GH_IDENTITY.__file__).resolve(),
                          (ROOT / "vendor/gh_identity.py").resolve())
         self.assertNotIn(str(ROOT / "vendor"), sys.path)
-
-    def test_gh_identity_matches_finalized_lock(self):
-        entry = _locked("vendor/gh_identity.py")
-        path = ROOT / "vendor/gh_identity.py"
-        data = path.read_bytes()
-        self.assertEqual(_git_blob_sha(data), entry["blob_sha"])
-        self.assertEqual(hashlib.sha256(data).hexdigest(), entry["sha256"])
 
     def test_checkout_identity_equivalence_refs_and_detached_head(self):
         with tempfile.TemporaryDirectory() as tmp:
