@@ -1,7 +1,6 @@
 """🚢 Fleet contracts through the parent's shared checks (vendor/fleet_check.py): vendor lock bytes and sources,
-parent workflow pins, CI Python setup order and the benchmark -O guard."""
+parent workflow pins, SHA-pinned actions, CI Python setup order and the benchmark -O guard."""
 import json, re, unittest
-from collections import Counter
 
 import pytest
 
@@ -10,31 +9,28 @@ from vendor import fleet_check as fleet
 ROOT = fleet.repo_root(__file__)
 PARENT_WORKFLOW_PIN = "9e3da7ae1846e9604ebc24bb5178f7de094a4e77"
 VENDOR_TOOL_PIN = "26c442bc51b8a2837fe2556782b2937f396932af"
-ACCEPTED = {"vendor/fleet_check.py": "6c29503cf17eda856766ddfdf4d66a5b0965a8b1"}
-LOCKED = {
-    ("myon-bioinformatics/gh_identity", "gh_identity.py", "vendor/gh_identity.py"),
-    ("myon-bioinformatics/gh_identity", "LICENSE", "vendor/gh_identity-LICENSE"),
-    (fleet.PARENT, "LICENSE", "vendor/myon-bioinformatics-LICENSE"),
-    ("myon-bioinformatics/Ironmate", "LICENSE", "vendor/Ironmate-LICENSE"),
-    ("myon-bioinformatics/mcp-toolcall-lab", "LICENSE", "vendor/mcp-toolcall-lab-LICENSE"),
-    ("myon-bioinformatics/mcp-toolcall-lab", "src/mcp_toolcall_lab/github_public_resolver.py", "vendor/github_public_resolver.py"),
-    (fleet.PARENT, "njs_launch.py", "vendor/njs_launch.py"),
-    (fleet.PARENT, "fleet_check.py", "vendor/fleet_check.py"),
+ACCEPTED = {"vendor/fleet_check.py": "81f6aea6231d4490e581443fdeb43a09e6018ff0"}
+SOURCES = {
+    "vendor/gh_identity.py": ("myon-bioinformatics/gh_identity", "gh_identity.py"),
+    "vendor/gh_identity-LICENSE": ("myon-bioinformatics/gh_identity", "LICENSE"),
+    "vendor/myon-bioinformatics-LICENSE": (fleet.PARENT, "LICENSE"),
+    "vendor/Ironmate-LICENSE": ("myon-bioinformatics/Ironmate", "LICENSE"),
+    "vendor/mcp-toolcall-lab-LICENSE": ("myon-bioinformatics/mcp-toolcall-lab", "LICENSE"),
+    "vendor/github_public_resolver.py": ("myon-bioinformatics/mcp-toolcall-lab", "src/mcp_toolcall_lab/github_public_resolver.py"),
+    "vendor/njs_launch.py": (fleet.PARENT, "njs_launch.py"),
+    "vendor/fleet_check.py": (fleet.PARENT, "fleet_check.py"),
 }
 
 
 # ═══ · vendor lock ═══════════════════════════════════════════════════════════════════════════════════════
 # Every locked row (gh_identity, the resolver, the retired Ironmate LICENSE, ...) keeps a full-SHA ref equal
-# to its commit and bytes matching both hashes; that is one check_lock call.
+# to its commit, bytes matching both hashes and its listed (repository, source); that is one check_lock call.
 
-def test_vendor_lock_matches_checked_in_bytes():
-    fleet.check_lock(ROOT, commits=ACCEPTED)
-
-
-def test_vendor_lock_has_explicit_sources():
-    rows = json.loads((ROOT / "vendor.lock.json").read_text(encoding="utf-8"))["files"]
-    assert {(row["repository"], row["source"], row["destination"]) for row in rows} == LOCKED
-    assert len({row["destination"] for row in rows}) == len(rows), "duplicate vendor lock destination"
+def test_vendor_lock_matches_checked_in_bytes_and_sources():
+    raw_rows = json.loads((ROOT / "vendor.lock.json").read_text(encoding="utf-8"))["files"]
+    assert len({row["destination"] for row in raw_rows}) == len(raw_rows), "duplicate vendor lock destination"
+    rows = fleet.check_lock(ROOT, commits=ACCEPTED, sources=SOURCES)
+    assert set(rows) == set(SOURCES), "a row from a repository SOURCES does not name"
 
 
 # ═══ · parent workflow pins ══════════════════════════════════════════════════════════════════════════════
@@ -42,10 +38,14 @@ def test_vendor_lock_has_explicit_sources():
 
 def test_parent_workflow_references_use_reviewed_rollout_commit():
     pins = fleet.parent_refs(ROOT, skip=(".vendor-sync-tools",))
-    vendor_tool_pins = Counter(fleet.parent_refs(ROOT)) - Counter(pins)  # the .vendor-sync-tools checkouts
+    vendor_tool_pins = fleet.parent_refs(ROOT, only=(".vendor-sync-tools",))
     assert pins, "shared parent references must remain observable"
     assert set(pins) == {PARENT_WORKFLOW_PIN}, pins
     assert vendor_tool_pins and set(vendor_tool_pins) == {VENDOR_TOOL_PIN}, vendor_tool_pins
+
+
+def test_every_action_is_pinned_by_full_sha_with_a_version_comment():
+    assert fleet.check_actions(ROOT), "workflow actions must remain observable"
 
 
 @pytest.mark.parametrize("quote", ["", "'", '"'])
@@ -135,23 +135,14 @@ class CiPythonSetupTests(unittest.TestCase):
         for workflow, jobs in JOBS.items():
             for name, version in jobs.items():
                 with self.subTest(workflow=workflow, job=name):
-                    block = fleet.workflow_job(ROOT, name, workflow)
-                    self.assertEqual(block.count("uses: " + SETUP_UV), 1)
-                    setup = block.index("uses: " + SETUP_UV)
-                    command = re.search(
-                        r"(?m)^\s*(?:-\s+)?(?:run:\s*)?(?:python(?:3)?|uv)\s+",
-                        block,
-                    )
-                    self.assertIsNotNone(command, "No interpreter consumer was checked")
-                    self.assertLess(setup, command.start(), "Python ran before setup-uv")
-                    setup_inputs = block[setup:].split("\n", 10)[:9]
-                    inputs = "\n".join(setup_inputs)
-                    self.assertIn('version: "latest"', inputs)
-                    self.assertIn(f'python-version: "{version}"', inputs)
-                    self.assertIn("activate-environment: true", inputs)
-                    self.assertIn("enable-cache: true", inputs)
-                    self.assertIn("save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}", inputs)  # only main writes
-                    self.assertIn("prune-cache: true", inputs)
+                    fleet.workflow_job(ROOT, name, workflow, setup=SETUP_UV, inputs=(
+                        'version: "latest"',
+                        f'python-version: "{version}"',
+                        "activate-environment: true",
+                        "enable-cache: true",
+                        "save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}",  # only main writes
+                        "prune-cache: true",
+                    ))
 
     def test_compatibility_matrix_and_required_report_identities_are_preserved(self):
         text = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
@@ -165,7 +156,7 @@ class CiPythonSetupTests(unittest.TestCase):
         self.assertRegex(locked, r"python-version:\s*\n\s*- '3\.12'")
         self.assertIn("name: locked-junit-py${{ matrix.python-version }}", locked)
         self.assertIn("uv sync --locked --group dev", locked)
-        self.assertIn('python: ["3.11", "3.12", "3.13", "3.14"]', fleet.workflow_job(ROOT, "runtime", "runtime-compatibility.yml"))
+        self.assertEqual(fleet.python_floor(ROOT), ("3.11", ["3.11", "3.12", "3.13", "3.14"]))
         self.assertIn("independent `vendor-locked` job on Python 3.12", (ROOT / "docs/vendor-automation.md").read_text(encoding="utf-8"))
 
 

@@ -66,11 +66,11 @@ jobs:
     name: Screenshot evidence checks (no browser)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Check out pinned BrowserTestKit validators
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: myon-bioinformatics/BrowserTestKit
           ref: 6a2e32a4bbe49be5268e6b30040d665a89eecf66
@@ -99,13 +99,13 @@ jobs:
     needs: checks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The canonical producer reads HEAD, so check out the PR head.
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
       - name: Check out pinned BrowserTestKit validators
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: myon-bioinformatics/BrowserTestKit
           ref: 6a2e32a4bbe49be5268e6b30040d665a89eecf66
@@ -147,7 +147,7 @@ jobs:
       - name: Preserve available screenshot evidence after success or failure
         id: evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: real-world-screenshots-${{ github.event.pull_request.head.sha || github.sha }}
           path: _site
@@ -166,7 +166,7 @@ jobs:
             echo "Firefox/WebKit/mobile unmeasured. Failed bundles do not prove success."
             echo "Evidence (14 days): $ARTIFACT_URL"
           } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-pages-artifact@v5
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: _site
 
@@ -182,4 +182,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
