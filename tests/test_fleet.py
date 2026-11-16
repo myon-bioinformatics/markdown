@@ -27,6 +27,8 @@ SOURCES = {
 # to its commit, bytes matching both hashes and its listed (repository, source); that is one check_lock call.
 
 def test_vendor_lock_matches_checked_in_bytes_and_sources():
+    raw_rows = json.loads((ROOT / "vendor.lock.json").read_text(encoding="utf-8"))["files"]
+    assert len({row["destination"] for row in raw_rows}) == len(raw_rows), "duplicate vendor lock destination"
     rows = fleet.check_lock(ROOT, commits=ACCEPTED, sources=SOURCES)
     assert set(rows) == set(SOURCES), "a row from a repository SOURCES does not name"
 
