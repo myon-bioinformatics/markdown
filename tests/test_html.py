@@ -1180,3 +1180,105 @@ def test_comment_code_boundaries_agree_with_js_renderers():
             py = ours(text)
             for key in ("headings", "links", "images"):
                 assert normalized(key, py[key]) == normalized(key, theirs[key]), (reader, key, text)
+
+
+# ═══ · trusted-input modes: raw_html / attr_list ═════════════════════════════════════════════════════════
+
+def test_raw_html_and_attr_list_are_off_by_default():
+    source = '<div id="x"></div>\n\ntext &lt;\n{: .note}\n'
+    assert md.markdown_to_html(source) == md.markdown_to_html(source, raw_html=False, attr_list=False)
+    assert "<div" not in md.markdown_to_html(source)
+    assert "{: .note}" in md.markdown_to_html(source)
+
+
+def test_raw_html_blocks_pass_through_until_blank_line_or_closing_tag():
+    source = (
+        '<div id="f1" class="figure"></div>\n'
+        '<script type="application/json" id="f1-data">{"a":"&lt;"}</script>\n'
+        "\n"
+        "<script>\n"
+        "var ok = 1 < 2;\n"
+        "\n"
+        "</script>\n"
+        "\n"
+        "<p>raw &lt;kept&gt;</p>\n"
+        "\n"
+        "after **bold**\n"
+    )
+    html = md.markdown_to_html(source, raw_html=True)
+    assert '<div id="f1" class="figure"></div>\n<script type="application/json" id="f1-data">{"a":"&lt;"}</script>' in html
+    assert "<script>\nvar ok = 1 < 2;\n\n</script>" in html
+    assert "<p>raw &lt;kept&gt;</p>" in html
+    assert "<p>after <strong>bold</strong></p>" in html
+
+
+def test_raw_html_markdown_1_renders_contents_in_the_same_mode():
+    source = (
+        '<details markdown="1">\n'
+        "<summary>counter &amp; examples</summary>\n"
+        "\n"
+        "| unit | v |\n"
+        "| --- | --- |\n"
+        "| d-2013 | a \\| b |\n"
+        "\n"
+        '<details markdown="1">\n'
+        "<summary>inner</summary>\n"
+        "\n"
+        "*nested*\n"
+        "\n"
+        "</details>\n"
+        "\n"
+        "</details>\n"
+    )
+    html = md.markdown_to_html(source, raw_html=True)
+    assert 'markdown="1"' not in html
+    assert html.count("<details>") == 2 and html.count("</details>") == 2
+    assert "<summary>counter &amp; examples</summary>" in html
+    assert "<tr><td>d-2013</td><td>a | b</td></tr>" in html
+    assert "<p><em>nested</em></p>" in html
+    assert html.index("<em>nested</em>") < html.rindex("</details>")
+
+
+def test_raw_html_keeps_entities_outside_code_only():
+    html = md.markdown_to_html("a &lt;b&gt; &amp; &#60; &#x3c; &copy; & c\n\n`&lt;`\n\n```\n&amp;\n```\n", raw_html=True)
+    assert "<p>a &lt;b&gt; &amp; &#60; &#x3c; &copy; &amp; c</p>" in html
+    assert "<p><code>&amp;lt;</code></p>" in html
+    assert "<pre><code>&amp;amp;\n</code></pre>" in html
+
+
+def test_raw_html_ignores_tags_in_fences_and_inline():
+    html = md.markdown_to_html("```html\n<div>x</div>\n```\n\nsee <div> here\n", raw_html=True)
+    assert "&lt;div&gt;x&lt;/div&gt;" in html
+    assert "<p>see &lt;div&gt; here</p>" in html
+
+
+@pytest.mark.parametrize("ial,expected", [
+    ("{: .provenance}", '<p class="provenance">'),
+    ("{: #src .a .b}", '<p id="src" class="a b">'),
+    ('{: data-k="v &"}', '<p data-k="v &amp;">'),
+])
+def test_attr_list_adds_attributes_to_the_block_above(ial, expected):
+    html = md.markdown_to_html(f"first\n\nline one\nline two\n{ial}\n", attr_list=True)
+    assert "<p>first</p>" in html
+    assert f"{expected}line one line two</p>" in html
+    assert "{:" not in html
+
+
+def test_attr_list_on_heading_and_table_and_junk_stays_text():
+    html = md.markdown_to_html("# Title\n{: #top}\n\n| a |\n| --- |\n| 1 |\n{: .grid}\n\nx\n{: !!}\n", attr_list=True)
+    assert '<h1 id="top">Title</h1>' in html
+    assert '<table class="grid">' in html
+    assert "{: !!}" in html
+
+
+def test_attr_list_merges_into_an_existing_class():
+    html = md.markdown_to_html('<p class="a">x</p>\n{: .b}\n', raw_html=True, attr_list=True)
+    assert '<p class="a">x</p>' in html  # raw HTML is not a Markdown block; the IAL stays text
+    assert md._with_block_attrs('<p class="a">x</p>', {"id": None, "classes": ["b"], "attrs": {}, "flags": []}) == '<p class="a b">x</p>'
+
+
+def test_attr_list_reads_a_trailing_heading_attribute():
+    html = md.markdown_to_html("## ［事後構成］ P9 {#P9}\n\n### Plain {x}\n\n# T {: .big #t}\n", attr_list=True)
+    assert '<h2 id="P9">［事後構成］ P9</h2>' in html
+    assert "<h3>Plain {x}</h3>" in html
+    assert '<h1 id="t" class="big">T</h1>' in html

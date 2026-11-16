@@ -480,7 +480,13 @@ blank `>` lines split paragraphs). Simple GFM pipe tables from `table()` /
 checkboxes. Angle-bracket `<https://…>` / `<http://…>` autolinks become
 `<a href>` (bare URLs stay literal). `details(summary, body)` emits
 Zenn-style `:::details` which `markdown_to_html()` turns into
-`<details><summary>` (raw HTML `<details>` in Markdown stays escaped).
+`<details><summary>` (raw HTML `<details>` in Markdown stays escaped by default).
+🔓 For trusted input, `markdown_to_html(text, raw_html=True)` passes CommonMark HTML blocks through
+(`<div>` / `<p>` / `<details>` … up to a blank line, `<script>` / `<style>` / `<pre>` up to the
+closing tag), renders the inside of a `markdown="1"` tag as Markdown, and keeps `&lt;`-style
+entities outside code. `attr_list=True` reads a Kramdown block IAL (`{: #id .class key="v"}`)
+on the line after a paragraph, heading, table or list, and a trailing `{#id}` on a heading. Both are off by default; they cover
+the parts of Python-Markdown's `md_in_html` / `attr_list` that pages built from Python use.
 `[^id]` plus `[^id]:` definitions become superscript footnote links and
 a `.footnotes` section. `html_to_markdown()` maps simple `<table>` trees
 back to GFM pipes, `<del>` to `~~…~~`, and checkbox `<li><input>` to
