@@ -4873,8 +4873,29 @@ def _consume_blockquote(
     return "\n".join(parts), i
 
 
-def markdown_to_html(content: str) -> str:
+def markdown_to_html(content: str, *, raw_html: bool = False, attr_list: bool = False) -> str:
     """Conservatively convert a Markdown *subset* to HTML.
+
+    Opt-in modes for trusted input (both off by default; the default output is
+    unchanged and escapes every ``<``):
+
+    - ``raw_html=True``: block-level HTML passes through as written (CommonMark
+      HTML blocks: ``<script>`` / ``<style>`` / ``<pre>`` / ``<textarea>`` up to
+      their closing tag, other block tags such as ``<div>`` / ``<p>`` /
+      ``<details>`` / ``<summary>`` up to the next blank line). An opening tag
+      alone on its line with ``markdown="1"`` keeps the tag (without that
+      attribute) and renders its contents, up to the matching closing tag at
+      the start of a line, as Markdown in the same mode (Python-Markdown's
+      ``md_in_html``). Entity references (``&lt;``, ``&#60;``, ``&#x3c;``) in
+      text are kept as entities, as CommonMark does; inside ``<code>`` and
+      ``<pre>`` they stay literal text.
+    - ``attr_list=True``: a Kramdown block IAL line (``{: #id .class
+      key="value"}``) right after a paragraph, heading, table or list adds
+      those attributes to its first tag, and an ATX heading may end with
+      ``{#id .class}`` or ``{: #id}`` (Python-Markdown's ``attr_list`` for
+      blocks and headings). Lines that do not parse stay text.
+
+    Footnotes are numbered per Markdown run between HTML blocks in these modes.
 
     Handles ATX headings, fenced code, paragraphs, inline code, bold/italic,
     strikethrough (``~~text~~`` → ``<del>``), links, images, angle-bracket
@@ -4938,6 +4959,8 @@ def markdown_to_html(content: str) -> str:
     unknown Obsidian types still parse as Obsidian callouts (matching
     Obsidian's custom-type support).
     """
+    if raw_html or attr_list:
+        return _markdown_to_html_blocks(content, raw_html=raw_html, attr_list=attr_list)
     # Sanitize before all parsing paths, including fenced code: html.escape
     # leaves NUL intact, and input must not forge internal NUL placeholders.
     content = content.replace("\x00", "\ufffd")
@@ -5204,6 +5227,140 @@ def markdown_to_html(content: str) -> str:
     if footnote_order:
         out.append(_footnotes_section_html(footnote_order, footnote_defs, render_inline))
     return "\n".join(out) + ("\n" if out else "")
+
+
+# CommonMark HTML block starts: type 1 (until the closing tag) and type 6 (until a blank line).
+_HTML_BLOCK_RAW = ("script", "style", "pre", "textarea")
+_HTML_BLOCK_TAGS = frozenset(
+    "address article aside blockquote body caption center col colgroup dd details dialog dir div dl dt "
+    "fieldset figcaption figure footer form h1 h2 h3 h4 h5 h6 header hr html legend li main menu nav ol "
+    "optgroup option p section summary table tbody td tfoot th thead title tr ul".split()
+)
+_HTML_BLOCK_START_RE = re.compile(r"^ {0,3}<(?P<close>/?)(?P<tag>[A-Za-z][A-Za-z0-9-]*)(?=[\s/>]|$)")
+_MARKDOWN_ATTR_RE = re.compile(r"""\s+markdown\s*=\s*(?:"1"|'1'|1)(?=[\s/>])""")
+_ENTITY_AMP_RE = re.compile(r"&amp;(?=(?:#[0-9]{1,7}|#[xX][0-9a-fA-F]{1,6}|[A-Za-z][A-Za-z0-9]{1,31});)")
+_CODE_SPAN_HTML_RE = re.compile(r"(<code\b[^>]*>.*?</code>|<pre\b[^>]*>.*?</pre>)", re.S)
+_ATX_ATTR_HEADING_RE = re.compile(r"^ {0,3}#{1,6}[ \t].*\}\s*$")
+_FIRST_TAG_RE = re.compile(r"^(?P<lead>\s*<(?P<tag>[A-Za-z][A-Za-z0-9-]*))(?P<attrs>[^>]*)>")
+
+
+def _html_block_kind(line: str) -> str | None:
+    """``raw`` (type 1), ``block`` (type 6) or ``None`` for a line that starts no HTML block."""
+    match = _HTML_BLOCK_START_RE.match(line)
+    if not match:
+        return None
+    tag = match.group("tag").lower()
+    if tag in _HTML_BLOCK_RAW and not match.group("close"):
+        return "raw"
+    return "block" if tag in _HTML_BLOCK_TAGS else None
+
+
+def _keep_entities(html: str) -> str:
+    """Undo the escape of ``&`` that starts an entity reference, outside code."""
+    parts = _CODE_SPAN_HTML_RE.split(html)
+    return "".join(part if index % 2 else _ENTITY_AMP_RE.sub("&", part) for index, part in enumerate(parts))
+
+
+def _with_block_attrs(html: str, parsed: dict[str, Any]) -> str:
+    """Add an IAL's id / classes / key="value" to the first tag of ``html``."""
+    match = _FIRST_TAG_RE.match(html)
+    if not match:
+        return html
+    attrs = match.group("attrs")
+    extra = ""
+    if parsed["id"] and not re.search(r"\sid\s*=", attrs):
+        extra += f' id="{html_module.escape(parsed["id"])}"'
+    if parsed["classes"]:
+        joined = " ".join(parsed["classes"])
+        found = re.search(r'\sclass="([^"]*)"', attrs)
+        if found:
+            attrs = attrs[: found.start(1)] + f"{found.group(1)} {html_module.escape(joined)}".strip() + attrs[found.end(1):]
+        else:
+            extra += f' class="{html_module.escape(joined)}"'
+    for key, value in parsed["attrs"].items():
+        extra += f' {html_module.escape(key)}="{html_module.escape(value)}"'
+    return f"{match.group('lead')}{attrs}{extra}>" + html[match.end():]
+
+
+def _markdown_to_html_blocks(content: str, *, raw_html: bool, attr_list: bool) -> str:
+    """``markdown_to_html`` with HTML blocks and/or block IALs (see its docstring)."""
+    lines = content.replace("\x00", "\ufffd").splitlines()
+    out: list[str] = []
+    buf: list[str] = []
+
+    def render(md_lines: list[str]) -> str:
+        html = markdown_to_html("\n".join(md_lines)).rstrip("\n")
+        return _keep_entities(html) if raw_html else html
+
+    def flush() -> None:
+        if any(line.strip() for line in buf):
+            out.append(render(buf))
+        buf.clear()
+
+    fence: str | None = None
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        kind = _html_block_kind(line) if raw_html and fence is None else None
+        if kind is not None:
+            flush()
+            tag = _HTML_BLOCK_START_RE.match(line).group("tag").lower()
+            opener = line.strip()
+            if kind == "block" and _MARKDOWN_ATTR_RE.search(opener) and re.fullmatch(r"<[^<>]*>", opener):
+                close = re.compile(rf"^ {{0,3}}</{re.escape(tag)}\s*>\s*$", re.I)
+                opens = re.compile(rf"^ {{0,3}}<{re.escape(tag)}(?=[\s/>]|$)", re.I)
+                depth, j = 1, i + 1
+                while j < len(lines):
+                    if opens.match(lines[j]):
+                        depth += 1
+                    elif close.match(lines[j]):
+                        depth -= 1
+                        if not depth:
+                            break
+                    j += 1
+                if j < len(lines):
+                    inner = _markdown_to_html_blocks("\n".join(lines[i + 1:j]), raw_html=raw_html, attr_list=attr_list)
+                    out.append("\n".join(part for part in (_MARKDOWN_ATTR_RE.sub("", opener), inner.rstrip("\n"), lines[j].strip()) if part))
+                    i = j + 1
+                    continue
+            j = i
+            if kind == "raw":
+                end = re.compile(rf"</{re.escape(tag)}\s*>", re.I)
+                while j < len(lines) and not end.search(lines[j]):
+                    j += 1
+            else:
+                while j + 1 < len(lines) and lines[j + 1].strip():
+                    j += 1
+            out.append("\n".join(lines[i:j + 1]))
+            i = j + 1
+            continue
+        heading = _ATX_ATTR_HEADING_RE.match(line) if attr_list and fence is None else None
+        if heading:
+            trailing = _TRAILING_KRAMDOWN_IAL_RE.match(line) or _TRAILING_PANDOC_ATTR_RE.match(line)
+            parsed = _parse_attr_list_inner(trailing.group("inner")) if trailing else None
+            if parsed is not None and (parsed["id"] or parsed["classes"] or parsed["attrs"]):
+                flush()
+                out.append(_with_block_attrs(render([trailing.group("body").rstrip()]), parsed))
+                i += 1
+                continue
+        standalone = _STANDALONE_IAL_RE.match(line) if attr_list and fence is None else None
+        parsed = _parse_attr_list_inner(standalone.group("inner")) if standalone else None
+        if parsed is not None and buf and buf[-1].strip():
+            start = len(buf)
+            while start and buf[start - 1].strip():
+                start -= 1
+            block = buf[start:]
+            del buf[start:]
+            flush()
+            out.append(_with_block_attrs(render(block), parsed))
+            i += 1
+            continue
+        fence, _, _ = _advance_fence(fence, line)
+        buf.append(line)
+        i += 1
+    flush()
+    return "\n".join(out) + ("\n" if out else "")
+
 
 _ALERT_STYLESHEET = """\
 .markdown-alert {
