@@ -1,5 +1,5 @@
 """🚢 Fleet contracts through the parent's shared checks (vendor/fleet_check.py): vendor lock bytes and sources,
-parent workflow pins, CI Python setup order and the benchmark -O guard."""
+parent workflow pins, SHA-pinned actions, CI Python setup order and the benchmark -O guard."""
 import json, re, unittest
 
 import pytest
@@ -42,6 +42,10 @@ def test_parent_workflow_references_use_reviewed_rollout_commit():
     assert pins, "shared parent references must remain observable"
     assert set(pins) == {PARENT_WORKFLOW_PIN}, pins
     assert vendor_tool_pins and set(vendor_tool_pins) == {VENDOR_TOOL_PIN}, vendor_tool_pins
+
+
+def test_every_action_is_pinned_by_full_sha_with_a_version_comment():
+    assert fleet.check_actions(ROOT), "workflow actions must remain observable"
 
 
 @pytest.mark.parametrize("quote", ["", "'", '"'])
