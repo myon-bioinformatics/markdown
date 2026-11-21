@@ -74,6 +74,35 @@ def test_invalid_empty_or_mixed_modes_never_write(tmp_path, name):
     assert json.loads(result.stdout)['cases'] == ['html:basic_blocks']
 
 
+@pytest.mark.parametrize('name', ['converter_parity_report', 'converter_contract_audit'])
+def test_format_json_prints_full_report_and_still_writes_file(name, tmp_path, capsys):
+    module = importlib.import_module(f'scripts.{name}')
+    out = tmp_path / 'result.json'
+    assert module.main(['--case', 'html:basic_blocks', '--format', 'json', '--out', str(out)]) == 0
+    printed = json.loads(capsys.readouterr().out)
+    assert printed['case_count'] == 1 and printed['cases'][0]['id'] == 'basic_blocks'
+    assert json.loads(out.read_text(encoding='utf-8'))['case_count'] == 1
+
+
+@pytest.mark.parametrize('name', ['converter_parity_report', 'converter_contract_audit'])
+def test_format_json_error_is_one_json_object_on_stderr(name, capsys):
+    module = importlib.import_module(f'scripts.{name}')
+    assert module.main(['--case', 'missing', '--format', 'json']) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ''
+    assert 'error' in json.loads(captured.err)
+
+
+@pytest.mark.parametrize('name', ['converter_parity_report', 'converter_contract_audit'])
+def test_help_documents_format_and_out(name, capsys):
+    module = importlib.import_module(f'scripts.{name}')
+    with pytest.raises(SystemExit) as excinfo:
+        module.main(['--help'])
+    assert excinfo.value.code == 0
+    help_text = capsys.readouterr().out
+    assert '--format' in help_text and '--out' in help_text
+
+
 # ═══ · converter contract audit ══════════════════════════════════════════════════════════════════════════
 
 def test_converter_contract_audit_is_deterministic():
