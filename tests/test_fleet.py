@@ -10,7 +10,9 @@ ROOT = fleet.repo_root(__file__)
 PARENT_WORKFLOW_PIN = "9e3da7ae1846e9604ebc24bb5178f7de094a4e77"
 VENDOR_TOOL_PIN = "26c442bc51b8a2837fe2556782b2937f396932af"
 ACCEPTED = {"vendor/fleet_check.py": "81f6aea6231d4490e581443fdeb43a09e6018ff0"}
-SOURCES = {
+# Runtime/diagnostics tools, the fleet checker, and their recorded licenses.
+# The retired Ironmate tool's retained license is explicit provenance policy.
+REQUIRED_BINDINGS = {
     "vendor/gh_identity.py": ("myon-bioinformatics/gh_identity", "gh_identity.py"),
     "vendor/gh_identity-LICENSE": ("myon-bioinformatics/gh_identity", "LICENSE"),
     "vendor/myon-bioinformatics-LICENSE": (fleet.PARENT, "LICENSE"),
@@ -23,14 +25,62 @@ SOURCES = {
 
 
 # ═══ · vendor lock ═══════════════════════════════════════════════════════════════════════════════════════
-# Every locked row (gh_identity, the resolver, the retired Ironmate LICENSE, ...) keeps a full-SHA ref equal
-# to its commit, bytes matching both hashes and its listed (repository, source); that is one check_lock call.
+# The shared checker validates every row's pinned ref and bytes. This
+# consumer separately requires its named source and license bindings.
+
+def _check_vendor_contract(root):
+    raw_rows = json.loads((root / "vendor.lock.json").read_text(encoding="utf-8"))["files"]
+    assert len({row["destination"].casefold() for row in raw_rows}) == len(raw_rows), "duplicate vendor lock destination"
+    rows = fleet.check_lock(root)
+    for where, origin in REQUIRED_BINDINGS.items():
+        assert where in rows, f"missing required vendor binding: {where}"
+        assert (rows[where]["repository"], rows[where]["source"]) == origin, f"wrong vendor binding: {where}"
+    for where, commit in ACCEPTED.items():
+        assert rows[where]["commit"] == commit, f"wrong vendor commit: {where}"
+
 
 def test_vendor_lock_matches_checked_in_bytes_and_sources():
-    raw_rows = json.loads((ROOT / "vendor.lock.json").read_text(encoding="utf-8"))["files"]
-    assert len({row["destination"] for row in raw_rows}) == len(raw_rows), "duplicate vendor lock destination"
-    rows = fleet.check_lock(ROOT, commits=ACCEPTED, sources=SOURCES)
-    assert set(rows) == set(SOURCES), "a row from a repository SOURCES does not name"
+    _check_vendor_contract(ROOT)
+
+
+@pytest.mark.parametrize(("change", "error"), [
+    ("extra", None),
+    ("missing", "missing required vendor binding"),
+    ("repointed", "wrong vendor binding"),
+    ("duplicate", "duplicate vendor lock destination"),
+    ("casefold-duplicate", "duplicate vendor lock destination"),
+    ("drift", "vendor/extra-LICENSE"),
+])
+def test_vendor_bindings_are_required_without_freezing_the_inventory(tmp_path, change, error):
+    data = json.loads((ROOT / "vendor.lock.json").read_text(encoding="utf-8"))
+    rows = data["files"]
+    license_path = "vendor/mcp-toolcall-lab-LICENSE"
+    original = next(row for row in rows if row["destination"] == license_path)
+    if change == "missing":
+        rows.remove(original)
+    elif change == "repointed":
+        original["source"] = "NOTICE"
+    elif change in ("duplicate", "casefold-duplicate"):
+        duplicate = original.copy()
+        if change == "casefold-duplicate":
+            duplicate["destination"] = "vendor/MCP-TOOLCALL-LAB-license"
+        rows.append(duplicate)
+    elif change in ("extra", "drift"):
+        # A second valid destination from an already named repository used to fail.
+        rows.append(dict(original, destination="vendor/extra-LICENSE"))
+    for row in rows:
+        path = row["destination"]
+        source = license_path if path in ("vendor/extra-LICENSE", "vendor/MCP-TOOLCALL-LAB-license") else path
+        body = (ROOT / source).read_bytes()
+        target = tmp_path / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(body + b"drift" if change == "drift" and path == "vendor/extra-LICENSE" else body)
+    (tmp_path / "vendor.lock.json").write_text(json.dumps(data), encoding="utf-8")
+    if error is None:
+        _check_vendor_contract(tmp_path)
+    else:
+        with pytest.raises(AssertionError, match=error):
+            _check_vendor_contract(tmp_path)
 
 
 # ═══ · parent workflow pins ══════════════════════════════════════════════════════════════════════════════

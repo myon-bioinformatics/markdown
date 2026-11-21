@@ -6,23 +6,36 @@ and verifies again. There is no upstream auto-update, promotion, or per-file
 provenance sidecar in this repository: `vendor.lock.json` is the only
 provenance record.
 
-The shared tool is checked out from `myon-bioinformatics/myon-bioinformatics` at
-`1eda992aa6fa31a902e2c06428e53ab17e8fe3c1`. Checkout credentials are not
+The shared tool is checked out from `myon-bioinformatics/myon-bioinformatics`.
+Use the full `ref` from the `resolve-vendor` job's **Fetch pinned shared vendor
+tool** step in [CI](../.github/workflows/ci.yml). Checkout credentials are not
 persisted.
 
 `vendor.lock.json` is the acquisition contract: each entry's `ref` is a full
 40-character commit SHA equal to `commit`, with Git blob and SHA-256 hashes for
-every vendored byte. Local tests in `tests/test_fleet.py` (the parent's `vendor/fleet_check.py`) cross-check
-those hashes against the checked-in tree.
+every vendored byte. Local tests in `tests/test_fleet.py` use the parent's
+`vendor/fleet_check.py` to check every locked destination against the checked-in
+bytes. The tests also reject duplicate destinations, ignoring case, and require
+the named bindings for Markdown's vendored tooling and retained licenses. An
+additional valid destination does not require changing that list.
 
 ## Local verification
 
+Set `VENDOR_SYNC_REF` to the full SHA copied from the CI step above.
+
 ```bash
 set -euo pipefail
+: "${VENDOR_SYNC_REF:?Copy the full vendor tool ref from CI}"
+[[ "$VENDOR_SYNC_REF" =~ ^[0-9a-f]{40}$ ]]
 git clone https://github.com/myon-bioinformatics/myon-bioinformatics.git .vendor-sync-tools
-git -C .vendor-sync-tools checkout --detach 1eda992aa6fa31a902e2c06428e53ab17e8fe3c1
+git -C .vendor-sync-tools checkout --detach "$VENDOR_SYNC_REF"
 python -S .vendor-sync-tools/vendor_sync.py check --manifest vendor.lock.json
+python -S .vendor-sync-tools/vendor_sync.py recreate --manifest vendor.lock.json
 ```
+
+Run `recreate` in an isolated checkout. It fetches each locked file into empty
+staging, verifies the staged bytes, replaces checked-in copies, and rechecks
+them. The manifest is not updated.
 
 Run the existing Python suite with its test-only dependencies after verification:
 
@@ -33,7 +46,7 @@ uv run pytest
 
 ## What a green run covers
 
-`resolve-vendor` performs check → materialize → check on one Python version.
+`resolve-vendor` runs `check`, then `recreate`, on one Python version.
 The primary `test` matrix and the independent `vendor-locked` job on Python 3.12
 each verify the lock, load vendored `gh_identity.py` under `python -S`, and run
 the suite. Pages/Docker continue shipping checked-in bytes; nothing is written
