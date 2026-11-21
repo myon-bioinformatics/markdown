@@ -123,8 +123,10 @@ def collect_report(*, patterns=('*',), exclude=()) -> dict[str, Any]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--out")
+    parser = argparse.ArgumentParser(
+        description="Compare legacy and DOM-mediated HTML->Markdown conversion paths "
+                    "over the synthetic + vendored real-world corpus.")
+    parser.add_argument("--out", help="write the JSON report to this path (default: converter_parity.json)")
     arguments(parser)
     args = parser.parse_args(argv)
 
@@ -137,7 +139,10 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         report = collect_report(patterns=patterns, exclude=exclude)
     except (OSError, ValueError) as error:
-        print(f'error: {error}', file=sys.stderr)
+        if args.format == 'json':
+            print(json.dumps({'error': str(error)}), file=sys.stderr)
+        else:
+            print(f'error: {error}', file=sys.stderr)
         return 2
     out = Path(args.out or "converter_parity.json")
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -145,12 +150,15 @@ def main(argv: list[str] | None = None) -> int:
         json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    print(
-        f"cases={report['case_count']} "
-        f"matches={report['match_count']} "
-        f"mismatches={report['mismatch_count']} "
-        f"real_world={report['real_world_case_count']}"
-    )
+    if args.format == 'json':
+        print(json.dumps(report, ensure_ascii=False, sort_keys=True))
+    else:
+        print(
+            f"cases={report['case_count']} "
+            f"matches={report['match_count']} "
+            f"mismatches={report['mismatch_count']} "
+            f"real_world={report['real_world_case_count']}"
+        )
     return 0
 
 

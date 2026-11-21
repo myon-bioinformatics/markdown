@@ -28,3 +28,6 @@ def arguments(parser):
     parser.add_argument('--case', action='append', help='case key/id glob; repeat for OR')
     parser.add_argument('--exclude', action='append', help='exclude case key/id glob')
     parser.add_argument('--list', action='store_true', help='list case keys without reading fixtures or converting')
+    parser.add_argument('--format', choices=('text', 'json'), default='text',
+                        help='stdout format: one-line text summary (default) or the full report as JSON; '
+                             'errors are emitted as one JSON object on stderr in json mode')
