@@ -7263,7 +7263,7 @@ def _main(argv=None) -> int:
     """Small stdio entry point for uv tools; library functions remain reusable."""
     parser = argparse.ArgumentParser(description="Stdlib-only Markdown helpers")
     parser.add_argument("operation", nargs="?", default="inventory",
-                        choices=("inventory", "to-html", "to-markdown", "toc"))
+                        choices=("inventory", "to-html", "to-markdown", "toc"),help="what to do with the input (default: %(default)s)")
     parser.add_argument("path", nargs="?", default="-", help="UTF-8 input file, or - for stdin")
     args = parser.parse_args(argv)
     try:
