@@ -9,7 +9,7 @@ from vendor import fleet_check as fleet
 ROOT = fleet.repo_root(__file__)
 PARENT_WORKFLOW_PIN = "9e3da7ae1846e9604ebc24bb5178f7de094a4e77"
 VENDOR_TOOL_PIN = "26c442bc51b8a2837fe2556782b2937f396932af"
-ACCEPTED = {"vendor/fleet_check.py": "64db25eb0fd9025dbe3cbcbced8b88a39ecb9266"}
+ACCEPTED = {"vendor/fleet_check.py": "bc57f08a590ee1cb33a8bb37c1bb3b8f28a2f3c9"}
 # Runtime/diagnostics tools, the fleet checker, and their recorded licenses.
 # The retired Ironmate tool's retained license is explicit provenance policy.
 REQUIRED_BINDINGS = {
@@ -239,3 +239,9 @@ markdown.{attribute} = {replacement}"""
 class ScriptsDescribeThemselves(unittest.TestCase):
     def test_every_script_has_a_description_and_declared_arguments(self):
         fleet.check_scripts(fleet.repo_root(__file__))
+
+    def test_root_scripts_import_only_the_standard_library(self):
+        root = fleet.repo_root(__file__)
+        for path in sorted(root.glob("*.py")):
+            if path.name != "conftest.py":
+                fleet.check_imports(root, path.name)
