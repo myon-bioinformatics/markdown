@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform != 'emscripten'",
@@ -918,17 +918,6 @@ frontend-gradio = [
 frontend-streamlit = [
     { name = "streamlit" },
 ]
-stdlib-test = [
-    { name = "pytest" },
-    { name = "pyyaml" },
-]
-
-[package.group-requires-python]
-dev = ">=3.11"
-frontend = ">=3.11,>=3.11,>=3.11,>=3.11"
-frontend-browser = ">=3.11"
-frontend-gradio = ">=3.11"
-frontend-streamlit = ">=3.11"
 
 [package.metadata]
 
@@ -946,10 +935,6 @@ frontend = [
 frontend-browser = [{ name = "playwright", marker = "python_full_version >= '3.11'", specifier = ">=1.64.0" }]
 frontend-gradio = [{ name = "gradio", marker = "python_full_version >= '3.11'", specifier = ">=6.30.0" }]
 frontend-streamlit = [{ name = "streamlit", marker = "python_full_version >= '3.11'", specifier = ">=1.66.0" }]
-stdlib-test = [
-    { name = "pytest", specifier = ">=8" },
-    { name = "pyyaml", specifier = ">=6" },
-]
 
 [[package]]
 name = "mdurl"
