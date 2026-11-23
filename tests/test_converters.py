@@ -7,7 +7,6 @@ import datetime
 import importlib
 import io
 import json
-import subprocess
 import sys
 import types
 from pathlib import Path
@@ -17,6 +16,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 import markdown as md
 from scripts import converter_contract_audit, converter_parity_report
+from vendor.cli_args import run_cli
 
 
 # ═══ · converter case selection ══════════════════════════════════════════════════════════════════════════
@@ -64,14 +64,12 @@ def test_invalid_empty_or_mixed_modes_never_write(tmp_path, name):
     out = tmp_path / 'result.json'
     script = ROOT / 'scripts' / (name + '.py')
     for options in (['--case', 'missing'], ['--case', ''], ['--list']):
-        result = subprocess.run([sys.executable, '-S', str(script), '--out', str(out)] + options,
-                                cwd=tmp_path, capture_output=True, text=True)
+        result = run_cli(script, '--out', out, *options, python_options=('-S',), cwd=tmp_path)
         assert result.returncode == 2 and result.stdout == ''
         assert not out.exists()
-    result = subprocess.run([sys.executable, '-S', str(script), '--case', 'html:basic_blocks', '--list'],
-                            cwd=tmp_path, capture_output=True, text=True)
+    result = run_cli(script, '--case', 'html:basic_blocks', '--list', python_options=('-S',), cwd=tmp_path)
     assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout)['cases'] == ['html:basic_blocks']
+    assert result.json()['cases'] == ['html:basic_blocks']
 
 
 @pytest.mark.parametrize('name', ['converter_parity_report', 'converter_contract_audit'])
