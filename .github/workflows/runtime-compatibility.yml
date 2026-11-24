@@ -5,8 +5,12 @@ on:
   pull_request:
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   runtime:
+    timeout-minutes: 30
     # Keep the dependency-free runtime check separate from the pytest environment.
     runs-on: ubuntu-latest
     strategy:
