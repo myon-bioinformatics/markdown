@@ -57,35 +57,35 @@ closure, and leaves all existing dependency groups, tests and CI unchanged.
 ## Quick use
 
 ```python
-import markdown as md
+import markdown as md_market
 
-md.save_markdown("# Hello\n", "out.md")
-sections = md.extract_sections(open("out.md", encoding="utf-8").read())
-inv = md.inventory(open("README.md", encoding="utf-8").read())
-print(md.html_image_to_markdown('<img src="a.png" alt="A" />'))
-print(md.make_link("Docs", "https://example.com"))
+md_market.save_markdown("# Hello\n", "out.md")
+sections = md_market.extract_sections(open("out.md", encoding="utf-8").read())
+inv = md_market.inventory(open("README.md", encoding="utf-8").read())
+print(md_market.html_image_to_markdown('<img src="a.png" alt="A" />'))
+print(md_market.make_link("Docs", "https://example.com"))
 
 # GitHub alert (also flavor="qiita" / "zenn" / "obsidian" / "gitlab")
-print(md.alert("NOTE", "Useful information that users should know"))
+print(md_market.alert("NOTE", "Useful information that users should know"))
 
 # build Markdown from scratch
-report = md.section(
+report = md_market.section(
     "Summary",
     [
-        md.key_value_table({"mode": "train", "epochs": 10}),
-        md.bullet_list(["loss down", "iou up"]),
-        md.blockquote("keep the contract small"),
+        md_market.key_value_table({"mode": "train", "epochs": 10}),
+        md_market.bullet_list(["loss down", "iou up"]),
+        md_market.blockquote("keep the contract small"),
     ],
 )
 print(report)
 
 # library-side HTML + CSS (no separate .css asset required)
-html = "<style>" + md.default_stylesheet() + "</style>\n" + md.markdown_to_html(report)
+html = "<style>" + md_market.default_stylesheet() + "</style>\n" + md_market.markdown_to_html(report)
 print(html)
 
 # thin Markdown ↔ Kramdown IAL (headings / paragraphs only)
-print(md.with_attributes(md.heading("Intro"), id="intro", classes="hero"))
-print(md.markdown_to_kramdown("# Title {#intro .hero}"))
+print(md_market.with_attributes(md_market.heading("Intro"), id="intro", classes="hero"))
+print(md_market.markdown_to_kramdown("# Title {#intro .hero}"))
 ```
 
 
@@ -415,7 +415,7 @@ Pass `flavor="qiita"` for `:::note info|warn|alert`, `flavor="zenn"` for `:::mes
 or `flavor="gitlab"` for GitLab's lowercase five-kind form (optional `title=`). Unknown GitHub /
 Qiita / Zenn / GitLab kinds raise `ValueError`. `markdown_to_html()` renders those blocks to a
 shared `<aside class="markdown-alert" data-alert-flavor="…">` shape. Embed
-`<style>{md.default_stylesheet()}</style>` (or `md.alert_stylesheet()`) next to
+`<style>{md_market.default_stylesheet()}</style>` (or `md_market.alert_stylesheet()`) next to
 `markdown_to_html(...)` output — compact stdlib CSS, no separate `.css` file and
 no external URLs. Ordinary `>` blockquotes render as `<blockquote>` (multi-line;
 blank `>` lines split paragraphs). Simple GFM pipe tables from `table()` /
