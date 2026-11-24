@@ -21,6 +21,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 import markdown as md
 from scripts import markdown_repository_diagnostics as diagnostics
+from vendor.cli_args import run_cli
 
 
 # ═══ · frontend nano ci ══════════════════════════════════════════════════════════════════════════════════
@@ -656,10 +657,10 @@ def test_source_runtime_floor_matches_packaged_runtime_and_documentation():
 
 class StdioCli(unittest.TestCase):
  def run_cli(self,*args,input=''):
-  return subprocess.run([sys.executable,'-S',ROOT/'markdown.py',*args],input=input,text=True,capture_output=True,timeout=10)
+  return run_cli(ROOT/'markdown.py',*args,python_options=('-S',),stdin=input,timeout=10)
  def test_inventory_and_help(self):
   self.assertEqual(self.run_cli('--help').returncode,0)
-  json.loads(self.run_cli().stdout)
+  self.run_cli().json()
  def test_transform_stdin_and_missing_input(self):
   result=self.run_cli('to-html',input='# Hello\n')
   self.assertEqual(result.returncode,0,result.stderr)
