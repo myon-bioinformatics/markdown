@@ -1,31 +1,39 @@
 {
   "schema": "btk-evidence-gif/2",
   "gif": "browser.gif",
-  "bytes": 150129,
-  "sha256": "6dde31c77a67376bac307ec0877ae9886c83fe804decd81a38c917ad8b89fcac",
-  "frames": 10,
+  "bytes": 97948,
+  "sha256": "1b7e3feb855975da42e1156b7b930ca747b403d5a0a8c9c855e5a5d07c63487b",
+  "frames": 15,
   "canvas": "720x512",
   "browser": "chromium 153.0.8010.12",
-  "recorded": "2026-11-08",
-  "commit": "5b7c00c0d67b898be8e3d47a9dacc676284d178c",
+  "executable": {
+    "source": "given",
+    "path": "/opt/pw-browsers/chromium-1243/chrome-linux64/chrome"
+  },
+  "recorded": "2026-11-24",
+  "commit": "583589b30b5f23f48f2f2dcbdcbf712539d1f57f",
+  "stills": {
+    "dir": null,
+    "files": []
+  },
   "encoder": {
-    "module": "PySaiyanWeBoo web_ui gif.js",
-    "web_ui": "d55e14fcf3f088522259295e4a8cf9564beb5721",
-    "bytes": 150129,
-    "frames": 10,
+    "module": "PySaiyanWeBoo gif.js",
+    "web_ui": "bbe5c0b0087f40ff3fffd53bec5111c2ba2d747d",
+    "bytes": 97948,
+    "frames": 15,
     "colors": 255,
     "thin": 0,
     "attempts": 1,
-    "stored": 10,
+    "stored": 15,
     "merged": 0,
-    "buckets": 2077,
+    "buckets": 1752,
     "overBudget": false,
-    "encodeMs": 129,
-    "images": 10,
-    "reused": 0,
+    "encodeMs": 160,
+    "images": 11,
+    "reused": 4,
     "patches": 0,
     "synthesized": 0,
-    "capture_s": 6.7
+    "capture_s": 11.1
   },
   "limits": {
     "colors": 255,
@@ -34,64 +42,34 @@
     "last_hold_ms": 2000
   },
   "transfer": {
-    "screenshots": 10,
-    "png_bytes": 593986,
-    "identical": 0,
+    "screenshots": 15,
+    "png_bytes": 672125,
+    "identical": 4,
     "patches": 0,
-    "calls": 5,
-    "sent_bytes": 791996,
-    "gif_bytes": 150129
+    "calls": 3,
+    "sent_bytes": 666340,
+    "gif_bytes": 97948
   },
   "mapped": [],
   "summary": {
-    "pass": 5,
+    "pass": 3,
     "fail": 0
   },
   "shots": [
     {
-      "label": "📊 real-world report",
-      "url": "/index.html",
-      "viewport": "1280x800",
-      "steps": [
-        "scroll 700"
-      ],
-      "status": "pass",
-      "errors": [],
-      "allowed": [],
-      "external": [],
-      "generator": "web_ui 1854362d625279f4278f917cd18bacd151bc69b4"
-    },
-    {
-      "label": "🩺 repository diagnostics",
-      "url": "/repository-diagnostics.html",
-      "viewport": "1280x800",
-      "steps": [],
-      "status": "pass",
-      "errors": [],
-      "allowed": [],
-      "external": [],
-      "generator": "web_ui 1854362d625279f4278f917cd18bacd151bc69b4"
-    },
-    {
-      "label": "📱 real-world report",
-      "url": "/index.html",
-      "viewport": "392x848",
-      "steps": [],
-      "status": "pass",
-      "errors": [],
-      "allowed": [],
-      "external": [],
-      "generator": "web_ui 1854362d625279f4278f917cd18bacd151bc69b4"
-    },
-    {
-      "label": "💬 chat UI demo (Gradio)",
+      "label": "💬 チャット画面で表・コード・箇条書き (Gradio)",
       "url": "http://127.0.0.1:7861/",
       "viewport": "1280x800",
       "steps": [
         "fill [data-testid=textbox]",
         "click button:has-text('Send')",
+        "wait 800",
         "fill [data-testid=textbox]",
-        "click button:has-text('Send')"
+        "click button:has-text('Send')",
+        "wait 800",
+        "fill [data-testid=textbox]",
+        "click button:has-text('Send')",
+        "wait 800"
       ],
       "status": "pass",
       "errors": [],
@@ -100,67 +78,100 @@
       "generator": null
     },
     {
-      "label": "📱 chat UI demo",
+      "label": "📱 チャット画面",
       "url": "http://127.0.0.1:7861/",
       "viewport": "392x848",
-      "steps": [],
+      "steps": [
+        "fill [data-testid=textbox]",
+        "click button:has-text('Send')",
+        "wait 800"
+      ],
       "status": "pass",
       "errors": [],
       "allowed": [],
       "external": [],
       "generator": null
+    },
+    {
+      "label": "🩺 リポジトリ診断",
+      "url": "/repository-diagnostics.html",
+      "viewport": "1280x800",
+      "steps": [],
+      "status": "pass",
+      "errors": [],
+      "allowed": [],
+      "external": [],
+      "generator": "web_ui 05e5961ff6b8e702d193354f8f3fbcd2dd907d0d"
     }
   ],
   "plan": [
     {
-      "label": "📊 real-world report",
-      "url": "/index.html",
+      "label": "💬 チャット画面で表・コード・箇条書き (Gradio)",
+      "url": "http://127.0.0.1:7861/",
       "viewport": "1280x800",
       "steps": [
         {
-          "scroll": 700
+          "fill": [
+            "[data-testid=textbox]",
+            "show me a table"
+          ]
+        },
+        {
+          "click": "button:has-text('Send')"
+        },
+        {
+          "wait": 800
+        },
+        {
+          "fill": [
+            "[data-testid=textbox]",
+            "and some code"
+          ]
+        },
+        {
+          "click": "button:has-text('Send')"
+        },
+        {
+          "wait": 800
+        },
+        {
+          "fill": [
+            "[data-testid=textbox]",
+            "a todo list please"
+          ]
+        },
+        {
+          "click": "button:has-text('Send')"
+        },
+        {
+          "wait": 800
         }
       ]
     },
     {
-      "label": "🩺 repository diagnostics",
+      "label": "📱 チャット画面",
+      "url": "http://127.0.0.1:7861/",
+      "viewport": "392x848",
+      "steps": [
+        {
+          "fill": [
+            "[data-testid=textbox]",
+            "show me a table"
+          ]
+        },
+        {
+          "click": "button:has-text('Send')"
+        },
+        {
+          "wait": 800
+        }
+      ]
+    },
+    {
+      "label": "🩺 リポジトリ診断",
       "url": "/repository-diagnostics.html",
-      "viewport": "1280x800"
-    },
-    {
-      "label": "📱 real-world report",
-      "url": "/index.html",
-      "viewport": "392x848"
-    },
-    {
-      "label": "💬 chat UI demo (Gradio)",
-      "url": "http://127.0.0.1:7861/",
       "viewport": "1280x800",
-      "steps": [
-        {
-          "fill": [
-            "[data-testid=textbox]",
-            "show me some code"
-          ]
-        },
-        {
-          "click": "button:has-text('Send')"
-        },
-        {
-          "fill": [
-            "[data-testid=textbox]",
-            "give me a todo list"
-          ]
-        },
-        {
-          "click": "button:has-text('Send')"
-        }
-      ]
-    },
-    {
-      "label": "📱 chat UI demo",
-      "url": "http://127.0.0.1:7861/",
-      "viewport": "392x848"
+      "steps": []
     }
   ]
 }

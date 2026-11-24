@@ -7,19 +7,6 @@
   "favicon": "./favicon.png",
   "blocks": [
     {
-      "type": "links",
-      "items": [
-        {
-          "label": "🏠 ポートフォリオ",
-          "href": "https://myon-bioinformatics.github.io/"
-        },
-        {
-          "label": "🐙 GitHub リポジトリ",
-          "href": "https://github.com/myon-bioinformatics/markdown"
-        }
-      ]
-    },
-    {
       "type": "badges",
       "items": [
         "📄 単一ファイル",
@@ -28,76 +15,104 @@
       ]
     },
     {
-      "type": "section",
-      "title": "📥 取得",
-      "blocks": [
+      "type": "tabs",
+      "id": "guide",
+      "tabs": [
         {
-          "type": "text",
-          "text": "1 ファイルを置くだけで動きます（pip 不要）。"
-        },
-        {
-          "type": "output",
-          "text": "curl -fsSLO https://raw.githubusercontent.com/myon-bioinformatics/markdown/main/markdown.py"
-        }
-      ]
-    },
-    {
-      "type": "section",
-      "title": "▶️ 実行",
-      "blocks": [
-        {
-          "type": "card",
-          "title": "📑 目次",
-          "text": "見出しから目次を作ります。",
+          "label": "🎞 GIF デモ",
           "blocks": [
             {
-              "type": "output",
-              "text": "$ python markdown.py toc README.md\n- [markdown](#markdown)\n  - [GitHub About（推奨）](#github-about推奨)\n  - [Purpose](#purpose)\n  - [Layout](#layout)\n  - [Optional Gradio-only nano environment](#optional-gradio-only-nano-environment)\n…"
+              "type": "card",
+              "title": "💬 チャット画面で表・コード・箇条書き",
+              "text": "Gradio の模擬チャットで、返事を markdown.py で組んで表示します（PC 幅とスマホ幅）。最後に 🩺 リポジトリ診断。",
+              "blocks": [
+                {
+                  "type": "image",
+                  "src": "./demos/browser.gif",
+                  "alt": "markdown.py chat UI demo rendering a table, code and a list, then the repository diagnostics page"
+                }
+              ]
             }
           ]
         },
         {
-          "type": "card",
-          "title": "🔁 Markdown → HTML",
-          "text": "ファイルの代わりに - で標準入力を読みます。",
+          "label": "🧩 機能一覧",
           "blocks": [
             {
-              "type": "output",
-              "text": "$ echo '# hi' | python markdown.py to-html -\n<h1>hi</h1>"
-            }
-          ]
-        },
-        {
-          "type": "card",
-          "title": "🔎 構成の一覧",
-          "text": "見出し・リンクなどを JSON で出します。",
-          "blocks": [
+              "type": "section",
+              "title": "📥 取得",
+              "blocks": [
+                {
+                  "type": "text",
+                  "text": "1 ファイルを置くだけで動きます（pip 不要）。"
+                },
+                {
+                  "type": "output",
+                  "text": "curl -fsSLO https://raw.githubusercontent.com/myon-bioinformatics/markdown/main/markdown.py"
+                }
+              ]
+            },
             {
-              "type": "output",
-              "text": "$ python markdown.py inventory README.md\n{\n  \"headings\": [\n    {\n      \"level\": 1,\n      \"title\": \"markdown\"\n    },\n    {\n…"
-            }
-          ]
-        },
-        {
-          "type": "card",
-          "title": "↩️ HTML → Markdown",
-          "text": "HTML を Markdown に戻します。",
-          "blocks": [
+              "type": "section",
+              "title": "▶️ 実行",
+              "blocks": [
+                {
+                  "type": "card",
+                  "title": "📑 目次",
+                  "text": "見出しから目次を作ります。",
+                  "blocks": [
+                    {
+                      "type": "output",
+                      "text": "$ python markdown.py toc README.md\n- [markdown](#markdown)\n  - [GitHub About（推奨）](#github-about推奨)\n  - [Purpose](#purpose)\n  - [Layout](#layout)\n  - [Optional Gradio-only nano environment](#optional-gradio-only-nano-environment)\n…"
+                    }
+                  ]
+                },
+                {
+                  "type": "card",
+                  "title": "🔁 Markdown → HTML",
+                  "text": "ファイルの代わりに - で標準入力を読みます。",
+                  "blocks": [
+                    {
+                      "type": "output",
+                      "text": "$ echo '# hi' | python markdown.py to-html -\n<h1>hi</h1>"
+                    }
+                  ]
+                },
+                {
+                  "type": "card",
+                  "title": "🔎 構成の一覧",
+                  "text": "見出し・リンクなどを JSON で出します。",
+                  "blocks": [
+                    {
+                      "type": "output",
+                      "text": "$ python markdown.py inventory README.md\n{\n  \"headings\": [\n    {\n      \"level\": 1,\n      \"title\": \"markdown\"\n    },\n    {\n…"
+                    }
+                  ]
+                },
+                {
+                  "type": "card",
+                  "title": "↩️ HTML → Markdown",
+                  "text": "HTML を Markdown に戻します。",
+                  "blocks": [
+                    {
+                      "type": "output",
+                      "text": "$ echo '<h1>hi</h1><p>text</p>' | python markdown.py to-markdown -\n# hi\n\ntext"
+                    }
+                  ]
+                }
+              ]
+            },
             {
-              "type": "output",
-              "text": "$ echo '<h1>hi</h1><p>text</p>' | python markdown.py to-markdown -\n# hi\n\ntext"
+              "type": "section",
+              "title": "🐍 Python から呼ぶ",
+              "blocks": [
+                {
+                  "type": "output",
+                  "text": "$ python -c 'import markdown; print(markdown.markdown_to_html(\"# hi\"))'\n<h1>hi</h1>"
+                }
+              ]
             }
           ]
-        }
-      ]
-    },
-    {
-      "type": "section",
-      "title": "🐍 Python から呼ぶ",
-      "blocks": [
-        {
-          "type": "output",
-          "text": "$ python -c 'import markdown; print(markdown.markdown_to_html(\"# hi\"))'\n<h1>hi</h1>"
         }
       ]
     },
@@ -121,12 +136,12 @@
               "href": "https://github.com/myon-bioinformatics/markdown/blob/main/markdown.py"
             },
             {
-              "label": "🧪 変換レポート",
-              "href": "./index.html"
-            },
-            {
               "label": "🩺 診断",
               "href": "./repository-diagnostics.html"
+            },
+            {
+              "label": "📊 ベンチマーク（README）",
+              "href": "https://github.com/myon-bioinformatics/markdown#benchmark-how-far-does-this-get-on-real-markdown"
             }
           ]
         }

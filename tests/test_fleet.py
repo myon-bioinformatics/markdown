@@ -7,7 +7,7 @@ import pytest
 from vendor import fleet_check as fleet
 
 ROOT = fleet.repo_root(__file__)
-PARENT_WORKFLOW_PIN = "9e3da7ae1846e9604ebc24bb5178f7de094a4e77"
+PARENT_WORKFLOW_PIN = "dbe7e16be53f9e5b8c9ba29ff6ed8be0899a35ff"
 VENDOR_TOOL_PIN = "26c442bc51b8a2837fe2556782b2937f396932af"
 ACCEPTED = {"vendor/fleet_check.py": "bc57f08a590ee1cb33a8bb37c1bb3b8f28a2f3c9"}
 # Runtime/diagnostics tools, the fleet checker, and their recorded licenses.
@@ -144,10 +144,6 @@ JOBS = {
         "node-runtime": "3.15",
         "frontend-mock-pytest-latest": "3.15",
         "vendor-locked": "${{ matrix.python-version }}"
-    },
-    "pages.yml": {
-        "checks": "3.15",
-        "build": "3.15"
     },
     "runtime-compatibility.yml": {
         "runtime": "${{ matrix.python }}"

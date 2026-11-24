@@ -1,185 +1,46 @@
 name: Pages
 
-# Publishes scripts/real_world_pages_report.py's output to GitHub Pages:
-# for every real, vendored HTML fixture in fixtures/provenance.yaml (see
-# tests/test_benchmarks.py), a screenshot of the original
-# next to a screenshot of the html_to_markdown() -> markdown_to_html()
-# round trip, plus a before/after construct-count table and a
-# build_meta.json revision identity (sha / shortSha / commitUrl) sourced
-# from git and GITHUB_* Actions env — same idea as
-# flutter_navigation_basic's `dart run tool/dev.dart meta`, in Python.
+# Publishes the usage guide: docs/guide.page.json (a web-ui-page/1 spec, data only, with 🎞 GIF demo / 🧩 features
+# tabs) and the repository diagnostics (scripts/markdown_repository_diagnostics.py). The parent's reusable workflow
+# renders both with the PySaiyanWeBoo commit pinned there. Pull requests build the site (an invalid spec fails there);
+# only main deploys.
 #
-# Runs entirely against the vendored fixture -- no live fetch of the real
-# site happens here, so this never flakes on that site being slow, down,
-# or changed since the fixture was last refreshed (same bet every other
-# benchmark fixture in this repo already makes).
-#
-# Runs on pull requests that change the report/diagnostics inputs and on
-# main pushes for deployment. The benchmark fixture path itself stays offline
-# and reproducible, while repository diagnostics may perform anonymous public
-# GitHub URL observations. deploy is main-only, so a feature branch's report
-# never overwrites the published Pages site.
+# The real-world benchmark is summarised in the README (construct counts and a link to the original page).
+# scripts/real_world_pages_report.py stays a local, best-effort report: the vendored page is for parser benchmarks
+# only, not redistribution, so neither its HTML nor its screenshots are published.
 on:
-  pull_request:
-    paths:
-      - "docs/brand/**"
-      - "docs/guide.page.json"
-      - "scripts/real_world_pages_report.py"
-      - "scripts/check_report_screenshots.py"
-      - "tests/test_report_screenshot_evidence.py"
-      - "markdown.py"
-      - "scripts/markdown_repository_diagnostics.py"
-      - "vendor/gh_identity.py"
-      - "tests/test_tooling.py"
-      - "vendor/github_public_resolver.py"
-      - "vendor.lock.json"
-      - "fixtures/benchmark/**"
-      - "fixtures/provenance.yaml"
-      - ".github/workflows/pages.yml"
   push:
     branches: [main]
     paths:
-      - "docs/brand/**"
       - "docs/guide.page.json"
-      - "scripts/real_world_pages_report.py"
-      - "scripts/check_report_screenshots.py"
-      - "tests/test_report_screenshot_evidence.py"
-      - "markdown.py"
+      - "docs/brand/**"
+      - "docs/evidence/browser.gif"
       - "scripts/markdown_repository_diagnostics.py"
       - "vendor/gh_identity.py"
-      - "tests/test_tooling.py"
       - "vendor/github_public_resolver.py"
       - "vendor.lock.json"
-      - "fixtures/benchmark/**"
-      - "fixtures/provenance.yaml"
+      - ".github/workflows/pages.yml"
+  pull_request:
+    paths:
+      - "docs/guide.page.json"
+      - "docs/brand/**"
+      - "docs/evidence/browser.gif"
+      - "scripts/markdown_repository_diagnostics.py"
+      - "vendor/gh_identity.py"
+      - "vendor/github_public_resolver.py"
+      - "vendor.lock.json"
       - ".github/workflows/pages.yml"
 
 permissions:
   contents: read
-
-concurrency:
-  group: pages-${{ github.ref }}
-  cancel-in-progress: false
+  pages: write
+  id-token: write
 
 jobs:
-  checks:
-    name: Screenshot evidence checks (no browser)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - name: Check out pinned BrowserTestKit validators
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: myon-bioinformatics/BrowserTestKit
-          ref: 6a2e32a4bbe49be5268e6b30040d665a89eecf66
-          path: .browser-test-kit
-          persist-credentials: false
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          version: "latest"
-          python-version: "3.15"
-          activate-environment: true
-          enable-cache: true
-          # Pull requests restore the cache and never write it; only main saves it.
-          save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-          prune-cache: true
-      - name: Sync locked development environment
-        shell: bash
-        run: |
-          uv sync --locked --group dev --python "$(python -c 'import sys; print(sys.executable)')"
-          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
-      - name: Test fixture-to-image requirements
-        env:
-          BROWSER_TEST_KIT: .browser-test-kit
-        run: uv run pytest -q tests/test_report_screenshot_evidence.py
-
-  build:
-    needs: checks
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # The canonical producer reads HEAD, so check out the PR head.
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
-      - name: Check out pinned BrowserTestKit validators
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: myon-bioinformatics/BrowserTestKit
-          ref: 6a2e32a4bbe49be5268e6b30040d665a89eecf66
-          path: .browser-test-kit
-          persist-credentials: false
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          version: "latest"
-          python-version: "3.15"
-          activate-environment: true
-          enable-cache: true
-          # Pull requests restore the cache and never write it; only main saves it.
-          save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-          prune-cache: true
-      - name: Sync locked frontend environment
-        shell: bash
-        run: |
-          uv sync --locked --group dev --group frontend --python "$(python -c 'import sys; print(sys.executable)')"
-          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
-      - name: Install Playwright's Chromium
-        run: playwright install --with-deps --only-shell chromium
-      - name: Clear prior report evidence
-        run: rm -rf _site
-      - name: Build the report
-        id: capture
-        run: |
-          python scripts/real_world_pages_report.py --out _site
-          python scripts/markdown_repository_diagnostics.py _site
-          # The usage guide: a web-ui-page/1 spec (data only) rendered by the pinned PySaiyanWeBoo.
-          python -m pysaiyanweboo --page docs/guide.page.json > _site/guide.html
-      - name: Require fixture receipts and prove corruption rejection
-        if: always()
-        env:
-          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          CAPTURE_STAGE: ${{ steps.capture.outcome == 'success' && 'complete' || 'failed' }}
-        run: |
-          python scripts/check_report_screenshots.py _site --kit .browser-test-kit \
-            --sha "$EXPECTED_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --stage "$CAPTURE_STAGE"
-      - name: Preserve available screenshot evidence after success or failure
-        id: evidence
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: real-world-screenshots-${{ github.event.pull_request.head.sha || github.sha }}
-          path: _site
-          if-no-files-found: warn
-          retention-days: 14
-      - name: Summarize measured screenshot coverage
-        if: always()
-        env:
-          ARTIFACT_URL: ${{ steps.evidence.outputs.artifact-url }}
-          JOB_STATUS: ${{ job.status }}
-        run: |
-          {
-            echo "### Real-world screenshot evidence: $JOB_STATUS"
-            echo "Required: each HTML fixture's original/roundtrip PNG, Chromium only."
-            echo "Shared PNG/hash/run receipt validation and four real-bundle rejection probes; no pixel/content assertion."
-            echo "Firefox/WebKit/mobile unmeasured. Failed bundles do not prove success."
-            echo "Evidence (14 days): $ARTIFACT_URL"
-          } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
-        with:
-          path: _site
-
-  deploy:
-    if: github.ref == 'refs/heads/main'
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+  pages:
+    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-pages-static.yml@dbe7e16be53f9e5b8c9ba29ff6ed8be0899a35ff
+    with:
+      artifact_path: _site
+      guide_page: docs/guide.page.json
+      guide_assets: docs/brand/icon.png=icon.png docs/brand/favicon.png=favicon.png docs/evidence/browser.gif=demos/browser.gif
+      build: uv run --no-project --with "$WEB_UI" python scripts/markdown_repository_diagnostics.py _site
