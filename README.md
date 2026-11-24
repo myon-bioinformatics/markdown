@@ -8,7 +8,7 @@
 
 A function-focused Python Markdown utility that runs on the standard library only.
 
-📘 [利用ガイド / Usage guide](https://myon-bioinformatics.github.io/markdown/guide.html) (GitHub Pages)
+📘 [利用ガイド / Usage guide](https://myon-bioinformatics.github.io/markdown/) (GitHub Pages)
 
 ## GitHub About（推奨）
 
@@ -45,7 +45,7 @@ ironmate などで使っていた `markdown.py` を、同じファイル名の�
 | `demos/streamlit_app.py` | Optional: sectioned headings/links/images/HTML/code view. `build_view()` has zero UI deps — call it directly |
 | `demos/chat_ui_demo.py` | Optional: generic mock chat screen — assistant replies built with `markdown.py`'s generation helpers, rendered by Gradio's `Chatbot` |
 | `docs/antipatterns.md` | Stable library/integration anti-pattern IDs plus concrete CI/Docker/Playwright incidents, root causes, fixes, and regression lessons |
-| `scripts/real_world_pages_report.py` | Builds the `Pages` GitHub Actions workflow (`pages.yml`) report: original vs. `html_to_markdown()`→`markdown_to_html()` round-trip, screenshotted via Playwright's own CLI, for every real HTML fixture in `fixtures/provenance.yaml`. The page shell, stylesheet and table come from PySaiyanWeBoo's `web_ui` (dev group, pinned to a commit) |
+| `scripts/real_world_pages_report.py` | Local, best-effort report (not published; the README benchmark keeps only the counts): original vs. `html_to_markdown()`→`markdown_to_html()` round-trip, screenshotted via Playwright's own CLI, for every real HTML fixture in `fixtures/provenance.yaml`. The page shell, stylesheet and table come from PySaiyanWeBoo's `web_ui` (dev group, pinned to a commit) |
 
 ## Optional Gradio-only nano environment
 
@@ -299,92 +299,26 @@ states its contract.
 
 ## 🎞️ Browser evidence
 
-![Real-world report, diagnostics and the Gradio chat demo rendering a table, code and a list](docs/evidence/browser.gif)
+![The chat UI demo rendering a table, code and a list at desktop and phone widths, then the repository diagnostics page](docs/evidence/browser.gif)
 
-Historical capture, recorded 2026-11-08 at Markdown commit `5b7c00c0d67b898be8e3d47a9dacc676284d178c`. This GIF is not evidence for the current branch.
+Recorded 2026-11-24 at Markdown commit `583589b` with BrowserTestKit's `evidence_gif.py`. The same GIF is the 🎞 tab of the [usage guide](https://myon-bioinformatics.github.io/markdown/).
 
-🗓️ 2026-11-08 · 🧭 Chromium 153 · 🐧 Linux · receipt [`docs/evidence/browser.json`](docs/evidence/browser.json)
+🗓️ 2026-11-24 · 🧭 Chromium 153 · 🐧 Linux · receipt [`docs/evidence/browser.json`](docs/evidence/browser.json)
 
-| 🧪 Suite | ✅ | 📝 |
-| --- | ---: | --- |
-| `pytest tests/frontend` (Gradio, Streamlit, chat UI screen, Playwright CLI) | 13 | |
-| `scripts/real_world_pages_report.py` + `check_report_screenshots.py` | ✅ | 3 corrupted bundles rejected as expected |
-| 🎞️ evidence GIF shots | 5 | |
+| 🧪 Shot | ✅ |
+| --- | :-: |
+| 💬 chat UI demo (Gradio, 1280×800): table → code → list | ✅ |
+| 📱 chat UI demo (392×848) | ✅ |
+| 🩺 repository diagnostics | ✅ |
 
-🚫 Not run for that historical capture: `tests/real_chat_ui` (Docker), `experiments/check_catalog_browser.py` (pins an older `web_ui.py` hash). Firefox / WebKit not installed.
+🚫 Not in the GIF: the real-world page (vendored for parser benchmarks only, not redistribution). Firefox / WebKit not installed.
 
-🔁 Re-record (start `GRADIO_SERVER_PORT=7861 python demos/chat_ui_demo.py` first; the report and diagnostics pages are self-contained — built with PySaiyanWeBoo's `pysaiyanweboo`, nothing is fetched from a CDN):
+🔁 Re-record (start `GRADIO_SERVER_PORT=7861 python demos/chat_ui_demo.py` first):
 
 ```sh
-python scripts/real_world_pages_report.py --out /tmp/site
 python scripts/markdown_repository_diagnostics.py /tmp/site
-uv run --project ../BrowserTestKit --group pages --group browser python ../BrowserTestKit/tools/evidence_gif.py docs/evidence/browser.gif --serve /tmp/site --plan docs/evidence/browser.json
+uv run --project ../BrowserTestKit --group pages --group browser python ../BrowserTestKit/tools/evidence_gif.py docs/evidence/browser.gif --serve /tmp/site --plan docs/evidence/browser.json --force
 ```
-
-## Test / demo
-
-```bash
-uv sync --locked --group dev
-uv run pytest
-
-# optional frontends (only needed to see the actual UI — not to verify behavior)
-uv sync --locked --group dev --group frontend
-uv run python demos/gradio_app.py
-uv run streamlit run demos/streamlit_app.py
-uv run python demos/chat_ui_demo.py   # generic mock chat UI (gr.Chatbot)
-
-# verify demo behavior without a browser or either frontend framework installed:
-# analyze()/build_view() are plain functions, so a one-liner is enough.
-python -c "import sys; sys.path.insert(0, 'demos'); import gradio_app; \
-print(gradio_app.analyze('# Hi\n\n[x](https://example.com)\n'))"
-
-# optional: verify each app's real wiring with no browser, no clicking, no JS —
-# gradio_client / curl hit Gradio's own HTTP API directly; AppTest runs the
-# Streamlit script headless; curl checks Streamlit's HTTP health + index.
-uv run pytest tests/frontend
-```
-
-Gradio's backend is a plain FastAPI app, so `tests/frontend/test_gradio.py` drives it with
-nothing but `curl` (POST to start a job, GET an SSE stream for the result) — no Python client
-library needed, just what's already on any Ubuntu box. Streamlit's interactive reruns are a
-stateful websocket protocol rather than a request/response API, so `AppTest` (not curl) is what
-actually exercises its widgets; `test_streamlit.py` also uses `curl` for what *is* plain HTTP
-there — the health endpoint and initial page. `tests/test_tooling.py` covers `analyze()` /
-`build_view()` directly, with no frontend dependency installed at all.
-
-CI runs **pytest + PyYAML** (and stdlib `tomllib` / `json`), which already covers `demos/*.py`'s
-real logic via `tests/test_tooling.py` — no extra dependency installs needed. Gradio / Streamlit
-themselves are optional for library users. For API-only checks, select `frontend-gradio` (four tests) or
-`frontend-streamlit` (three tests). Normal CI runs all seven browser-free wiring checks
-in one shared `frontend` environment, avoiding duplicate shared dependency installs.
-That complete group also remains available for opt-in browser smoke (`workflow_dispatch`
-/ local smoke); installing Playwright does not launch or download a browser. See the
-[use-case-specific environment contract and comparison](docs/nano-environment.md#browser-free-frontend-ci).
-
-`demos/chat_ui_demo.py` is the one demo in this repo with an actual chat screen
-(a bubble-history `gr.Chatbot`, not tied to any specific product), so it's also
-the one demo whose frontend tests click through the real rendered page.
-`markdown.py`'s generation helpers only build the Markdown *text* — it's
-Gradio's own `Chatbot` component that renders that text to HTML in the
-browser. This repo's own `markdown_to_html()` now also renders simple GFM
-pipe tables to `<table>` (see "Capability stance" below); the chat-screen
-test still checks Gradio's DOM, while `tests/test_tooling.py`
-checks the library HTML path. `tests/frontend/test_chat_ui_screen.py`
-types a message, clicks Send, and asserts on the resulting DOM
-(a real `<table>` with `<th>`/`<td>` rows, `<pre><code>`, `<li>`, `<strong>`/`<em>`)
-via Playwright (`uv sync --locked --group dev --group frontend && uv run playwright install chromium`).
-Its pure rendering logic (`render_assistant_turn` / `respond`, no gradio import
-needed) is covered separately in `tests/test_tooling.py`.
-
-Viewing rendered Markdown doesn't actually require a chat UI (or any app) at
-all, though — `markdown_to_html()`'s output is just an HTML file, and
-Playwright ships a CLI for exactly that: `python -m playwright screenshot`
-and `python -m playwright pdf` render a `file://` URL with no server and no
-`sync_playwright()` script, the same "reach for the tool's own CLI" approach
-this repo already takes with curl for HTTP APIs.
-`tests/frontend/test_markdown_html_playwright_cli.py` drives both against
-this repo's own generated Markdown to confirm the HTML is real, renderable
-output.
 
 ## Benchmark: how far does this get on real Markdown?
 
@@ -453,6 +387,17 @@ and the round trip back to HTML keeps all of them too. `<header>`/`<aside>`/`<ma
 in `_HTMLToMarkdownParser`'s handled-tag list, so they contribute no Markdown syntax of their own, but
 the real text they wrap still survives (same "unsupported tag, text not data" fallback as unhandled wrapper tags; simple ``<table>`` is now converted to GFM pipes).
 `<script>` content is suppressed, not leaked, same as `<style>`.
+
+Construct counts on [とほほのWWW入門](https://www.tohoho-web.com/) (the vendored copy fetched 2026-09-19, `html_to_markdown()` → `markdown_to_html()`):
+
+| 🏷️ Tag | 📄 Original HTML | 🔁 Round trip |
+| --- | ---: | ---: |
+| `<h1>` | 1 | 1 |
+| `<h2>` | 24 | 24 |
+| `<a>` | 263 | 263 |
+| `<img>` | 2 | 2 |
+
+Only these counts are shown here. The page's HTML and screenshots are not published (all rights reserved by its author; vendored for parser benchmarks only). `python scripts/real_world_pages_report.py --out /tmp/site` rebuilds the side-by-side report locally.
 
 ## Capability stance
 
@@ -539,8 +484,8 @@ GitHub Pages publishes the shared repository metadata contract as
 `repository-diagnostics.json`, a one-record `repository-diagnostics.jsonl`,
 and `repository-diagnostics.html`. The metadata contract is pinned from
 Ironmate, anonymous public GitHub observations are pinned from
-mcp-toolcall-lab, and the HTML renderer is pinned to PySaiyanWeBoo commit
-`adb23d7`. Network failures remain `unverified`; no GitHub token is used
+mcp-toolcall-lab, and the HTML renderer is the PySaiyanWeBoo commit pinned by
+the parent's `reusable-pages-static.yml` (the same one that renders the guide). Network failures remain `unverified`; no GitHub token is used
 by the public resolver.
 
 The metadata contract and generator are vendored together from Ironmate commit
@@ -551,24 +496,12 @@ The Pages workflow checks out the PR head before generating diagnostics.
 
 ## Shared screenshot evidence
 
-`pages.yml` checks out BrowserTestKit at
-`6a2e32a4bbe49be5268e6b30040d665a89eecf66`. Every HTML entry in
-`fixtures/provenance.yaml` requires both `original.png` and `roundtrip.png`;
-missing or structurally invalid images fail the build. PNG validation uses the
-shared stdlib `check_png.py`, not a local copy. Chromium is the measured engine;
-Firefox/WebKit/mobile, pixel regression and screen-content assertions are not
-measured by this lane. Local report generation remains best-effort; CI is required.
-Each capture clears stale success PNGs, logs CLI failures and preserves failure
-images separately. The workflow uploads the available report/evidence even after
-failure (14 days), links it in the summary, and deploys only successful main builds.
-See the [shared guide](https://github.com/myon-bioinformatics/BrowserTestKit/blob/6a2e32a4bbe49be5268e6b30040d665a89eecf66/docs/screenshot-evidence.md).
-
-HTML fixture screenshots now also have current-run receipts (one complete
-original/roundtrip set per Chromium fixture identity). CI requires image hashes,
-tested SHA and exact run ID/attempt, and rejects failed receipts. Isolated copies
-of real CI artifacts must fail when an image is missing, its hash is altered,
-its run ID is stale, or its receipt stage is failed. Available receipts upload
-with the report after failure. This does not add screen-content assertions.
+`scripts/real_world_pages_report.py` and `scripts/check_report_screenshots.py` stay as a local, best-effort lane:
+every HTML entry in `fixtures/provenance.yaml` gets `original.png` and `roundtrip.png`, checked with BrowserTestKit's
+shared stdlib `check_png.py` and current-run receipts (`tests/test_report_screenshot_evidence.py`, which runs when
+`BROWSER_TEST_KIT` points at a checkout). CI no longer captures or publishes them, because the real-world page is
+vendored for parser benchmarks only, not redistribution. See the
+[shared guide](https://github.com/myon-bioinformatics/BrowserTestKit/blob/6a2e32a4bbe49be5268e6b30040d665a89eecf66/docs/screenshot-evidence.md).
 
 Public source placement and automatic Python CI updates: [vendor automation](docs/vendor-automation.md).
 
