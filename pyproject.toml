@@ -14,7 +14,7 @@ dev = [
   "pytest>=8.4.2",
   "PyYAML>=6.0.3",
   # The shared diagnostics page (pysaiyanweboo.repository_diagnostics_page); move the pin with: uv lock --upgrade-package pysaiyanweboo
-  "pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@bbe5c0b0087f40ff3fffd53bec5111c2ba2d747d",
+  "pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@05e5961ff6b8e702d193354f8f3fbcd2dd907d0d",
 ]
 frontend-gradio = ["gradio>=6.30.0"]
 frontend-streamlit = ["streamlit>=1.66.0"]
