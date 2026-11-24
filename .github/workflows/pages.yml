@@ -136,6 +136,7 @@ jobs:
           python scripts/markdown_repository_diagnostics.py _site
           # The usage guide: a web-ui-page/1 spec (data only) rendered by the pinned PySaiyanWeBoo.
           python -m pysaiyanweboo --page docs/guide.page.json > _site/guide.html
+          mkdir -p _site/demos && cp docs/evidence/browser.gif _site/demos/   # 🎞 the guide's GIF tab
       - name: Require fixture receipts and prove corruption rejection
         if: always()
         env:
