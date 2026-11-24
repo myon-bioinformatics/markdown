@@ -54,7 +54,7 @@
             },
             {
               "type": "section",
-              "title": "▶️ 実行",
+              "title": "▶️ CLI の全操作",
               "blocks": [
                 {
                   "type": "card",
@@ -109,6 +109,173 @@
                 {
                   "type": "output",
                   "text": "$ python -c 'import markdown; print(markdown.markdown_to_html(\"# hi\"))'\n<h1>hi</h1>"
+                },
+                {
+                  "type": "card",
+                  "title": "CSV を Markdown の表にする",
+                  "blocks": [
+                    {
+                      "type": "output",
+                      "text": "import markdown as md\n\ncsv_text = \"name,score\\nA,3\\nB,5\\n\"\nprint(md.csv_to_markdown_table(csv_text))"
+                    }
+                  ]
+                },
+                {
+                  "type": "card",
+                  "title": "入力文書の特定セクションだけ抜き出す",
+                  "blocks": [
+                    {
+                      "type": "output",
+                      "text": "import markdown as md\n\nsource = \"# Title\\n## Setup\\nInstall the package.\\n## Usage\\nRun it.\\n\"\nprint(md.extract_section(source, \"Setup\"))"
+                    }
+                  ]
+                },
+                {
+                  "type": "card",
+                  "title": "既存の LLM 出力をログ用に短くする",
+                  "text": "モデル呼び出しは不要です。個人情報の伏せ字処理ではありません。",
+                  "blocks": [
+                    {
+                      "type": "output",
+                      "text": "import markdown as md\n\ntext = \"<think>draft</think>\\n# Result\\nReady.\"\nprint(md.compact_llm_output(text, max_code_lines=10))"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "label": "🐍 Python API 全一覧",
+          "blocks": [
+            {
+              "type": "section",
+              "title": "公開 API",
+              "blocks": [
+                {
+                  "type": "text",
+                  "text": "markdown.py が公開する関数・型・定数の一覧です。CLI から呼べる操作は「機能一覧」にあり、ここにある操作は Python の import markdown から利用します。"
+                },
+                {
+                  "type": "card",
+                  "title": "ファイル・検査",
+                  "text": "読み書きと、コード例の検証。doctest は信頼できる文書にのみ使います。",
+                  "blocks": [
+                    {
+                      "type": "output",
+                      "text": "save_markdown — Save Markdown content to a file.\nread_markdown — Read a Markdown file and optionally count heading # markers.\nrun_markdown_doctest — Run Python doctest prompts found in fenced Markdown code blocks."
+                    }
+                  ]
+                },
+                {
+                  "type": "card",
+                  "title": "構造・抽出",
+                  "text": "分析や目次作成では元のファイルを書き換えません。",
+                  "blocks": [
+                    {
+                      "type": "output",
+                      "text": "extract_sections — List ATX headings (level + title), without their body text.\nsplit_sections — Split content into heading-delimited sections, each with its body text.\nextract_links — Extract inline, reference-style, angle-autolink and HTML links (not bare images).\nextract_images — Extract Markdown and HTML images (not those shown inside code).\nextract_code_blocks — Extract fenced code blocks (backticks or tildes).\nextract_raw_html — Best-effort list of raw HTML tags found in the document.\nextract_urls — Collect unique URLs from links, images, autolinks, and bare URLs.\nextract_data_uris — List well-formed literal data URIs without decoding their payloads.\nslugify — Convert supported inline heading text to a GitHub-style anchor slug.\ntable_of_contents — Generate a Markdown bullet list from live top-level ATX headings.\nextract_section — Return one ATX heading section, including nested child headings.\nstrip_prose_keep_structure — Keep Markdown structure while dropping ordinary prose lines.\nminify_markdown — Apply conservative physical Markdown minification.\nsafe_truncate — Truncate to max_chars while closing an open fenced code block.\ninventory — Summarize common Markdown constructs present in content."
+                    }
+                  ]
+                },
+                {
+                  "type": "card",
+                  "title": "HTML・DOM・リンク・画像",
+                  "text": "HTML↔Markdown は対応範囲を絞った変換です。完全な CommonMark やブラウザ DOM ではありません。",
+                  "blocks": [
+                    {
+                      "type": "output",
+                      "text": "make_link — Build a Markdown inline link.\nmake_image — Build a Markdown image.\nhtml_image_to_markdown — Convert an <img> tag (or HTML snippet containing one) to Markdown.\nmarkdown_image_to_html — Convert a Markdown image (or image URL string) to an <img> tag.\nhtml_link_to_markdown — Convert an <a>...</a> tag to a Markdown link.\nmarkdown_link_to_html — Convert a Markdown inline link to an <a> tag.\nhtml_to_markdown — Conservatively convert common HTML tags to Markdown.\nmarkdown_to_html — Conservatively convert a Markdown *subset* to HTML.\nmarkdown_to_web_ui_v1 — Render Markdown inside the stable web-ui HTML contract v1 surface.\nHtmlNode — Small normalized HTML tree node; not a browser DOM implementation.\nparse_html_dom — Parse HTML into a small sanitized in-memory tree.\nhtml_text_content — Return decoded descendant text from a lightweight DOM node.\nfind_html_text — Return textContent-like decoded text for the first matching safe element.\ndom_to_html — Serialize a lightweight DOM tree to sanitized HTML.\ndom_to_markdown — Convert a lightweight DOM tree to normalized Markdown.\nmarkdown_to_dom — Convert the repository supported Markdown subset to HtmlNode.\nmarkdown_to_kramdown — Rewrite a Markdown subset into Kramdown-leaning Markdown.\nkramdown_to_markdown — Strip the supported IAL subset back toward plain Markdown.\nial — Build a Kramdown Inline Attribute List line.\nwith_attributes — Append a block IAL after block_md.\nalert_stylesheet — Return compact CSS for .markdown-alert HTML from markdown_to_html.\ndefault_stylesheet — Return compact CSS for markdown_to_html output, including alerts.\nis_probably_url — Return True if value looks like an http(s) URL."
+                    }
+                  ]
+                },
+                {
+                  "type": "card",
+                  "title": "Markdown の組み立て",
+                  "text": "見出しや箇条書き、表、コードなどの部品を作ります。",
+                  "blocks": [
+                    {
+                      "type": "output",
+                      "text": "heading — Build an ATX heading (level is clamped to 1-6).\nbold — Wrap text in **bold** markers.\nitalic — Wrap text in *italic* markers.\nstrikethrough — Wrap text in ~~strikethrough~~ markers.\nblockquote — Prefix every line of text with >  to form a blockquote.\nalert — Build a site-flavored Markdown alert / callout / note block.\nhorizontal_rule — Return a thematic break (---).\nbullet_list — Build an unordered (-) list from an iterable of strings.\nnumbered_list — Build an ordered (1.) list from an iterable of strings.\ntask_item — Build one GFM task-list line (- [ ] text / - [x] text).\ntask_list — Build a GFM task list from strings or (text, checked) pairs.\ndetails — Build a collapsible section using Zenn's :::details form.\nfootnote_ref — Build an inline footnote reference ([^id]).\nfootnote — Build a footnote definition line ([^id]: text).\ncode_block — Wrap code in a fenced code block, optionally tagged with lang.\nkey_value_table — Render a mapping as a two-column Markdown table via table.\nsection — Join a heading with a sequence of pre-rendered Markdown blocks.\ninline_code — Wrap text in single backticks for inline code.\njson_block — Serialize obj as JSON and wrap it in a JSON fenced code block.\nstatus_line — Build a one-line status message, prefixed with a checkmark or warning.\nwrap_section — Wrap content in HTML-comment markers so tools/LLMs can find section boundaries.\nmd_table — *args version of table — pass values directly, no list needed.\nmd_kv — *args version of key_value_table — pass key, value pairs or dicts."
+                    }
+                  ]
+                },
+                {
+                  "type": "card",
+                  "title": "図とグラフ",
+                  "text": "Mermaid や DOT のソースを生成します。図そのものの描画はしません。",
+                  "blocks": [
+                    {
+                      "type": "output",
+                      "text": "mermaid_block — Wrap opaque Mermaid source in a safe mermaid fenced block.\nextract_mermaid_blocks — Return Mermaid fenced-block sources in document order.\nmarkdown_headings_to_mermaid_mindmap — Generate deterministic Mermaid mindmap source from live ATX headings.\nmarkdown_tasks_to_mermaid_flowchart — Generate Mermaid flowchart source from narrow GFM task dependencies.\npython_to_mermaid_class_diagram — Generate Mermaid classDiagram source from Python class structure.\nmarkdown_links_to_dot — Generate a deterministic DOT link graph grouped by current heading."
+                    }
+                  ]
+                },
+                {
+                  "type": "card",
+                  "title": "Python・環境・メール",
+                  "text": "API や実行環境を文書化します。メールは組み立てるだけで送信しません。",
+                  "blocks": [
+                    {
+                      "type": "output",
+                      "text": "inspect_to_markdown — Generate a small API reference for an already-provided Python object.\nargparse_to_markdown — Generate deterministic CLI reference Markdown from an ArgumentParser.\ndistribution_to_markdown — Generate package metadata Markdown for an installed distribution.\ncalendar_to_markdown — Render one month as a heading plus a GFM table of day numbers.\nplatform_to_markdown — Summarize the running interpreter/OS as a two-column Markdown table.\nemail_to_markdown — Render an RFC 5322 / MIME message as Markdown without side effects.\nmarkdown_to_email — Build (never send) a multipart/alternative email from Markdown.\nmarkdown_to_man — Render the Markdown lite subset as a man(7) troff page (one-way)."
+                    }
+                  ]
+                },
+                {
+                  "type": "card",
+                  "title": "会話と文書形式",
+                  "text": "各文書形式の対応範囲内で変換します。",
+                  "blocks": [
+                    {
+                      "type": "output",
+                      "text": "markdown_to_slack_mrkdwn — Convert the Markdown lite subset to Slack mrkdwn text.\nslack_mrkdwn_to_markdown — Convert Slack mrkdwn text to canonical Markdown.\nchat_messages_to_markdown — Render [{\"role\": ..., \"content\": ...}] as ## Role sections.\nmarkdown_to_chat_messages — Parse ## System / ## User / ## Assistant ... sections.\nmarkdown_to_org — Convert the Markdown lite subset to Org-mode.\norg_to_markdown — Convert Org-mode to canonical Markdown (the markdown_to_org subset).\nmarkdown_to_mediawiki — Convert the Markdown lite subset to MediaWiki markup.\nmediawiki_to_markdown — Convert MediaWiki markup to canonical Markdown (narrow contract).\nmarkdown_to_jira — Convert the Markdown lite subset to Jira wiki markup.\njira_to_markdown — Convert Jira wiki markup to canonical Markdown (narrow contract)."
+                    }
+                  ]
+                },
+                {
+                  "type": "card",
+                  "title": "表・CSV・設定データ",
+                  "text": "表、JSON、INI、TOML、dotenv を扱います。形式により対応範囲は異なります。",
+                  "blocks": [
+                    {
+                      "type": "output",
+                      "text": "table — Build a Markdown (GFM-style) table.\naligned_table — Build a pipe table aligned by display width, including CJK cells.\nmarkdown_table_to_rows — Read the first live GFM pipe table as (headers, rows).\nmarkdown_table_to_records — Read the first GFM pipe table as dictionaries keyed by its headers.\ncsv_to_markdown_table — Convert CSV text to a GFM pipe table using the first row as headers.\nmarkdown_table_to_csv — Convert the first live GFM pipe table to RFC-style CSV text.\nmarkdown_table_statistics — Return a small, non-mutating summary of the first Markdown table.\njson_to_markdown — Wrap JSON data as a Markdown document without performing I/O.\nmarkdown_to_json — Read the first JSON fence emitted by json_to_markdown.\nstructured_to_markdown — Render JSON-compatible Python data as a canonical typed Markdown table.\nmarkdown_to_structured — Restore data emitted by structured_to_markdown.\nini_to_markdown — Convert INI to canonical structured Markdown.\nmarkdown_to_ini — Convert canonical structured Markdown to deterministic INI text.\ntoml_to_markdown — Convert TOML to canonical structured Markdown.\ntoml_reader — Which TOML reader toml_to_markdown uses: \"tomllib\", \"node\" or None.\nmarkdown_to_toml — Convert canonical structured Markdown to deterministic TOML text.\ndotenv_to_markdown — Convert a narrow dotenv subset to canonical structured Markdown.\nmarkdown_to_dotenv — Convert canonical structured Markdown to deterministic dotenv text."
+                    }
+                  ]
+                },
+                {
+                  "type": "card",
+                  "title": "ディレクトリ・DB・ノートブック",
+                  "text": "scaffold_from_markdown はファイルシステムに書き込みます。Redis／SQL の変換は接続・実行しません。",
+                  "blocks": [
+                    {
+                      "type": "output",
+                      "text": "markdown_to_directory_tree — Parse a nested Markdown bullet list into a directory tree mapping.\ndirectory_tree_to_markdown — Render a directory tree mapping as a canonical nested Markdown list.\ndirectory_to_markdown — Describe an existing directory as a canonical nested Markdown list.\ntree_text_to_markdown — Convert tree-command style text into a canonical Markdown list.\nmarkdown_to_tree_text — Render a Markdown directory list as tree-command style text.\nscaffold_from_markdown — Create the directories and empty files described by a Markdown list.\nredis_snapshot_to_markdown — Document an already obtained Redis/RedisJSON snapshot without connecting.\nsql_ddl_to_markdown — Document a supplied SQL DDL snapshot without parsing or executing it.\nmarkdown_to_sql_ddl — Return the first SQL snapshot without validating or executing it.\nmarkdown_to_ipynb — Make a minimal nbformat-4 JSON notebook from Markdown and Python fences.\nipynb_to_markdown — Render Markdown and code cell sources from a minimal nbformat notebook.\nmarkdown_to_py_percent — Convert Markdown/Python fences to a narrow Jupytext py:percent form.\npy_percent_to_markdown — Convert the canonical narrow py:percent subset back to Markdown."
+                    }
+                  ]
+                },
+                {
+                  "type": "card",
+                  "title": "LLM 出力と識別子",
+                  "text": "モデルを呼ばずに既存の出力を整理します。",
+                  "blocks": [
+                    {
+                      "type": "output",
+                      "text": "split_reasoning — Split reasoning-model output into its answer and reasoning blocks.\ncompact_llm_output — Deterministically compress LLM output for logs and test assertions.\nllm_output_digest — Summarize LLM output as a small JSON-able dict for logs and assertions.\nextract_identifiers — Find IDs worth referencing instead of embedding whole content."
+                    }
+                  ]
+                },
+                {
+                  "type": "card",
+                  "title": "公開データ",
+                  "text": "対応範囲や用途別の値を参照できます。",
+                  "blocks": [
+                    {
+                      "type": "output",
+                      "text": "ALERT_FLAVORS — 対応するアラートの記法。\nGITHUB_ALERT_KINDS — GitHub 形式で使えるアラート種別。\nQIITA_NOTE_KINDS — Qiita 形式で使えるノート種別。\nZENN_MESSAGE_KINDS — Zenn 形式で使えるメッセージ種別。\nCHAT_ROLES — 会話変換が扱うロール。\nSUPPORTED — 対応する記法と変換の範囲。\nUNSUPPORTED — 非対応の記法と変換の範囲。"
+                    }
+                  ]
                 }
               ]
             }
