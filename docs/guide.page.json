@@ -1,7 +1,7 @@
 {
   "schema": "web-ui-page/1",
   "title": "markdown 利用ガイド",
-  "theme": "auto",
+  "theme": "modern",
   "description": "標準ライブラリだけで動く Markdown ユーティリティ（読み書き・目次・HTML↔Markdown）。",
   "icon": "./icon.png",
   "favicon": "./favicon.png",

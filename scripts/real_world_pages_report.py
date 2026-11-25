@@ -31,7 +31,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import markdown as md
-from scripts.markdown_repository_diagnostics import GH_IDENTITY, REPOSITORY, write_favicon
+from scripts.markdown_repository_diagnostics import GH_IDENTITY, REPOSITORY
 
 _TAG_COUNT_RES = {
     "h1": re.compile(r"<h1\b"),
@@ -163,7 +163,6 @@ def build_report(out_dir: Path, revision: Mapping[str, Any] | None = None) -> No
     # CI passes a relative --out (_site), so resolve once up front.
     out_dir = out_dir.resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
-    write_favicon(out_dir)
     fixtures = _load_html_fixtures()
     rows: list[dict[str, Any]] = []
 

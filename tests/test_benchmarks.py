@@ -512,19 +512,14 @@ def test_pages_favicon_is_local_and_benchmark_outputs_remain_unbranded(tmp_path,
     assert '<link rel="icon" type="image/png" href="./favicon.png">' in index
     assert '<link rel="apple-touch-icon" href="./icon.png">' in index
     assert 'src="./icon.png"' in index
-    assert (site / "icon.png").read_bytes() == (ROOT / "docs/brand/icon.png").read_bytes()
-    source = (ROOT / "docs/brand/favicon.png").read_bytes()
-    assert source.startswith(b"\x89PNG\r\n\x1a\n")
-    assert (site / "favicon.png").read_bytes() == source
+    # ♻️ ./icon.png and ./favicon.png come from CaChereCyCle on Pages (guide_brand); no copy is written here
+    assert not (site / "icon.png").exists() and not (site / "favicon.png").exists()
     for entry in report._load_html_fixtures():
         original = (ROOT / "fixtures" / entry["path"]).read_text(encoding="utf-8")
         assert (site / entry["id"] / "original.html").read_text(encoding="utf-8") == original
         roundtrip = (site / entry["id"] / "roundtrip.html").read_text(encoding="utf-8")
         expected_body = report.md.markdown_to_html(report.md.html_to_markdown(original))
         assert roundtrip == f"<!doctype html><html><body>{expected_body}</body></html>\n"
-    (site / "favicon.png").write_bytes(b"old icon")
-    report.build_report(site, revision=_FAKE_REVISION)
-    assert (site / "favicon.png").read_bytes() == source
 
 
 def test_build_report_embeds_injected_revision_and_writes_build_meta(tmp_path, monkeypatch) -> None:

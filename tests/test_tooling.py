@@ -291,13 +291,8 @@ def test_payload_not_checked_roundtrip(tmp_path, monkeypatch):
     assert '<link rel="icon" type="image/png" href="./favicon.png">' in html
     assert '<link rel="apple-touch-icon" href="./icon.png">' in html
     assert 'src="./icon.png"' in html
-    assert (tmp_path / "icon.png").read_bytes() == (ROOT / "docs/brand/icon.png").read_bytes()
-    source = (ROOT / "docs/brand/favicon.png").read_bytes()
-    assert source.startswith(b"\x89PNG\r\n\x1a\n")
-    assert (tmp_path / "favicon.png").read_bytes() == source
-    (tmp_path / "favicon.png").write_bytes(b"old icon")
-    diagnostics.write_outputs(tmp_path, probe=False)
-    assert (tmp_path / "favicon.png").read_bytes() == source
+    # ♻️ ./icon.png and ./favicon.png come from CaChereCyCle on Pages (guide_brand); no copy is written here
+    assert not (tmp_path / "icon.png").exists() and not (tmp_path / "favicon.png").exists()
 
 
 def test_page_is_the_shared_self_contained_renderer():
