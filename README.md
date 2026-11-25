@@ -1,10 +1,10 @@
 # markdown
 
 <p align="center">
-  <img src="docs/brand/icon.png" alt="markdown icon" width="160" />
+  <img src="https://myon-bioinformatics.github.io/markdown/icon.png" alt="markdown icon" width="160" />
 </p>
 
-[Icon](docs/brand/icon.png) · [Favicon](docs/brand/favicon.png)
+[Icon](https://myon-bioinformatics.github.io/markdown/icon.png) · [Favicon](https://myon-bioinformatics.github.io/markdown/favicon.png)
 
 A function-focused Python Markdown utility that runs on the standard library only.
 
