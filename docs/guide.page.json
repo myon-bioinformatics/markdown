@@ -146,13 +146,15 @@
                         "title": "📝 Markdown → HTML",
                         "command": "echo '# hi' | python3 markdown.py to-html -",
                         "expect": "<h1>hi</h1>",
+                        "expect_stdout_contains": "<h1>hi</h1>",
                         "run": true
                       },
                       {
                         "id": "toc",
                         "title": "🧭 目次",
-                        "command": "python3 markdown.py toc README.md | head -8",
+                        "command": "python3 markdown.py toc README.md | sed -n '1,8p'",
                         "expect": "- [markdown](#markdown)\n…",
+                        "expect_stdout_contains": "- [markdown](#markdown)",
                         "run": true
                       }
                     ]
