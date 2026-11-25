@@ -726,6 +726,26 @@ def test_ipynb_markdown_py_percent_composition_is_stable():
 
 # ═══ · structured adapters ═══════════════════════════════════════════════════════════════════════════════
 
+def test_pixiv_to_markdown_headings_wiki_links_lists_row_header_tables_and_media():
+    source = ("*世界観\n|^火の国|[里](里)|\n|^水の国|別の里|\n**文明描写\n-**用語**\n--[[下位>用語(詳細)]]\n"
+              "![pixiv image 123](pixivimage:123)[pixivimage:456:s] [youtube:nlRxufviKuc] NEXT▶︎[[次へ]]")
+    out = md.pixiv_to_markdown(source)
+    assert out.startswith('# 世界観\n\n| | |\n| --- | --- |\n| **火の国** | [里](里) |\n| **水の国** | 別の里 |\n')
+    assert '## 文明描写' in out and '- **用語**\n  - [下位](用語%28詳細%29)' in out
+    assert out.count('(https://www.pixiv.net/artworks/') == 2 and '[YouTube](https://www.youtube.com/watch?v=nlRxufviKuc)' in out
+    assert 'NEXT ▶︎ [次へ](次へ)' in out
+    assert md.pixiv_to_markdown(out) == out                                      # already Markdown: kept, so idempotent
+
+
+def test_pixiv_to_markdown_leaves_code_and_unknown_syntax_alone():
+    source = "```\n*not heading\n```\n`[[literal]]` and **太字だけ**\n[[a>b]]"
+    out = md.pixiv_to_markdown(source)
+    assert out == "```\n*not heading\n```\n`[[literal]]` and **太字だけ**\n[a](b)"
+    assert md.pixiv_to_markdown("a\r\nb\x00") == "a\nb\ufffd"
+    with pytest.raises(ValueError):
+        md.pixiv_to_markdown("x" * 200001)
+
+
 def test_ini_semantic_round_trip_and_canonical_fixed_point():
     source = (
         "# source comment is intentionally lossy\n"
