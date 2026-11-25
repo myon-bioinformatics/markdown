@@ -44,4 +44,4 @@ jobs:
       guide_page: docs/guide.page.json
       guide_assets: docs/evidence/browser.gif=demos/browser.gif
       guide_brand: markdown   # ♻️ icon and favicon from CaChereCyCle (markdown.icon / markdown.favicon)
-      build: uv run --no-project --with "$WEB_UI" python scripts/markdown_repository_diagnostics.py _site
+      build: uv run --locked --only-group dev python scripts/markdown_repository_diagnostics.py _site   # 📦 this repository's own PSWB pin (pyproject.toml)
