@@ -566,6 +566,10 @@ Validation: 25 focused tests passed; both entry points list cases with `python -
 
 ## Focused test discovery
 
+[Formal fenced-block checks](docs/formal-verification.md) prove that adaptive
+fences keep body lines from closing a block early and preserve the following
+suffix. Tests connect the line model to the actual wrapper and scanner.
+
 See [standard-library discovery commands](docs/unittest-discovery.md) for
 validated `python -S -m unittest discover` recipes, filename/name filtering,
 and the boundary with the full pytest suite.

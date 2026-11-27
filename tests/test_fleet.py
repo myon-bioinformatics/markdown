@@ -7,7 +7,7 @@ import pytest
 from vendor import fleet_check as fleet
 
 ROOT = fleet.repo_root(__file__)
-PARENT_WORKFLOW_PIN = "43cfe1df924ea96ca44f47a6771c18102c38f7f3"
+PARENT_WORKFLOW_PIN = "6c2558c4251698c50bc07bad86fb49f902b2738f"
 VENDOR_TOOL_PIN = "26c442bc51b8a2837fe2556782b2937f396932af"
 ACCEPTED = {"vendor/fleet_check.py": "20de01921e50e9339aa9271b0547a5be7649b3b3"}
 # Runtime/diagnostics tools, the fleet checker, and their recorded licenses.
