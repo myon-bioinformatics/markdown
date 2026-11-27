@@ -61,6 +61,7 @@ import markdown as md_market
 
 md_market.save_markdown("# Hello\n", "out.md")
 sections = md_market.extract_sections(open("out.md", encoding="utf-8").read())
+slides = md_market.split_slides("# One\n\nbody\n\n---\n\n# Two\n")  # pages at ---: title, body, content
 inv = md_market.inventory(open("README.md", encoding="utf-8").read())
 print(md_market.html_image_to_markdown('<img src="a.png" alt="A" />'))
 print(md_market.make_link("Docs", "https://example.com"))
