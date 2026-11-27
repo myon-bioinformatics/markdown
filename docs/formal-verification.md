@@ -6,7 +6,7 @@
 生成した閉じフェンスの後ろを消費せずに残す**ことを証明します。
 
 共通ラッパー `lean_verify.py` と Lean 専用 CI は
-[親リポジトリ](https://github.com/myon-bioinformatics/myon-bioinformatics/blob/6c2558c4251698c50bc07bad86fb49f902b2738f/lean_verify.py)
+[親リポジトリ](https://github.com/myon-bioinformatics/myon-bioinformatics/blob/27c46411c0a07d9b4d0f1ad5751ed1bb9e869b5c/lean_verify.py)
 で管理します。このリポジトリは固有の証明と接続テストを持ち、通常実行の依存は増やしません。
 
 ## 証明する処理
