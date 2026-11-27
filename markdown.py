@@ -18,6 +18,7 @@ __all__ = [
     "run_markdown_doctest",
     "extract_sections",
     "split_sections",
+    "split_slides",
     "extract_links",
     "extract_images",
     "extract_code_blocks",
@@ -683,6 +684,56 @@ def split_sections(content: str) -> list[dict[str, Any]]:
             body.append(line)
     flush()
     return parts
+
+
+def split_slides(content: str) -> list[dict[str, Any]]:
+    """Split content into pages at thematic breaks (``---``, ``***``, ``___``).
+
+    This is how slide Markdown (Marp, reveal.js, Deckset) separates slides.
+    Each item has ``content`` (the page without the break lines, outer blank
+    lines trimmed), ``title`` and ``level`` (the heading the page starts
+    with; ``""`` and 0 without one) and ``body`` (the page after that
+    heading), so a page maps onto a title box and a body box.
+
+    A break inside fenced code is text. A ``---`` line directly under a line
+    of text is that line's setext underline, not a break: leave a blank line
+    above a break. YAML front matter at the very top (``---`` to ``---`` or
+    ``...``, with at least one ``key:`` line) holds the deck's settings and
+    is skipped. A leading or trailing break adds no page; two breaks in a
+    row make an empty page.
+    """
+    lines = content.splitlines()
+    start = 0
+    if lines and lines[0].rstrip() == "---":
+        closing = next((i for i in range(1, len(lines)) if lines[i].rstrip() in ("---", "...")), None)
+        if closing is not None and any(re.match(r"[A-Za-z_][\w -]*:(\s|$)", line) for line in lines[1:closing]):
+            start = closing + 1
+    lines = lines[start:]
+    pages: list[list[str]] = [[]]
+    for index, item in enumerate(_scan_lines(lines)):
+        line = lines[index]
+        above = lines[index - 1] if index else ""
+        underline = line.strip().startswith("-") and above.strip() != "" and not _HR_RE.match(above) and not _FENCE_RE.match(above)
+        if _HR_RE.match(line) and not item.in_fenced_code and not item.is_fence_open and not item.is_fence_close and not underline:
+            pages.append([])
+        else:
+            pages[-1].append(line)
+    texts = ["\n".join(page).strip("\n") for page in pages]
+    while texts and not texts[0].strip():
+        texts.pop(0)
+    while texts and not texts[-1].strip():
+        texts.pop()
+    slides = []
+    for text in texts:
+        first, _, rest = text.partition("\n")
+        match = _HEADING_RE.match(first)
+        slides.append({
+            "level": len(match.group(1)) if match else 0,
+            "title": match.group(2).strip() if match else "",
+            "body": rest.strip("\n") if match else text,
+            "content": text,
+        })
+    return slides
 
 
 def _parse_attrs(attr_text: str) -> dict[str, str]:
