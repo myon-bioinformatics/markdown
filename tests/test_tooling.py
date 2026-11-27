@@ -617,12 +617,13 @@ class RepositoryMetadataProducerTests(unittest.TestCase):
             env = os.environ.copy()
             for name in ("PYTHONPATH", "GITHUB_HEAD_REF", "GITHUB_REF_NAME"):
                 env.pop(name, None)
-            subprocess.run(
-                [sys.executable, "-S", str(standalone / "gh_identity.py"), "repo-metadata", "--format", "v1",
-                 "--root", str(root), "--repository", diagnostics.REPOSITORY,
-                 "--output-dir", str(output)],
-                cwd=standalone, env=env, check=True,
+            result = run_cli(
+                standalone / "gh_identity.py", "repo-metadata", "--format", "v1",
+                "--root", str(root), "--repository", diagnostics.REPOSITORY,
+                "--output-dir", str(output),
+                python_options=("-S",), cwd=standalone, env=env,
             )
+            self.assertEqual(result.returncode, 0, result.stderr)
             direct = json.loads((output / "repository-metadata.json").read_text())
             self.assertEqual(direct["head"], detached["head"])
             self.assertEqual(json.loads((output / "repository-metadata.jsonl").read_text()), direct)
