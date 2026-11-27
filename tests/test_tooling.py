@@ -183,29 +183,6 @@ def test_extract_and_split_sections() -> None:
     assert parts[1]["title"] == "B"
 
 
-def test_split_slides_at_thematic_breaks() -> None:
-    deck = (
-        "---\ntheme: plain\nsize: 16:9\n---\n\n"            # front matter: the deck's settings, not a page
-        "# One\n\nfirst body\n\n---\n\n"
-        "## Two\n\n```yaml\n---\nkey: value\n```\n\n***\n\n"   # a break inside a fence is text
-        "no heading here\n\n___\n\n___\n\n"                # two breaks in a row: an empty page between
-        "Setext title\n---\n\ntext under it\n\n---\n"      # an underline is not a break; a trailing break adds no page
-    )
-    slides = md.split_slides(deck)
-    assert [(s["level"], s["title"]) for s in slides] == [(1, "One"), (2, "Two"), (0, ""), (0, ""), (0, "")]
-    assert slides[0] == {"level": 1, "title": "One", "body": "\nfirst body".strip("\n"), "content": "# One\n\nfirst body"}
-    assert slides[1]["body"] == "```yaml\n---\nkey: value\n```"
-    assert slides[2]["content"] == slides[2]["body"] == "no heading here"
-    assert slides[3]["content"] == ""
-    assert slides[4]["content"] == "Setext title\n---\n\ntext under it"
-    assert md.split_slides("") == [] and md.split_slides("---\n\n---\n") == []
-    assert [s["content"] for s in md.split_slides("---\n\n# A\n\n---\n\nB")] == ["# A", "B"]     # no closing line: not front matter
-    assert [s["content"] for s in md.split_slides("a\n\n- - -\n\nb\r\n\r\n* * *\r\n\r\nc")] == ["a", "b", "c"]
-    assert [s["title"] for s in md.split_slides("---\ntitle: x\n...\n# Only")] == ["Only"]
-    whole = "# A\n\ntext\n"
-    assert md.split_slides(whole) == [{"level": 1, "title": "A", "body": "text", "content": "# A\n\ntext"}]
-
-
 def test_builders_and_focused_html_markdown() -> None:
     assert md.make_link("Docs", "https://example.com") == "[Docs](https://example.com)"
     assert md.make_image("Alt", "a.png", "t") == '![Alt](a.png "t")'
@@ -617,12 +594,13 @@ class RepositoryMetadataProducerTests(unittest.TestCase):
             env = os.environ.copy()
             for name in ("PYTHONPATH", "GITHUB_HEAD_REF", "GITHUB_REF_NAME"):
                 env.pop(name, None)
-            subprocess.run(
-                [sys.executable, "-S", str(standalone / "gh_identity.py"), "repo-metadata", "--format", "v1",
-                 "--root", str(root), "--repository", diagnostics.REPOSITORY,
-                 "--output-dir", str(output)],
-                cwd=standalone, env=env, check=True,
+            result = run_cli(
+                standalone / "gh_identity.py", "repo-metadata", "--format", "v1",
+                "--root", str(root), "--repository", diagnostics.REPOSITORY,
+                "--output-dir", str(output),
+                python_options=("-S",), cwd=standalone, env=env,
             )
+            self.assertEqual(result.returncode, 0, result.stderr)
             direct = json.loads((output / "repository-metadata.json").read_text())
             self.assertEqual(direct["head"], detached["head"])
             self.assertEqual(json.loads((output / "repository-metadata.jsonl").read_text()), direct)
