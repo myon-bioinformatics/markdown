@@ -452,6 +452,15 @@ inside a doc — see the GitHub Docs benchmark fixture above for a real one) get
 enough to stay unambiguous, matching what CommonMark itself requires. Pass `fence_char="~"` for a
 tilde fence instead. See `tests/test_syntax.py`.
 
+`lang` is a single-line info string: language names, metadata, Japanese and other Unicode,
+spaces and tabs remain supported. The builder raises `ValueError` for line separators
+recognized by its reader, or for backticks anywhere in a backtick fence's info string, following
+[CommonMark 0.31.2 §4.5](https://spec.commonmark.org/0.31.2/#fenced-code-blocks).
+Tilde-fence info may contain backticks and tildes. If it starts with a tilde, separate it from
+the fence with whitespace (`lang=" ~tag", fence_char="~"`); an unseparated leading tilde raises
+`ValueError` because it would lengthen only the opening fence and corrupt the extracted body.
+Valid info strings retain their existing output, including whitespace and metadata.
+
 ## License
 
 MIT
