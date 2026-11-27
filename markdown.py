@@ -1698,10 +1698,24 @@ def code_block(code: str, lang: str = "", *, fence_char: str = "`") -> str:
     fence, so existing callers see no change. Pass ``fence_char="~"`` for a
     tilde fence (e.g. when ``code`` itself contains backtick runs).
 
+    ``lang`` is a single-line info string and may include metadata or Unicode.
+    Backtick fences cannot have backticks in their info string (CommonMark
+    section 4.5). Tilde info may contain both markers, but a leading tilde
+    needs separating whitespace, e.g. ``lang=" ~tag"``, so it does not extend
+    only the opening fence. Existing whitespace is preserved in the output.
+
     :raises ValueError: if ``fence_char`` isn't ``"`"`` or ``"~"`` -- the
-        only two characters Markdown recognizes as a fence.
+        only two characters Markdown recognizes as a fence -- or ``lang``
+        contains a line separator, a backtick for a backtick fence, or an
+        unseparated leading tilde for a tilde fence.
     """
     fence = _adaptive_fence(code, fence_char)
+    if lang and lang.splitlines() != [lang]:
+        raise ValueError("lang must be a single line without line separators")
+    if fence_char == "`" and "`" in lang:
+        raise ValueError("lang cannot contain backticks with a backtick fence")
+    if fence_char == "~" and lang.startswith("~"):
+        raise ValueError("lang must separate a leading tilde from the fence with whitespace")
     return f"{fence}{lang}\n{code}\n{fence}\n"
 
 
