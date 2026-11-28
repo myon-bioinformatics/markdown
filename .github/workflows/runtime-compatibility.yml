@@ -1,5 +1,8 @@
 name: Stdlib runtime compatibility
 on:
+  schedule:
+    - cron: "27 21 * * *"  # 🔁 follow-main
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
@@ -34,3 +37,15 @@ jobs:
       # cannot run here. All other tests run via `uv run pytest`.
       - name: Exercise runtime behavior without site-packages
         run: python -S -m unittest discover -s tests -p test_runtime_compatibility.py -v
+
+  # 🔁 own sources follow main: on schedule / manual run, take main of own repositories and push to main
+  follow-main:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-follow-main.yml@main
+    permissions:
+      contents: write
+    with:
+      node-version: "26"
+      check: |
+        mkdir -p build/shared && curl -fsSLo build/shared/xprobe.py https://raw.githubusercontent.com/myon-bioinformatics/xprobe/main/xprobe.py
+        PYTHONPATH=build/shared uv run --locked pytest -q
