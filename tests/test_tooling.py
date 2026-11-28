@@ -1,6 +1,7 @@
 """🧰 Tooling: frontend dependency slices, installability, the public API, diagnostics, vendor automation wiring, the README doctest, repository metadata, runtime workflow, stdio CLI and the demo apps' logic."""
 from __future__ import annotations
 
+import importlib.util
 import ast
 import json
 import os
@@ -21,13 +22,25 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 import markdown as md
 from scripts import markdown_repository_diagnostics as diagnostics
-from vendor.cli_args import run_cli
 
 
 # ═══ · frontend nano ci ══════════════════════════════════════════════════════════════════════════════════
 # Offline contracts for dependency slices and fail-closed frontend evidence.
 
 from scripts import check_frontend_slice as checker
+
+
+def load_vendored(name, relpath):
+    """Load a vendored file by path under a repo-unique name (cli_args README: Loading a vendored copy)."""
+    if name not in sys.modules:
+        spec = importlib.util.spec_from_file_location(name, Path(__file__).resolve().parents[1] / relpath)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+    return sys.modules[name]
+
+
+run_cli = load_vendored("markdown_cli_args", "vendor/cli_args.py").run_cli
 
 
 class FrontendNanoTests(unittest.TestCase):
