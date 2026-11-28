@@ -79,12 +79,12 @@ class FrontendNanoTests(unittest.TestCase):
         workflow = (ROOT / '.github/workflows/ci.yml').read_text()
         block = workflow.split('  frontend-mock-pytest-latest:', 1)[1].split('  failure-identity:', 1)[0]
         self.assertNotIn('matrix:', block)
-        self.assertIn('--group frontend ', block)
+        self.assertIn('--group frontend-gradio --group frontend-streamlit ', block)
         self.assertIn('uv run --no-sync pytest -q', block)
         self.assertIn('scripts/check_frontend_slice.py all', block)
         self.assertIn('if-no-files-found: error', block)
         self.assertNotIn('playwright install', block)
-        self.assertIn('for framework in ("gradio", "streamlit", "playwright"):', block)
+        self.assertIn('for framework in ("gradio", "streamlit"):', block)
         for frontend in checker.EXPECTED:
             self.assertIn(f'tests/frontend/test_{frontend}.py', block)
         self.assertNotIn('workflow_dispatch:', workflow)
