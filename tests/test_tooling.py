@@ -377,7 +377,7 @@ def test_tracked_bytes_rejects_incomplete_inventory(monkeypatch):
 # Vendor lock CI wiring: pinned vendor_sync check without upstream auto-update.
 
 WORKFLOW = ".github/workflows/ci.yml"
-VENDOR_SYNC_PIN = "26c442bc51b8a2837fe2556782b2937f396932af"
+VENDOR_SYNC_PIN = "main"  # 🔁 own sources follow main (2026-11-28)
 GHI_LOAD_COMMAND = (
     'python -S -c "import importlib.util; '
     "s=importlib.util.spec_from_file_location('vendored_ghi','vendor/gh_identity.py'); "

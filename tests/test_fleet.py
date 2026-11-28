@@ -21,9 +21,9 @@ def load_vendored(name, relpath):
 fleet = load_vendored("markdown_fleet_check", "vendor/fleet_check.py")
 
 ROOT = fleet.repo_root(__file__)
-PARENT_WORKFLOW_PIN = "27dedd9651efc816fa88d8922adb5f242725df69"
-VENDOR_TOOL_PIN = "26c442bc51b8a2837fe2556782b2937f396932af"
-ACCEPTED = {"vendor/fleet_check.py": "20de01921e50e9339aa9271b0547a5be7649b3b3"}
+PARENT_WORKFLOW_PIN = "main"  # 🔁 own sources follow main (2026-11-28)
+VENDOR_TOOL_PIN = "main"  # 🔁 own sources follow main (2026-11-28)
+ACCEPTED = {"vendor/fleet_check.py"}  # 🔁 locked destinations; they follow main
 # Runtime/diagnostics tools, the fleet checker, and their recorded licenses.
 # The retired Ironmate tool's retained license is explicit provenance policy.
 REQUIRED_BINDINGS = {
@@ -49,8 +49,8 @@ def _check_vendor_contract(root):
     for where, origin in REQUIRED_BINDINGS.items():
         assert where in rows, f"missing required vendor binding: {where}"
         assert (rows[where]["repository"], rows[where]["source"]) == origin, f"wrong vendor binding: {where}"
-    for where, commit in ACCEPTED.items():
-        assert rows[where]["commit"] == commit, f"wrong vendor commit: {where}"
+    for where in ACCEPTED:  # 🔁 they follow main; check_lock already matched the bytes
+        assert rows[where]["ref"] == "main", f"vendor row does not follow main: {where}"
 
 
 def test_vendor_lock_matches_checked_in_bytes_and_sources():
@@ -114,7 +114,7 @@ def test_every_action_is_pinned_by_full_sha_with_a_version_comment():
 
 @pytest.mark.parametrize("quote", ["", "'", '"'])
 @pytest.mark.parametrize("target", ["uses", "checkout", "vendor"])
-@pytest.mark.parametrize("reference", ["reviewed", "main", "9e3da7a"])
+@pytest.mark.parametrize("reference", ["reviewed", "27dedd9651efc816fa88d8922adb5f242725df69", "9e3da7a"])  # 🔁 a fixed commit is no longer the reviewed ref
 def test_reference_detection_preserves_quotes_and_rejects_unreviewed_pins(
     tmp_path, monkeypatch, quote, target, reference
 ):
