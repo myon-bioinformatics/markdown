@@ -179,11 +179,8 @@ benchmark, change CI, or claim the whole repository is minimized.
 
 ## Browser-free frontend CI
 
-Choose dependencies by the check you need, rather than always splitting jobs.
-For a small Gradio API check or Streamlit-only check, use the corresponding feature
-group. For combined frontend work, keep the `frontend` umbrella (Gradio + Streamlit +
-Playwright), so shared dependencies are installed only once. The normal CI job runs
-all seven existing browser-free wiring tests in this single combined environment.
+CI runs all seven browser-free wiring tests in one environment with the Gradio
+and Streamlit groups. Use the full `frontend` group for browser checks.
 
 Selective API-only commands:
 
@@ -207,11 +204,9 @@ union, always requiring zero skips, failures or errors. The existing tests are u
 With the environment opt-outs above, servers bind to loopback and telemetry, public
 sharing and SSR are disabled.
 
-Normal CI uses `uv sync --locked --group dev --group frontend`, runs the two listed
-test files together, and validates `check_frontend_slice.py all`. It requires all three
-framework packages and curl, but does not install browser binaries or launch a browser.
-Actual browser UI checks remain in the unchanged opt-in manual lane. This adjustment
-avoids the shared-dependency duplication seen in the experimental two-job proposal.
+Normal CI uses `uv sync --locked --group dev --group frontend-gradio --group frontend-streamlit`,
+runs the two files together, and validates `check_frontend_slice.py all`. Both
+frameworks and curl are required. Browser UI checks run in the opt-in manual lane.
 
 `frontend` still includes `frontend-gradio`, `frontend-streamlit`, and
 `frontend-browser` (Playwright). Existing manual browser smoke, Pages and OpenWebUI

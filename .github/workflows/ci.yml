@@ -322,7 +322,7 @@ jobs:
       - name: Sync locked frontend test environment
         shell: bash
         run: |
-          uv sync --locked --group dev --group frontend --python "$(python -c 'import sys; print(sys.executable)')"
+          uv sync --locked --group dev --group frontend-gradio --group frontend-streamlit --python "$(python -c 'import sys; print(sys.executable)')"
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
           uv run --no-sync pytest --version
       - name: Require the combined frontend environment
@@ -330,7 +330,7 @@ jobs:
           .venv/bin/python - <<'PYTHON'
           import importlib.util
           import shutil
-          for framework in ("gradio", "streamlit", "playwright"):
+          for framework in ("gradio", "streamlit"):
               assert importlib.util.find_spec(framework) is not None
           assert shutil.which("curl"), "curl is required; do not silently skip HTTP tests"
           PYTHON
