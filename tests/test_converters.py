@@ -1,6 +1,7 @@
 """🔁 Converters: case selection, contract audit, integration scaffold, parity report, notebooks, py:percent, structured adapters and snapshots, system formats, table data, LLM I/O and reference generators."""
 from __future__ import annotations
 
+import importlib.util
 import argparse
 import csv
 import datetime
@@ -16,7 +17,19 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 import markdown as md
 from scripts import converter_contract_audit, converter_parity_report
-from vendor.cli_args import run_cli
+
+
+def load_vendored(name, relpath):
+    """Load a vendored file by path under a repo-unique name (cli_args README: Loading a vendored copy)."""
+    if name not in sys.modules:
+        spec = importlib.util.spec_from_file_location(name, Path(__file__).resolve().parents[1] / relpath)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+    return sys.modules[name]
+
+
+run_cli = load_vendored("markdown_cli_args", "vendor/cli_args.py").run_cli
 
 
 # ═══ · converter case selection ══════════════════════════════════════════════════════════════════════════
